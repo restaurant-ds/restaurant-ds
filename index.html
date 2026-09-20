@@ -1,295 +1,108 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Restaurant D&S</title>
+<title>Test Firebase D&S</title>
 <style>
-:root{--noir:#0a0a0a;--jaune:#ffc107;--jaune-fonce:#e0a800;--creme:#f7f5ef;--sable:#e8e2d0;--vert:#2d7a3e;--rouge:#c0392b;--gris:#6b6b6b}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--creme);color:#1a1a1a}
-.serif{font-family:Georgia,'Times New Roman',serif}
-button{font-family:inherit;cursor:pointer;border:none}
-input,select,textarea{font-family:inherit;font-size:16px}
-.app{min-height:100vh;display:flex;flex-direction:column}
-.hidden{display:none!important}
-.loader{position:fixed;inset:0;background:var(--noir);color:var(--jaune);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;font-family:Georgia,serif}
-.loader-logo{width:80px;height:80px;border-radius:50%;background:var(--jaune);color:var(--noir);display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:bold;margin-bottom:16px}
-.loader-text{margin-top:20px;font-size:14px;color:#888}
-.spin{width:40px;height:40px;border:4px solid var(--noir);border-top-color:var(--jaune);border-radius:50%;animation:spin 1s linear infinite;margin-top:20px}
-@keyframes spin{to{transform:rotate(360deg)}}
-.login{min-height:100vh;background:var(--noir);color:white;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
-.login-logo{width:80px;height:80px;border-radius:50%;background:var(--jaune);color:var(--noir);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:bold;margin-bottom:16px;font-family:Georgia,serif}
-.login h1{font-size:26px;margin:0 0 20px;text-align:center;font-family:Georgia,serif}
-.login h1 span{color:var(--jaune)}
-.login-sub{font-size:11px;letter-spacing:0.3em;text-transform:uppercase;color:var(--jaune);margin-bottom:6px}
-.role-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:340px}
-.role-btn{background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:14px;text-align:left;color:white;transition:background .15s}
-.role-btn:active{background:#252525}
-.role-btn .em{font-size:22px;margin-bottom:6px}
-.role-btn .lab{font-weight:600;margin:0;font-size:14px}
-.role-btn .desc{font-size:11px;color:#888;margin:2px 0 0}
-.pin-wrap{width:100%;max-width:300px}
-.pin-display{display:flex;justify-content:center;gap:12px;margin:20px 0}
-.pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid #444}
-.pin-dot.filled{background:var(--jaune);border-color:var(--jaune)}
-.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.pin-key{aspect-ratio:1.6;background:#1a1a1a;border:1px solid #333;border-radius:12px;color:white;font-size:24px;font-weight:600;display:flex;align-items:center;justify-content:center;transition:background .1s}
-.pin-key:active{background:var(--jaune);color:var(--noir)}
-.pin-key.blank{background:transparent;border:none}
-.pin-key.del{background:#333;font-size:20px}
-.pin-error{color:#ff7066;font-size:13px;text-align:center;margin-top:12px}
-.pin-back{display:block;margin:16px auto 0;color:#888;background:transparent;font-size:13px;text-decoration:underline;padding:8px}
-.pin-hint{font-size:11px;color:#666;margin-top:14px;text-align:center;line-height:1.7}
-.topbar{background:var(--noir);color:white;padding:10px 14px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:30;border-bottom:3px solid var(--jaune)}
-.topbar-btn{background:transparent;color:white;padding:8px 10px;border-radius:8px;font-size:20px;display:flex;align-items:center;justify-content:center;min-width:40px;min-height:40px}
-.topbar-btn:active{background:#252525}
-.topbar-title{flex:1;font-family:Georgia,serif;font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.topbar-sub{font-size:11px;color:#aaa;margin:0}
-.topbar-logout{background:transparent;color:var(--jaune);font-size:11px;text-decoration:underline;padding:8px;font-weight:600}
-.tabs-scroll{background:var(--noir);border-top:1px solid #333;padding:0 6px 8px;overflow-x:auto;display:flex;gap:4px;scrollbar-width:none}
-.tabs-scroll::-webkit-scrollbar{display:none}
-.tabs-scroll .tab{background:transparent;color:#aaa;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap}
-.tabs-scroll .tab.active{background:var(--jaune);color:var(--noir)}
-.bottom-nav{display:grid;background:white;border-top:2px solid var(--jaune);position:sticky;bottom:0;z-index:20}
-.bottom-nav.cols-4{grid-template-columns:repeat(4,1fr)}
-.bottom-nav.cols-3{grid-template-columns:repeat(3,1fr)}
-.bn-btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px 12px;font-size:11px;font-weight:500;background:transparent;color:var(--gris);position:relative;min-height:56px}
-.bn-btn.active{color:var(--jaune-fonce)}
-.bn-btn .em{font-size:22px;line-height:1}
-.bn-badge{position:absolute;top:6px;right:calc(50% - 24px);background:var(--rouge);color:white;font-size:10px;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;font-weight:bold}
-.content{flex:1;padding:16px;width:100%}
-.content-narrow{max-width:520px;margin:0 auto}
-.section-title{font-family:Georgia,serif;font-size:22px;margin:0 0 4px}
-.section-sub{font-size:13px;color:var(--gris);margin:0 0 16px}
-.card{background:white;border:1px solid var(--sable);border-radius:12px;padding:14px}
-.card+.card{margin-top:10px}
-.card-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.card-title{font-weight:600;margin:0;font-size:15px}
-.card-sub{font-size:12px;color:var(--gris);margin:2px 0 0}
-.btn{padding:10px 16px;border-radius:8px;font-weight:600;font-size:14px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
-.btn-primary{background:var(--noir);color:white}
-.btn-accent{background:var(--jaune);color:var(--noir);font-weight:700}
-.btn-success{background:var(--vert);color:white}
-.btn-danger{background:var(--rouge);color:white}
-.btn-outline{background:transparent;border:2px solid var(--noir);color:var(--noir)}
-.btn-ghost{background:transparent;border:1px solid var(--sable);color:var(--gris)}
-.btn:disabled{opacity:0.4;cursor:not-allowed}
-.btn-block{display:flex;width:100%}
-.btn-sm{padding:6px 12px;font-size:12px;min-height:36px}
-.badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;display:inline-block}
-.badge-neutre{background:rgba(107,107,107,0.12);color:var(--gris)}
-.badge-vert{background:rgba(45,122,62,0.12);color:var(--vert)}
-.badge-orange{background:rgba(224,168,0,0.18);color:var(--jaune-fonce)}
-.badge-rouge{background:rgba(192,57,43,0.12);color:var(--rouge)}
-.input{width:100%;padding:12px;border:1px solid var(--sable);border-radius:8px;font-size:16px;background:white}
-.input:focus{outline:none;border-color:var(--jaune);box-shadow:0 0 0 2px rgba(255,193,7,0.2)}
-.cart-fab{position:fixed;bottom:16px;left:16px;right:16px;padding:16px;background:var(--noir);color:white;border-radius:12px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 8px 32px rgba(0,0,0,0.3);z-index:50;max-width:480px;margin:0 auto;border:2px solid var(--jaune)}
-.cart-fab .total{color:var(--jaune);font-family:monospace;font-weight:bold}
-.cart-fab .label{font-weight:600;font-size:14px}
-.dish-row{background:white;border:1px solid var(--sable);border-radius:12px;padding:12px;display:flex;align-items:center;gap:12px;margin-bottom:8px}
-.dish-info{flex:1;min-width:0}
-.dish-name{font-weight:600;font-size:15px;margin:0}
-.dish-desc{font-size:12px;color:var(--gris);margin:2px 0 0}
-.dish-meta{display:flex;align-items:center;gap:10px;margin-top:6px}
-.dish-price{font-family:monospace;font-weight:bold}
-.dish-time{font-size:12px;color:var(--rouge);font-weight:500}
-.qty-controls{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.qty-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--noir);background:white;font-size:18px;display:flex;align-items:center;justify-content:center}
-.qty-btn.add{background:var(--noir);color:white;border-color:var(--noir)}
-.qty-val{font-family:monospace;font-weight:bold;min-width:22px;text-align:center;font-size:15px}
-.menu-header{background:var(--noir);color:white;padding:16px;position:sticky;top:0;z-index:10;border-bottom:2px solid var(--jaune)}
-.menu-header h2{font-family:Georgia,serif;font-size:20px;margin:0 0 4px}
-.menu-header .sub{font-size:13px;color:#aaa}
-.cat-tabs{display:flex;gap:8px;margin-top:12px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
-.cat-tabs::-webkit-scrollbar{display:none}
-.cat-btn{padding:6px 14px;border-radius:999px;font-size:13px;font-weight:500;white-space:nowrap;border:1px solid var(--sable);background:white;color:var(--gris)}
-.cat-btn.active{background:var(--jaune);color:var(--noir);border-color:var(--jaune);font-weight:700}
-.cat-btn.on-dark{background:transparent;border-color:#444;color:#aaa}
-.cat-btn.on-dark.active{background:var(--jaune);color:var(--noir);border-color:var(--jaune)}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-.stat-card{background:white;border:1px solid var(--sable);border-radius:12px;padding:14px;border-left:4px solid var(--jaune)}
-.stat-label{font-size:12px;color:var(--gris);margin:0 0 4px}
-.stat-value{font-family:Georgia,serif;font-size:22px;font-weight:bold;margin:0}
-.table-wrap{background:white;border:1px solid var(--sable);border-radius:12px;overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13px}
-thead{background:#faf8f2;color:var(--gris)}
-th{text-align:left;padding:10px 12px;font-weight:500;font-size:12px;white-space:nowrap}
-td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
-.progress-circle{position:relative;width:180px;height:180px;margin:0 auto 20px}
-.progress-circle svg{width:100%;height:100%;transform:rotate(-90deg)}
-.progress-circle .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.table-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.table-cell{aspect-ratio:1;background:white;border:1px solid var(--sable);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;min-height:56px}
-.table-cell.active{background:var(--jaune);border-color:var(--jaune);color:var(--noir)}
-.timer{font-family:monospace;font-size:22px;font-weight:bold}
-.timer.urgent{color:var(--rouge)}
-.ticket{background:white;border:2px solid var(--sable);border-radius:16px;padding:14px}
-.ticket.urgent{border-color:var(--rouge)}
-.empty{text-align:center;color:var(--gris);padding:24px 12px;font-size:14px}
-.flex{display:flex}.between{justify-content:space-between}.center{align-items:center}
-.gap-2{gap:8px}.gap-3{gap:12px}
-.mt-2{margin-top:8px}.mt-4{margin-top:16px}.mb-2{margin-bottom:8px}.mb-4{margin-bottom:16px}
-.text-sm{font-size:13px}.text-xs{font-size:11px}
-.muted{color:var(--gris)}.mono{font-family:monospace}.bold{font-weight:700}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--noir);color:white;padding:12px 20px;border-radius:8px;font-size:14px;z-index:9999;border:2px solid var(--jaune);box-shadow:0 8px 24px rgba(0,0,0,0.3);max-width:90%;text-align:center}
+body{font-family:monospace;padding:16px;background:#f0f0f0;font-size:14px;line-height:1.8}
+#log div{padding:4px 8px;margin:4px 0;border-radius:4px;background:white}
+.ok{color:#1a7f37;border-left:4px solid #1a7f37}
+.err{color:#c0392b;border-left:4px solid #c0392b}
+.wait{color:#b8860b;border-left:4px solid #b8860b}
+.info{color:#333;border-left:4px solid #666}
+h1{font-size:16px;margin-top:0}
 </style>
 </head>
 <body>
-<div id="root"><div class="loader"><div class="loader-logo">D&S</div><h1 style="font-family:Georgia,serif;margin:0 0 20px;color:var(--jaune)">Restaurant D&S</h1><div class="spin"></div><p class="loader-text">Connexion à Firebase…</p></div></div>
+<h1>🔍 Diagnostic Firebase</h1>
+<div id="log"></div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+<!-- Firebase COMPAT (pas de modules ES6, fonctionne partout) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
-// ============ CONFIG FIREBASE ============
-const firebaseConfig = {
-  apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0",
-  authDomain: "restaurant-ds-494a6.firebaseapp.com",
-  projectId: "restaurant-ds-494a6",
-  storageBucket: "restaurant-ds-494a6.firebasestorage.app",
-  messagingSenderId: "1026668587499",
-  appId: "1:1026668587499:web:7ed7b77fd623070007d1ae"
-};
-const VAPID_KEY = "BEch4HjCOf-Wa_vrms0qxghVwZFxo64q14baMe0EymaEL_dHykkzNMmERGshH5sh_ntPmV6gu1UOSG096EEan4hI";
-
-const fbApp = initializeApp(firebaseConfig);
-const auth = getAuth(fbApp);
-const db = getFirestore(fbApp);
-
-// ============ ÉTAT GLOBAL ============
-let SESSION = null;              // { role, name, userId }
-let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{} };
-let listeners = [];
-
-// ============ DONNÉES INITIALES (si base vide) ============
-const SEED = {
-  menu: [
-    { id:"m1", name:"Salade César", cat:"Entrées", price:2500, time:5, available:true, desc:"Romaine, parmesan" },
-    { id:"m2", name:"Beignets de crevettes", cat:"Entrées", price:3000, time:10, available:true, desc:"Sauce pimentée" },
-    { id:"m3", name:"Poulet DG", cat:"Plats", price:5000, time:18, available:true, desc:"Poulet mijoté, plantain" },
-    { id:"m4", name:"Poisson braisé", cat:"Plats", price:5500, time:20, available:true, desc:"Grillé au feu de bois" },
-    { id:"m5", name:"Riz sauté aux légumes", cat:"Plats", price:3500, time:12, available:true, desc:"Riz wok, légumes" },
-    { id:"m6", name:"Attiéké poisson", cat:"Plats", price:4000, time:15, available:true, desc:"Semoule de manioc" },
-    { id:"m7", name:"Salade de fruits", cat:"Desserts", price:1500, time:4, available:true, desc:"" },
-    { id:"m8", name:"Tarte au citron", cat:"Desserts", price:2000, time:3, available:true, desc:"" },
-    { id:"m9", name:"Jus de bissap", cat:"Boissons", price:1000, time:2, available:true, desc:"Hibiscus glacé" },
-    { id:"m10", name:"Eau minérale", cat:"Boissons", price:500, time:1, available:true, desc:"" },
-  ],
-  staff: [
-    { id:"s1", name:"Aïcha", role:"serveuse", pin:"4821" },
-    { id:"s2", name:"Fatou", role:"serveuse", pin:"3390" },
-    { id:"s3", name:"Moussa", role:"cuisine", pin:"1234" },
-    { id:"s4", name:"Ibrahim", role:"gerant", pin:"0000" },
-    { id:"s5", name:"Salif", role:"livreur", pin:"5678" },
-    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999" },
-  ],
-  tables: Array.from({length:25},(_,i)=>({ id:"t"+(i+1), number:i+1, token:Math.random().toString(36).slice(2,8) })),
-  stock: [
-    { id:"st1", name:"Poulet", unit:"kg", initial:30, threshold:5 },
-    { id:"st2", name:"Poisson", unit:"kg", initial:25, threshold:5 },
-    { id:"st3", name:"Riz", unit:"kg", initial:80, threshold:15 },
-    { id:"st4", name:"Huile", unit:"L", initial:40, threshold:8 },
-    { id:"st5", name:"Légumes", unit:"kg", initial:20, threshold:5 },
-  ],
-  settings: { restaurantName:"Restaurant D&S", phone:"27 20 00 00 00", fraisLivraison:1000, timerMode:"auto", waitMode:"max" },
+<script>
+var log = function(msg, cls) {
+  var el = document.getElementById('log');
+  var div = document.createElement('div');
+  div.className = cls || 'info';
+  div.textContent = msg;
+  el.appendChild(div);
 };
 
-async function seedIfEmpty() {
-  const check = await getDocs(query(collection(db, "menu"), limit(1)));
-  if (!check.empty) return;
-  const batch = writeBatch(db);
-  SEED.menu.forEach(m => batch.set(doc(db, "menu", m.id), m));
-  SEED.staff.forEach(s => batch.set(doc(db, "staff", s.id), s));
-  SEED.tables.forEach(t => batch.set(doc(db, "tables", t.id), t));
-  SEED.stock.forEach(s => batch.set(doc(db, "stock", s.id), s));
-  batch.set(doc(db, "settings", "main"), SEED.settings);
-  await batch.commit();
-}
+log('1️⃣ Test de démarrage…', 'info');
 
-// ============ UTILITAIRES ============
-function money(n){return (n||0).toLocaleString("fr-FR")+" F";}
-function uid(p){return (p||"id")+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
-function nowDate(){return new Date().toISOString().slice(0,10);}
-function fmtDate(iso){return new Date(iso).toLocaleDateString("fr-FR",{day:"2-digit",month:"short"});}
-function timeAgo(ts){if(!ts)return "à l'instant";const m=Math.floor((Date.now()-ts)/60000);if(m<=0)return "à l'instant";if(m<60)return "il y a "+m+" min";return "il y a "+Math.floor(m/60)+"h";}
-function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-
-// ============ ABONNEMENTS TEMPS RÉEL ============
-function subscribeAll(onUpdate) {
-  const cleanup = [];
-  const subscribe = (col, key, transform) => {
-    const unsub = onSnapshot(collection(db, col), snap => {
-      const arr = [];
-      snap.forEach(d => arr.push({ ...d.data(), _docId: d.id }));
-      DATA[key] = transform ? transform(arr) : arr;
-      onUpdate();
+// Vérifier que Firebase est chargé
+setTimeout(function() {
+  if (typeof firebase === 'undefined') {
+    log('❌ Firebase non chargé — le CDN est bloqué', 'err');
+    log('Solution : changez de réseau (WiFi/4G) ou réessayez plus tard', 'err');
+    return;
+  }
+  
+  log('✅ Firebase JS chargé (version ' + firebase.SDK_VERSION + ')', 'ok');
+  
+  // Étape 2 : Initialiser
+  try {
+    var app = firebase.initializeApp({
+      apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0",
+      authDomain: "restaurant-ds-494a6.firebaseapp.com",
+      projectId: "restaurant-ds-494a6",
+      storageBucket: "restaurant-ds-494a6.firebasestorage.app",
+      messagingSenderId: "1026668587499",
+      appId: "1:1026668587499:web:7ed7b77fd623070007d1ae"
     });
-    cleanup.push(unsub);
-  };
-  subscribe("menu", "menu");
-  subscribe("staff", "staff");
-  subscribe("tables", "tables", arr => arr.sort((a,b)=>a.number-b.number));
-  subscribe("stock", "stock");
-  subscribe("stockMoves", "stockMoves", arr => arr.sort((a,b)=>b._ts-a._ts));
-  subscribe("orders", "orders", arr => arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
-  const unsubAff = onSnapshot(collection(db, "affectation"), snap => {
-    const obj = {};
-    snap.forEach(d => { obj[d.id] = d.data(); });
-    DATA.affectation = obj;
-    onUpdate();
-  });
-  cleanup.push(unsubAff);
-  const unsubSet = onSnapshot(doc(db, "settings", "main"), snap => {
-    if (snap.exists()) DATA.settings = snap.data();
-    onUpdate();
-  });
-  cleanup.push(unsubSet);
-  listeners = cleanup;
-}
+    log('✅ Firebase initialisé (projet: restaurant-ds-494a6)', 'ok');
+  } catch(e) {
+    log('❌ Erreur init : ' + e.message, 'err');
+    return;
+  }
+  
+  // Étape 3 : Authentification
+  var auth = firebase.auth();
+  log('⏳ Connexion anonyme…', 'wait');
+  
+  auth.signInAnonymously()
+    .then(function(userCred) {
+      log('✅ Connecté anonymement (UID: ' + userCred.user.uid.substring(0, 8) + '…)', 'ok');
+      
+      // Étape 4 : Firestore
+      log('⏳ Test Firestore…', 'wait');
+      var db = firebase.firestore();
+      
+      return db.collection('menu').limit(1).get();
+    })
+    .then(function(snap) {
+      log('✅ Firestore répond (' + snap.size + ' doc trouvé)', 'ok');
+      
+      // Étape 5 : Écriture test
+      log('⏳ Test écriture…', 'wait');
+      var db = firebase.firestore();
+      return db.collection('_test').doc('test_' + Date.now()).set({
+        test: true,
+        date: new Date().toISOString()
+      });
+    })
+    .then(function() {
+      log('✅ Écriture OK', 'ok');
+      log('🎉 TOUT FONCTIONNE ! Le problème est ailleurs.', 'ok');
+      log('👉 Envoyez-moi cette capture d\'écran.', 'info');
+    })
+    .catch(function(e) {
+      log('❌ Erreur : ' + e.message, 'err');
+      log('Code : ' + (e.code || 'inconnu'), 'err');
+      log('👉 Envoyez-moi cette capture d\'écran.', 'info');
+    });
+}, 2000);
 
-// ============ ACTIONS ============
-const A = {
-  login(role, name, userId) { SESSION = { role, name, userId, since:Date.now() }; render(); },
-  async logout() {
-    SESSION = null;
-    try { await auth.signOut(); } catch(e){}
-    loginRole = null; loginPin = ""; loginError = "";
-    await signInAnonymously(auth);
-    render();
-  },
-  async addOrder(order) {
-    const newOrder = {
-      createdAt: Date.now(), date: nowDate(), status: "att_validation",
-      type: order.type||"sur_place", tableId: order.tableId||null, tableNumber: order.tableNumber||null,
-      serveuseId: order.serveuseId||null, serveuseName: order.serveuseName||null,
-      livreurId: null, deliveryStatus: null, clientInfo: order.clientInfo||null,
-      items: order.items.map(i => ({ ...i, statut:null, motif:null })),
-      paymentMethod: null, paymentRef: null, readyAt: null, servedAt: null,
-    };
-    const ref = await addDoc(collection(db, "orders"), newOrder);
-    return ref.id;
-  },
-  async updateOrder(id, patch) { await updateDoc(doc(db, "orders", id), patch); },
-  async setItemStatut(orderId, idx, statut, motif) {
-    const order = DATA.orders.find(o => o._docId===orderId);
-    if (!order) return;
-    const items = order.items.map((it,i) => i===idx ? { ...it, statut, motif: statut==="Refusé"?(motif||it.motif):null } : it);
-    await updateDoc(doc(db, "orders", orderId), { items });
-  },
-  async setItemMotif(orderId, idx, motif) {
-    const order = DATA.orders.find(o => o._docId===orderId);
-    if (!order) return;
-    const items = order.items.map((it,i) => i===idx ? { ...it, motif } : it);
-    await updateDoc(doc(db, "orders", orderId), { items });
-  },
-  async validateOrder(id) { await updateDoc(doc(db, "orders", id), { status:"att_paiement" }); },
-  async payOrder(id, method, ref) { await updateDoc(doc(db, "orders", id), { status:"payee", paymentMethod:method, paymentRef:ref||null, paidAt:Date.now() }); },
-  async markReady(id) { await updateDoc(doc(db, "orders", id), { readyAt:Date.now() }); },
-  async markServed(id) { await updateDoc(doc(db, "orders", id), { status:"servie", servedAt:Date.now() }); },
-  async markDelivered(id) { await updateDoc(doc(db, "orders", id), { status:"livree", servedAt:Date.now() }); },
-  async takeDelivery(id, livreurId) { await updateDoc(doc(db, "orders", id), { livreurId, deliveryStatus:"prise"
+// Capturer toutes les erreurs
+window.addEventListener('error', function(e) {
+  log('❌ Erreur globale : ' + e.message, 'err');
+});
+window.addEventListener('unhandledrejection', function(e) {
+  log('❌ Promesse rejetée : ' + (e.reason ? e.reason.message || e.reason : '?'), 'err');
+});
+</script>
+</body>
+</html>
