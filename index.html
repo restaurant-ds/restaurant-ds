@@ -139,6 +139,8 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 .cat-group-title{font-family:Georgia,serif;font-size:18px;color:var(--noir);padding:8px 12px;background:var(--jaune);border-radius:8px;margin-bottom:8px;display:inline-block}
 .alert-banner{background:rgba(192,57,43,0.1);border:2px solid var(--rouge);border-radius:12px;padding:14px;margin-bottom:16px}
 .alert-banner strong{color:var(--rouge)}
+.zone-item{display:flex;align-items:center;gap:10px;padding:10px;background:white;border:1px solid var(--sable);border-radius:8px;margin-bottom:8px}
+.zone-item input{padding:6px;border:1px solid var(--sable);border-radius:6px}
 @media print{body *{visibility:hidden}#qr-print-area,#qr-print-area *{visibility:visible}#qr-print-area{position:absolute;left:0;top:0;width:100%;padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:20px}.no-print{display:none!important}}
 </style>
 </head>
@@ -156,7 +158,7 @@ let DEVICE_ID = localStorage.getItem("ds_device_id");
 if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); localStorage.setItem("ds_device_id", DEVICE_ID); }
 
 let SESSION = null;
-let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{} };
+let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{}, zones:[] };
 const SITE_URL = "https://restaurant-ds.github.io/restaurant-ds/";
 
 const SEED = {
@@ -188,6 +190,13 @@ const SEED = {
     { id:"st4", name:"Huile", unit:"L", initial:40, threshold:8 },
     { id:"st5", name:"Légumes", unit:"kg", initial:20, threshold:5 }
   ],
+  zones: [
+    { id:"z1", name:"Centre-ville / Ganhi", price:500 },
+    { id:"z2", name:"Gbégamey / Sainte-Rita", price:800 },
+    { id:"z3", name:"Fidjrossè / Cadjèhoun", price:1000 },
+    { id:"z4", name:"Akpakpa / Sèmè", price:1200 },
+    { id:"z5", name:"Périphérie (Calavi, Godomey)", price:2000 }
+  ],
   settings: { restaurantName:"Restaurant D&S", phone:"27 20 00 00 00", fraisLivraison:1000, timerMode:"auto", waitMode:"max" }
 };
 
@@ -199,6 +208,7 @@ async function seedIfEmpty() {
   SEED.staff.forEach(s => batch.set(doc(db, "staff", s.id), s));
   SEED.tables.forEach(t => batch.set(doc(db, "tables", t.id), t));
   SEED.stock.forEach(s => batch.set(doc(db, "stock", s.id), s));
+  SEED.zones.forEach(z => batch.set(doc(db, "zones", z.id), z));
   batch.set(doc(db, "settings", "main"), SEED.settings);
   await batch.commit();
 }
@@ -222,6 +232,15 @@ function orderTimerInfo(o){
   return { remainingMs, overdue: remainingMs<=0, text: (remainingMs<=0?"+":"")+mm+":"+ss, maxTime, urgent: remainingMs>0 && remainingMs < maxTime*60*1000*0.25 };
 }
 function qrUrl(text, size){ size=size||400; return "https://api.qrserver.com/v1/create-qr-code/?size="+size+"x"+size+"&data="+encodeURIComponent(text); }
+// Récupérer le prix de livraison selon la zone de la commande
+function deliveryFeeFor(o){
+  if(!o||o.type!=="livraison") return 0;
+  if(o.zoneId){
+    const z=DATA.zones.find(z=>z._docId===o.zoneId||z.id===o.zoneId);
+    if(z) return z.price;
+  }
+  return DATA.settings.fraisLivraison||0;
+}
 
 function preserveInput(){
   const active=document.activeElement;
@@ -245,6 +264,7 @@ function subscribeAll(onUpdate) {
   sub("stock", "stock");
   sub("stockMoves", "stockMoves", arr => arr.sort((a,b)=>(b._ts||0)-(a._ts||0)));
   sub("orders", "orders", arr => arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+  sub("zones", "zones", arr => arr.sort((a,b)=>a.price-b.price));
   onSnapshot(collection(db, "affectation"), snap => { const obj={}; snap.forEach(d => obj[d.id]=d.data()); DATA.affectation=obj; onUpdate(); });
   onSnapshot(doc(db, "settings", "main"), snap => { if (snap.exists()) DATA.settings=snap.data(); onUpdate(); });
 }
@@ -257,18 +277,16 @@ const A = {
       type:order.type||"sur_place", tableId:order.tableId||null, tableNumber:order.tableNumber||null,
       serveuseId:order.serveuseId||null, serveuseName:order.serveuseName||null,
       livreurId:null, deliveryStatus:null, clientInfo:order.clientInfo||null, source:order.source||"client",
+      zoneId:order.zoneId||null, zoneName:order.zoneName||null,
       items:order.items.map(i=>({ ...i, statut:null, motif:null })),
       paymentMethod:null, paymentRef:null, readyAt:null, servedAt:null, cashIssue:null, callCount:0 };
     const ref=await addDoc(collection(db,"orders"),newOrder);
     return ref.id;
   },
   async updateOrder(id, patch){ await updateDoc(doc(db,"orders",id), patch); },
+  async deleteOrder(id){ await deleteDoc(doc(db,"orders",id)); },
   async cancelOrder(id, reason){
-    await updateDoc(doc(db,"orders",id),{ status:"annulee", cancelReason:reason||"Annulée", cancelledAt:Date.now() });
-  },
-  async deleteOrder(id){
-    // Suppression définitive
-    await deleteDoc(doc(db,"orders",id));
+    await updateDoc(doc(db,"orders",id),{ status:"annulee", cancelReason:reason||"Client ne veut plus", cancelledAt:Date.now() });
   },
   async setItemStatut(orderId, idx, statut, motif){
     const order=DATA.orders.find(o=>o._docId===orderId); if(!order) return;
@@ -333,7 +351,10 @@ const A = {
     const patch={ callCount:newCount, lastCall:Date.now() };
     if(newCount>=3) patch.escalated=true;
     await updateDoc(doc(db,"orders",orderId), patch);
-  }
+  },
+  async addZone(z){ await addDoc(collection(db,"zones"), z); },
+  async updateZone(id, patch){ await updateDoc(doc(db,"zones",id), patch); },
+  async removeZone(id){ await deleteDoc(doc(db,"zones",id)); }
 };
 
 function stockQty(id){
@@ -341,6 +362,7 @@ function stockQty(id){
   return DATA.stockMoves.filter(m=>m.stockId===id).reduce((a,m)=>a+(m.type==="Entrée"?m.qty:-m.qty), item.initial);
 }
 function orderTotal(o){return o.items.filter(i=>i.statut!=="Refusé").reduce((s,i)=>s+i.price*i.qty,0);}
+function orderGrandTotal(o){ return orderTotal(o) + deliveryFeeFor(o); }
 function statusBadge(o){
   if(o.status==="annulee") return '<span class="badge badge-neutre">Annulée</span>';
   if(o.status==="servie") return '<span class="badge badge-vert">Servie</span>';
@@ -355,13 +377,13 @@ function statusBadge(o){
 }
 
 let loginRole=null, loginPin="", loginError="";
-let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};
+let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},zoneId:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
 let gerS={tab:"validation"};
-let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false};
+let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},newZone:{name:"",price:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,showNewZone:false};
 let livS={tab:"available"};
 
-function resetClient(){clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};localStorage.removeItem("ds_client_order");}
+function resetClient(){clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},zoneId:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};localStorage.removeItem("ds_client_order");}
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
 function notify(title, body){ if(!("Notification" in window)) return; if(Notification.permission==="granted"){ try{ new Notification(title,{body}); }catch(e){} } }
 
@@ -450,29 +472,43 @@ function screenClient(){
       '</div></div>';
   }
   if(v.screen==="address"){
+    // Écran livraison : nom + tél + zone (au lieu d'adresse libre)
     const phoneOk=validPhoneBJ(v.info.phone);
-    const addrOk=v.info.address && v.info.address.trim().length>5;
     const nameOk=v.info.name && v.info.name.trim().length>1;
-    return '<div class="app">'+topbar({title:"Adresse de livraison",homeAction:"client-home",backAction:"client-back"})+
+    const zoneOk=!!v.zoneId;
+    const valid=nameOk && phoneOk && zoneOk;
+    const zones=DATA.zones;
+    return '<div class="app">'+topbar({title:"Informations livraison",homeAction:"client-home",backAction:"client-back"})+
       '<div class="content content-narrow"><div style="display:flex;flex-direction:column;gap:14px">'+
-        '<div><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="info-name" value="'+esc(v.info.name)+'"></div>'+
-        '<div><label class="text-xs muted bold">TÉLÉPHONE (Bénin, 01 + 8 chiffres)</label>'+
+        '<div><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="info-name" value="'+esc(v.info.name)+'" placeholder="Votre nom"></div>'+
+        '<div><label class="text-xs muted bold">TÉLÉPHONE (01 + 8 chiffres)</label>'+
           '<input class="input" style="margin-top:6px;'+(v.info.phone&&!phoneOk?"border-color:var(--rouge)":"")+'" inputmode="tel" data-input="info-phone" value="'+esc(v.info.phone)+'" maxlength="10" placeholder="01 XX XX XX XX">'+
-          (v.info.phone&&!phoneOk?'<p class="text-xs" style="color:var(--rouge);margin-top:4px">Format invalide</p>':"")+
+          (v.info.phone&&!phoneOk?'<p class="text-xs" style="color:var(--rouge);margin-top:4px">Format invalide — 01 + 8 chiffres</p>':"")+
         '</div>'+
-        '<div><label class="text-xs muted bold">ADRESSE</label>'+
-          '<textarea class="input" style="margin-top:6px" rows="3" data-input="info-address" placeholder="Quartier, rue, repère...">'+esc(v.info.address)+'</textarea>'+
-          '<div class="flex gap-2" style="margin-top:8px">'+
-            '<button class="btn btn-ghost btn-sm" style="flex:1" data-action="client-geoloc">📍 Position GPS</button>'+
-            (v.info.address?'<a href="https://www.google.com/maps/search/'+encodeURIComponent(v.info.address)+'" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;text-decoration:none">🗺️ Maps</a>':"")+
-          '</div></div>'+
-        '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-to-cart" '+((!nameOk||!phoneOk||!addrOk)?"disabled":"")+'>Voir le panier</button>'+
+        '<div><label class="text-xs muted bold">ZONE DE LIVRAISON</label>'+
+          '<p class="text-xs muted" style="margin-top:4px">Choisissez votre quartier / zone. Le tarif s\'ajoute au total.</p>'+
+          '<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">'+
+            (zones.length===0?'<p class="empty">Aucune zone configurée. Contactez le restaurant.</p>':
+              zones.map(z=>'<button class="card card-row" style="text-align:left;cursor:pointer;border:2px solid '+(v.zoneId===z._docId?"var(--jaune)":"var(--sable)")+'" data-action="client-pick-zone" data-id="'+z._docId+'">'+
+                '<div><p class="card-title">'+esc(z.name)+'</p><p class="card-sub">'+money(z.price)+'</p></div>'+
+                (v.zoneId===z._docId?'<span style="color:var(--jaune-fonce);font-size:24px">✓</span>':'')+
+              '</button>').join(""))+
+          '</div>'+
+        '</div>'+
+        '<div><label class="text-xs muted bold">REPÈRES / DÉTAILS (optionnel)</label>'+
+          '<textarea class="input" style="margin-top:6px" rows="2" data-input="info-address" placeholder="Rue précise, repère, porte...">'+esc(v.info.address)+'</textarea>'+
+        '</div>'+
+        '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-to-cart" '+(valid?"":"disabled")+'>Voir le panier</button>'+
       '</div></div></div>';
   }
   if(v.screen==="cart"){
     const items=menu.filter(m=>v.cart[m._docId]>0);
     const total=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
-    const frais=v.mode==="livraison"?s.fraisLivraison:0;
+    let frais=0;
+    if(v.mode==="livraison" && v.zoneId){
+      const z=DATA.zones.find(zz=>zz._docId===v.zoneId);
+      frais=z?z.price:0;
+    }
     const wait=items.length?(s.waitMode==="sum"?items.reduce((a,d)=>a+d.time,0):Math.max(...items.map(d=>d.time))):0;
     return '<div class="app">'+topbar({title:"Panier",homeAction:"client-home",backAction:"client-back"})+
       '<div class="content content-narrow" style="flex:1">'+
@@ -482,7 +518,7 @@ function screenClient(){
       '</div>'+
       (items.length>0?'<div style="padding:16px;background:white;border-top:2px solid var(--jaune);position:sticky;bottom:0">'+
         '<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Temps estimé</span><span class="bold" style="color:var(--rouge)">~'+wait+' min</span></div>'+
-        (frais>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Frais</span><span class="mono">'+money(frais)+'</span></div>':"")+
+        (frais>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Frais livraison</span><span class="mono">'+money(frais)+'</span></div>':"")+
         '<div class="flex between" style="font-size:18px;font-weight:bold;margin-bottom:14px"><span>Total</span><span class="mono">'+money(total+frais)+'</span></div>'+
         '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-submit">Envoyer</button>'+
       '</div>':"")+
@@ -507,7 +543,8 @@ function screenClient(){
         '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-remove-refused">Continuer sans ce plat</button></div></div>';
   }
   if(v.screen==="payment"&&order){
-    const total=orderTotal(order)+(order.type==="livraison"?s.fraisLivraison:0);
+    const total=orderGrandTotal(order);
+    const frais=deliveryFeeFor(order);
     return '<div class="app">'+topbar({title:"Paiement",homeAction:"client-home"})+
       '<div class="content content-narrow"><p class="section-sub">Choisissez votre paiement.</p>'+
         '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">'+
@@ -516,6 +553,7 @@ function screenClient(){
           '<button class="card card-row" data-action="client-pay" data-method="cash" style="text-align:left;cursor:pointer;border:2px solid var(--sable)">'+
             '<div><p class="card-title">💵 Cash</p><p class="card-sub">'+(order.type==="livraison"?"Au livreur":"À la serveuse")+'</p></div></button>'+
         '</div>'+
+        (frais>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Frais livraison</span><span class="mono">'+money(frais)+'</span></div>':"")+
         '<div class="card" style="display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--jaune)">'+
           '<span class="bold">Total</span><span class="mono" style="font-size:22px;font-weight:bold">'+money(total)+'</span></div>'+
         '<button class="btn btn-ghost btn-block" style="margin-top:16px" data-action="client-edit-order">✏️ Modifier la commande</button>'+
@@ -548,7 +586,7 @@ function screenClient(){
     const circ=2*Math.PI*86, dash=circ*(1-progress);
     return '<div class="app">'+topbar({title:"Suivi",homeAction:"client-home"})+
       '<div style="background:var(--noir);color:white;flex:1;padding:24px 20px 40px;display:flex;flex-direction:column;align-items:center">'+
-        '<p class="login-sub">'+(order.type==="livraison"?"Livraison":"Table "+(order.tableNumber||""))+'</p>'+
+        '<p class="login-sub">'+(order.type==="livraison"?"Livraison — "+(order.zoneName||""):"Table "+(order.tableNumber||""))+'</p>'+
         '<h1 class="serif" style="text-align:center;font-size:20px;margin:8px 0 20px;color:white">'+(served?"Terminée":ready?"Prête !":"En cours")+'</h1>'+
         '<div class="progress-circle"><svg><circle cx="90" cy="90" r="86" stroke="#2a2a2a" stroke-width="10" fill="none"/><circle cx="90" cy="90" r="86" stroke="'+(ready?"#2d7a3e":"#ffc107")+'" stroke-width="10" fill="none" stroke-dasharray="'+circ+'" stroke-dashoffset="'+dash+'" stroke-linecap="round"/></svg>'+
           '<div class="center">'+(ready?'<div style="font-size:48px">✅</div>':'<span class="mono" style="font-size:26px;font-weight:bold;color:white">'+mm+':'+ss+'</span>')+'</div></div>'+
@@ -567,7 +605,7 @@ function screenClient(){
         '<div style="font-size:64px;margin-bottom:20px">🚫</div>'+
         '<h2 class="section-title" style="font-size:24px">Commande annulée</h2>'+
         '<p class="muted" style="margin-bottom:24px">Le gérant a annulé votre commande.</p>'+
-        '<button class="btn btn-accent" style="padding:14px 32px" data-action="client-home">Retour à l\'accueil</button></div></div>';
+        '<button class="btn btn-accent" style="padding:14px 32px" data-action="client-home">Retour</button></div></div>';
   }
   if(v.screen==="done"){
     return '<div class="app">'+topbar({title:"Terminé",homeAction:"client-home"})+
@@ -627,9 +665,9 @@ function screenServeuse(){
           const issue=o.cashIssue==="non_recu";
           return '<div class="card" style="border-left:4px solid '+(issue?"var(--rouge)":"var(--jaune)")+'">'+
             '<div class="card-row" style="margin-bottom:12px"><span class="bold">Table '+(o.tableNumber||"—")+'</span><span class="mono bold">'+money(orderTotal(o))+'</span></div>'+
-            (issue?'<p class="text-sm" style="color:var(--rouge);margin-bottom:8px">⚠️ Paiement signalé non reçu.</p>':"")+
-            '<button class="btn btn-success btn-block" style="margin-bottom:8px" data-action="srv-confirm-cash" data-id="'+o._docId+'">💰 Argent reçu</button>'+
-            (!issue?'<button class="btn btn-danger btn-block" data-action="srv-cash-issue" data-id="'+o._docId+'">❌ Non reçu</button>':"")+
+            (issue?'<p class="text-sm" style="color:var(--rouge);margin-bottom:8px">⚠️ Signalé : paiement non reçu.</p>':"")+
+            '<button class="btn btn-success btn-block" style="margin-bottom:8px" data-action="srv-confirm-cash" data-id="'+o._docId+'">💰 Argent reçu — Confirmer</button>'+
+            (!issue?'<button class="btn btn-danger btn-block" data-action="srv-cash-issue" data-id="'+o._docId+'">❌ Non reçu — Signaler</button>':"")+
           '</div>';
         }).join(""));
   } else if(v.tab==="suivi"){
@@ -699,18 +737,18 @@ function screenGerant(){
             }).join("")+
             '<div class="flex gap-2" style="margin-top:8px">'+
               '<button class="btn btn-primary" style="flex:1" data-action="ger-validate" data-id="'+o._docId+'" '+(allDecided?"":"disabled")+'>Valider</button>'+
-              '<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="ger-delete" data-id="'+o._docId+'">🗑️</button>'+
+              '<button class="btn btn-danger btn-sm" data-action="ger-delete" data-id="'+o._docId+'">🗑️</button>'+
             '</div></div>';
         }).join(""))+
       '</div>'+
       '<div><h2 class="section-title" style="font-size:17px">⏳ En attente paiement ('+awaitingPay.length+')</h2>'+
+      '<p class="text-xs muted" style="margin-bottom:10px">Si le client ne paye pas, supprimez la commande pour libérer la page.</p>'+
       (awaitingPay.length===0?'<p class="empty">Aucune</p>':
         awaitingPay.map(o=>'<div class="card" style="margin-bottom:10px">'+
           '<p class="card-title">'+(o.type==="livraison"?"Livr. — "+(o.clientInfo?.name||""):"Table "+(o.tableNumber||"—"))+'</p>'+
-          '<p class="card-sub">'+money(orderTotal(o))+' · '+timeAgo(o.createdAt)+'</p>'+
+          '<p class="card-sub">'+money(orderGrandTotal(o))+(o.zoneName?' · '+esc(o.zoneName):"")+' · '+timeAgo(o.createdAt)+'</p>'+
           '<div class="flex gap-2" style="margin-top:8px">'+
-            '<button class="btn btn-ghost btn-sm" style="flex:1" data-action="ger-cancel" data-id="'+o._docId+'">Annuler</button>'+
-            '<button class="btn btn-danger btn-sm" style="flex:1" data-action="ger-delete" data-id="'+o._docId+'">🗑️ Supprimer</button>'+
+            '<button class="btn btn-danger btn-sm" style="flex:1" data-action="ger-delete" data-id="'+o._docId+'">🗑️ Supprimer cette commande</button>'+
           '</div>'+
         '</div>').join(""))+
       '</div></div>';
@@ -736,11 +774,10 @@ function screenGerant(){
           const assigned=livreurs.find(l=>l._docId===o.livreurId);
           return '<div class="card" style="margin-bottom:12px">'+
             '<p class="card-title">'+esc(o.clientInfo?.name||"Client")+'</p>'+
-            '<p class="card-sub">📍 '+esc(o.clientInfo?.address||"")+'</p>'+
-            '<p class="text-xs muted" style="margin-top:4px">📞 '+esc(o.clientInfo?.phone||"")+' · '+money(orderTotal(o))+'</p>'+
+            '<p class="card-sub">📍 '+esc(o.zoneName||o.clientInfo?.address||"")+'</p>'+
+            '<p class="text-xs muted" style="margin-top:4px">📞 '+esc(o.clientInfo?.phone||"")+' · '+money(orderGrandTotal(o))+'</p>'+
             '<div class="flex gap-2" style="margin-top:6px">'+
               '<a href="tel:'+(o.clientInfo?.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-sm" style="text-decoration:none">📞</a>'+
-              '<a href="https://www.google.com/maps/search/'+encodeURIComponent(o.clientInfo?.address||"")+'" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none">🗺️ Carte</a>'+
             '</div>'+
             '<div style="margin-top:10px"><label class="text-xs muted bold">ASSIGNER</label>'+
             '<select class="input" style="margin-top:4px" data-action="ger-assign-livreur" data-id="'+o._docId+'">'+
@@ -760,11 +797,11 @@ function screenGerant(){
       '<tbody>'+DATA.tables.map(t=>'<tr><td><strong>Table '+t.number+'</strong></td>'+serveuses.map(s=>{const checked=day[t._docId]===s._docId;return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir);border-color:var(--jaune)":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'">'+(checked?"✓":"")+'</button></td>';}).join("")+'</tr>').join("")+'</tbody></table></div>';
   } else if(v.tab==="bilan"){
     const served=DATA.orders.filter(o=>o.status==="servie"||o.status==="livree");
-    const totalCA=served.reduce((s,o)=>s+orderTotal(o),0);
+    const totalCA=served.reduce((s,o)=>s+orderGrandTotal(o),0);
     const today=nowDate();
-    const todayCA=served.filter(o=>o.date===today).reduce((s,o)=>s+orderTotal(o),0);
-    const cash=served.filter(o=>o.paymentMethod==="cash").reduce((s,o)=>s+orderTotal(o),0);
-    const momo=served.filter(o=>o.paymentMethod==="momo").reduce((s,o)=>s+orderTotal(o),0);
+    const todayCA=served.filter(o=>o.date===today).reduce((s,o)=>s+orderGrandTotal(o),0);
+    const cash=served.filter(o=>o.paymentMethod==="cash").reduce((s,o)=>s+orderGrandTotal(o),0);
+    const momo=served.filter(o=>o.paymentMethod==="momo").reduce((s,o)=>s+orderGrandTotal(o),0);
     const panier=served.length?Math.round(totalCA/served.length):0;
     const dishStats={};
     served.forEach(o=>o.items.filter(i=>i.statut!=="Refusé").forEach(i=>{if(!dishStats[i.name])dishStats[i.name]={qty:0,ca:0};dishStats[i.name].qty+=i.qty;dishStats[i.name].ca+=i.qty*i.price;}));
@@ -829,29 +866,30 @@ function screenLivreur(){
     content='<h2 class="section-title">Disponibles</h2><p class="section-sub">'+available.length+' dispo</p>'+
       (available.length===0?'<p class="empty">Aucune livraison disponible</p>':
         available.map(o=>'<div class="card" style="margin-bottom:12px">'+
-          '<p class="bold">📍 '+esc(o.clientInfo?.address||"")+'</p>'+
+          '<p class="bold">📍 '+esc(o.zoneName||o.clientInfo?.address||"")+'</p>'+
           '<p class="text-xs muted">'+esc(o.clientInfo?.name||"")+' · '+esc(o.clientInfo?.phone||"")+'</p>'+
-          '<div class="flex between center" style="margin-top:10px"><span class="mono bold">'+money(orderTotal(o))+'</span>'+
+          '<div class="flex between center" style="margin-top:10px"><span class="mono bold">'+money(orderGrandTotal(o))+'</span>'+
           '<button class="btn btn-accent btn-sm" data-action="liv-take" data-id="'+o._docId+'">Je prends</button></div></div>').join(""));
   } else if(v.tab==="current"){
     content='<h2 class="section-title">Mes livraisons</h2>'+
       (mine.length===0?'<p class="empty">Aucune livraison en cours</p>':
         mine.map(o=>'<div class="card" style="border:2px solid var(--jaune);margin-bottom:14px">'+
-          '<p class="bold">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-sm" style="margin:4px 0 12px">'+esc(o.clientInfo?.name||"")+'</p>'+
+          '<p class="bold">📍 '+esc(o.zoneName||o.clientInfo?.address||"")+'</p><p class="text-sm" style="margin:4px 0 12px">'+esc(o.clientInfo?.name||"")+'</p>'+
+          (o.clientInfo?.address?'<p class="text-xs muted" style="margin-bottom:12px">Repère : '+esc(o.clientInfo.address)+'</p>':"")+
           '<div class="grid-2" style="margin-bottom:12px">'+
             '<a href="tel:'+(o.clientInfo?.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="text-decoration:none">📞 Appeler</a>'+
-            '<a href="https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(o.clientInfo?.address||"")+'" target="_blank" class="btn btn-ghost" style="text-decoration:none">🧭 Itinéraire</a>'+
+            '<a href="https://www.google.com/maps/search/'+encodeURIComponent((o.zoneName||"")+" "+(o.clientInfo?.address||"")+" Bénin")+'" target="_blank" class="btn btn-ghost" style="text-decoration:none">🧭 Carte</a>'+
           '</div>'+
           '<div style="background:#faf8f2;padding:10px;border-radius:8px;margin-bottom:12px">'+
             '<ul style="margin:0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul>'+
-            '<p class="mono bold" style="margin-top:6px">'+money(orderTotal(o))+'</p></div>'+
+            '<p class="mono bold" style="margin-top:6px">'+money(orderGrandTotal(o))+'</p></div>'+
           ((!o.deliveryStatus||o.deliveryStatus==="prise")?'<button class="btn btn-primary btn-block" data-action="liv-enroute" data-id="'+o._docId+'">🧭 En route</button>':"")+
           (o.deliveryStatus==="en_route"?'<button class="btn btn-success btn-block" data-action="liv-done" data-id="'+o._docId+'">✅ Livrée</button>':"")+
         '</div>').join(""));
   } else if(v.tab==="history"){
     content='<h2 class="section-title">Historique du jour</h2><p class="section-sub">'+done.length+' livrée(s)</p>'+
       (done.length===0?'<p class="empty">Aucune livraison terminée</p>':
-        done.map(o=>'<div class="card card-row" style="margin-bottom:8px"><div style="min-width:0"><p class="card-title">'+esc(o.clientInfo?.address||"")+'</p><p class="card-sub">'+(o.servedAt?new Date(o.servedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"")+'</p></div><span class="mono bold">'+money(orderTotal(o))+'</span></div>').join(""));
+        done.map(o=>'<div class="card card-row" style="margin-bottom:8px"><div style="min-width:0"><p class="card-title">'+esc(o.zoneName||o.clientInfo?.address||"")+'</p><p class="card-sub">'+(o.servedAt?new Date(o.servedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"")+'</p></div><span class="mono bold">'+money(orderGrandTotal(o))+'</span></div>').join(""));
   }
   return '<div class="app" style="max-width:520px;margin:0 auto">'+
     topbar({role:"Livreur",title:SESSION.name,homeAction:"liv-home"})+
@@ -861,7 +899,7 @@ function screenLivreur(){
 
 function screenAdmin(){
   const v=admS;
-  const sections=[{key:"menu",em:"🍽️",label:"Menu"},{key:"staff",em:"👥",label:"Personnel"},{key:"tables",em:"📱",label:"Tables & QR"},{key:"stock",em:"📦",label:"Stock"},{key:"history",em:"📊",label:"Historique"},{key:"settings",em:"⚙️",label:"Paramètres"}];
+  const sections=[{key:"menu",em:"🍽️",label:"Menu"},{key:"staff",em:"👥",label:"Personnel"},{key:"tables",em:"📱",label:"Tables & QR"},{key:"zones",em:"🛵",label:"Zones livraison"},{key:"stock",em:"📦",label:"Stock"},{key:"history",em:"📊",label:"Historique"},{key:"settings",em:"⚙️",label:"Paramètres"}];
   let content="";
   if(v.section==="menu"){
     const cats=["Entrées","Plats","Desserts","Boissons"];
@@ -914,6 +952,34 @@ function screenAdmin(){
           '<p class="qr-table-num">Table '+t.number+'</p><p class="qr-hint">Scannez pour voir le menu</p>'+
           '<button class="btn btn-ghost btn-sm" style="width:100%;color:var(--rouge);margin-top:8px" data-action="admin-del-table" data-id="'+t._docId+'">🗑️ Supprimer</button></div>';
       }).join("")+'</div>';
+  } else if(v.section==="zones"){
+    // NOUVELLE section : zones livraison
+    content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">'+
+      '<h2 class="section-title" style="font-size:19px;margin:0">Zones de livraison</h2>'+
+      '<button class="btn btn-primary btn-sm" data-action="admin-toggle-new-zone">'+(v.showNewZone?"✕ Annuler":"+ Nouvelle zone")+'</button></div>'+
+      '<p class="text-sm muted" style="margin-bottom:16px">Définissez les zones (quartiers) et leur tarif. Le client choisira sa zone lors de la commande en livraison.</p>';
+    if(v.showNewZone){
+      const nz=v.newZone;
+      content+='<div class="card" style="margin-bottom:16px;border-left:4px solid var(--jaune)">'+
+        '<p class="bold" style="margin-bottom:10px">Nouvelle zone</p>'+
+        '<div style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:end">'+
+          '<div><label class="text-xs muted bold">NOM (ex. Akpakpa / Sèmè)</label>'+
+          '<input class="input" style="margin-top:4px" data-input="new-zone-name" value="'+esc(nz.name)+'" placeholder="Quartier / zone"></div>'+
+          '<div><label class="text-xs muted bold">PRIX (F)</label>'+
+          '<input class="input" type="number" style="margin-top:4px" data-input="new-zone-price" value="'+(nz.price||"")+'" placeholder="1000"></div>'+
+          '<button class="btn btn-accent" data-action="admin-create-zone" '+((!nz.name||!nz.price)?"disabled":"")+'>Créer</button>'+
+        '</div></div>';
+    }
+    content+='<div class="card" style="padding:8px">'+
+      (DATA.zones.length===0?'<p class="empty">Aucune zone configurée.</p>':
+        DATA.zones.map(z=>'<div class="zone-item">'+
+          '<input class="input" data-action="zone-name" data-id="'+z._docId+'" value="'+esc(z.name)+'" style="flex:2;padding:8px">'+
+          '<input class="input" type="number" data-action="zone-price" data-id="'+z._docId+'" value="'+z.price+'" style="width:110px;padding:8px">'+
+          '<span class="text-xs muted">F</span>'+
+          '<button class="btn btn-success btn-sm" data-action="admin-save-zone" data-id="'+z._docId+'">✓</button>'+
+          '<button class="btn btn-danger btn-sm" data-action="admin-del-zone" data-id="'+z._docId+'">🗑️</button>'+
+        '</div>').join(""))+
+    '</div>';
   } else if(v.section==="stock"){
     if(!v.stockForm.stockId&&DATA.stock[0])v.stockForm.stockId=DATA.stock[0]._docId;
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">'+
@@ -954,10 +1020,10 @@ function screenAdmin(){
       if(v.histFilter.type==="Livraison"&&o.type!=="livraison")return false;
       if(v.histFilter.payment==="Cash"&&o.paymentMethod!=="cash")return false;
       if(v.histFilter.payment==="Mobile Money"&&o.paymentMethod!=="momo")return false;
-      if(v.histFilter.query){const hay=(o.items.map(i=>i.name).join(" ")+" "+(o.tableNumber||"")+" "+(o.clientInfo?.name||"")+" "+(o.clientInfo?.address||"")+" "+(o.serveuseName||"")+" "+(o.livreurName||"")).toLowerCase();if(!hay.includes(v.histFilter.query.toLowerCase()))return false;}
+      if(v.histFilter.query){const hay=(o.items.map(i=>i.name).join(" ")+" "+(o.tableNumber||"")+" "+(o.clientInfo?.name||"")+" "+(o.clientInfo?.address||"")+" "+(o.serveuseName||"")+" "+(o.livreurName||"")+" "+(o.zoneName||"")).toLowerCase();if(!hay.includes(v.histFilter.query.toLowerCase()))return false;}
       return true;
     });
-    const total=filtered.reduce((s,o)=>s+orderTotal(o),0);
+    const total=filtered.reduce((s,o)=>s+orderGrandTotal(o),0);
     content='<div class="flex between center" style="margin-bottom:4px"><h2 class="section-title" style="font-size:19px;margin:0">Historique</h2><button class="btn btn-primary btn-sm" data-action="admin-export-csv">📥 CSV</button></div>'+
       '<p class="section-sub">'+filtered.length+' vente(s) — '+money(total)+'</p>'+
       '<div class="card" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px">'+
@@ -968,12 +1034,12 @@ function screenAdmin(){
       filtered.slice(0,150).map(o=>'<tr>'+
         '<td><strong>'+fmtDate(o.date)+'</strong><br><span class="text-xs muted">'+new Date(o.createdAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})+'</span></td>'+
         '<td><span class="badge '+(o.type==="livraison"?"badge-orange":"badge-vert")+'">'+(o.type==="livraison"?"Livr.":"Place")+'</span></td>'+
-        '<td>'+(o.type==="livraison"?esc(o.clientInfo?.address||""):"T."+(o.tableNumber||"—"))+'</td>'+
+        '<td>'+(o.type==="livraison"?esc(o.zoneName||o.clientInfo?.address||""):"T."+(o.tableNumber||"—"))+'</td>'+
         '<td>'+(o.type==="livraison"?(o.livreurName?esc(o.livreurName):"—"):(o.serveuseName?esc(o.serveuseName):"—"))+
           (o.clientInfo?.name?'<br><span class="text-xs muted">'+esc(o.clientInfo.name)+'</span>':"")+
           (o.clientInfo?.phone?'<br><span class="text-xs muted">'+esc(o.clientInfo.phone)+'</span>':"")+'</td>'+
         '<td class="muted">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>i.qty+'× '+esc(i.name)).join(", ")+'</td>'+
-        '<td class="mono bold">'+money(orderTotal(o))+'</td>'+
+        '<td class="mono bold">'+money(orderGrandTotal(o))+'</td>'+
         '<td>'+(o.paymentMethod==="cash"?"Cash":o.paymentMethod==="momo"?"MoMo":"—")+'</td></tr>').join("")+
       (filtered.length===0?'<tr><td colspan="7" class="empty">Aucune vente</td></tr>':"")+'</tbody></table></div>';
   } else if(v.section==="settings"){
@@ -983,9 +1049,9 @@ function screenAdmin(){
       '<div class="card" style="max-width:520px">'+
         '<div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div>'+
         '<div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div>'+
-        '<div style="margin-bottom:14px"><label class="text-xs muted bold">FRAIS LIVRAISON</label><input class="input" type="number" style="margin-top:6px" data-input="set-frais" value="'+(f.fraisLivraison||0)+'"></div>'+
         '<div style="margin-bottom:16px"><label class="text-xs muted bold">TEMPS ATTENTE</label><select class="input" style="margin-top:6px" data-input="set-wait"><option value="max" '+(f.waitMode==="max"?"selected":"")+'>Plat le plus long</option><option value="sum" '+(f.waitMode==="sum"?"selected":"")+'>Somme</option></select></div>'+
-        '<button class="btn btn-accent btn-block" data-action="admin-save-settings">Enregistrer</button></div>';
+        '<p class="text-xs muted">Le tarif de livraison est défini par zone dans l\'onglet Zones.</p>'+
+      '</div>';
   }
   return '<div class="app">'+topbar({role:"Admin D&S",title:SESSION.name,homeAction:"admin-home"})+
     '<div class="tabs-scroll">'+sections.map(s=>'<button class="tab '+(v.section===s.key?"active":"")+'" data-action="admin-section" data-section="'+s.key+'">'+s.em+' '+s.label+'</button>').join("")+'</div>'+
@@ -1018,7 +1084,7 @@ function printQrCodes(type){
     const url=SITE_URL;
     printArea.innerHTML='<div class="qr-card" style="max-width:400px;margin:0 auto"><p class="qr-resto">Restaurant D&S</p>'+
       '<img src="'+qrUrl(url,500)+'" alt="QR">'+
-      '<p style="font-size:15px;margin-top:12px">Commandez depuis votre téléphone</p>'+
+      '<p style="font-size:15px;margin-top:12px">Commandez directement depuis votre téléphone</p>'+
       '<p class="qr-hint">Scannez ce code</p></div>';
   } else {
     printArea.innerHTML=DATA.tables.map(t=>{
@@ -1049,12 +1115,12 @@ document.addEventListener("click",async function(e){
   if(action==="logout"){resetClient();
     srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
     gerS={tab:"validation"};
-    admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false};
+    admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},newZone:{name:"",price:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,showNewZone:false};
     livS={tab:"available"};A.logout();return;}
 
   // CLIENT
   if(action==="client-mode"){v.mode=el.dataset.mode;v.screen="menu";render();return;}
-  if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;render();return;}
+  if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;v.zoneId=null;v.info={name:"",phone:"",address:""};render();return;}
   if(action==="client-back"){
     if(v.screen==="menu")v.screen="landing";
     else if(v.screen==="table")v.screen="menu";
@@ -1066,16 +1132,11 @@ document.addEventListener("click",async function(e){
   if(action==="client-remove"){if(v.cart[id]>1)v.cart[id]--;else delete v.cart[id];render();return;}
   if(action==="client-cart"){v.screen=v.mode==="sur_place"?"table":"address";render();return;}
   if(action==="client-table"){v.tableId=id;v.screen="cart";render();return;}
-  if(action==="client-to-cart"){v.screen="cart";render();return;}
+  if(action==="client-pick-zone"){v.zoneId=id;render();return;}
+  if(action==="client-to-cart"){
+    if(v.mode==="livraison"&&!v.zoneId){toast("Choisissez une zone de livraison");return;}
+    v.screen="cart";render();return;}
   if(action==="client-cancel-wait"){v.screen="menu";v.orderId=null;localStorage.removeItem("ds_client_order");render();return;}
-  if(action==="client-geoloc"){
-    if(!navigator.geolocation){toast("Géolocalisation non disponible");return;}
-    toast("Localisation…");
-    navigator.geolocation.getCurrentPosition(
-      pos=>{const {latitude:la,longitude:lo,accuracy:ac}=pos.coords;
-        v.info.address="Position GPS: "+la.toFixed(5)+", "+lo.toFixed(5)+" (précision ~"+Math.round(ac)+"m)";
-        toast("Position ✓");render();},
-      err=>toast("Position indisponible"),{enableHighAccuracy:true,timeout:8000});return;}
   if(action==="client-submit"){
     const items=DATA.menu.filter(m=>v.cart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:v.cart[d._docId],time:d.time}));
     const orderData={type:v.mode==="sur_place"?"sur_place":"livraison",items};
@@ -1086,7 +1147,11 @@ document.addEventListener("click",async function(e){
       const srv=DATA.staff.find(s=>s._docId===srvId);
       orderData.tableId=v.tableId;orderData.tableNumber=t?t.number:null;
       orderData.serveuseId=srvId;orderData.serveuseName=srv?srv.name:null;
-    }else{orderData.clientInfo={name:v.info.name,phone:v.info.phone.replace(/\s/g,""),address:v.info.address};}
+    }else{
+      const z=DATA.zones.find(zz=>zz._docId===v.zoneId);
+      orderData.clientInfo={name:v.info.name,phone:v.info.phone.replace(/\s/g,""),address:v.info.address||""};
+      orderData.zoneId=v.zoneId;orderData.zoneName=z?z.name:null;
+    }
     v.orderId=await A.addOrder(orderData);
     localStorage.setItem("ds_client_order", v.orderId);
     v.screen="waiting";render();return;}
@@ -1145,13 +1210,9 @@ document.addEventListener("click",async function(e){
   if(action==="ger-item-refuse"){await A.setItemStatut(id,idx,"Refusé");return;}
   if(action==="ger-motif"){await A.setItemMotif(id,idx,el.dataset.motif);return;}
   if(action==="ger-validate"){await A.validateOrder(id);toast("Validée");return;}
-  if(action==="ger-cancel"){if(!confirm("Annuler cette commande ?"))return;await A.cancelOrder(id,"Client ne veut plus");toast("Annulée");return;}
   if(action==="ger-delete"){
-    if(!confirm("⚠️ SUPPRIMER DÉFINITIVEMENT cette commande ?\n\nCette action est irréversible.")) return;
-    await A.deleteOrder(id);
-    localStorage.removeItem("ds_client_order");
-    toast("Commande supprimée");
-    return;}
+    if(!confirm("⚠️ SUPPRIMER définitivement cette commande ?\n\nCette action est irréversible."))return;
+    await A.deleteOrder(id);toast("Commande supprimée");return;}
   if(action==="ger-resolve-cash"){await A.resolveCashIssue(id);toast("Signal résolu");return;}
   if(action==="ger-affect"){const today=nowDate();const day=DATA.affectation[today]||{};
     const cur=day[el.dataset.table]===el.dataset.serveuse;
@@ -1173,7 +1234,7 @@ document.addEventListener("click",async function(e){
 
   // ADMIN
   if(action==="admin-home"){admS.section="menu";admS.editingDish=null;render();return;}
-  if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;admS.showNewStock=false;render();return;}
+  if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;admS.showNewStock=false;admS.showNewZone=false;render();return;}
   if(action==="admin-add-dish"){await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:""});return;}
   if(action==="admin-edit-dish"){admS.editingDish=id;render();return;}
   if(action==="admin-save-dish"){
@@ -1194,6 +1255,18 @@ document.addEventListener("click",async function(e){
   if(action==="admin-del-table"){if(confirm("Supprimer cette table ?"))await A.removeTable(id);return;}
   if(action==="admin-print-all-qr"){printQrCodes("all");return;}
   if(action==="admin-print-unique-qr"){printQrCodes("unique");return;}
+  if(action==="admin-toggle-new-zone"){admS.showNewZone=!admS.showNewZone;render();return;}
+  if(action==="admin-create-zone"){
+    const nz=admS.newZone;
+    if(!nz.name||!nz.price){toast("Nom et prix requis");return;}
+    await A.addZone({name:nz.name,price:parseInt(nz.price)});
+    admS.newZone={name:"",price:0};admS.showNewZone=false;toast("Zone créée ✓");return;}
+  if(action==="admin-save-zone"){
+    const item=el.closest(".zone-item");
+    const name=item.querySelector('[data-action="zone-name"]').value;
+    const price=parseInt(item.querySelector('[data-action="zone-price"]').value)||0;
+    await A.updateZone(id,{name,price});toast("Zone mise à jour");return;}
+  if(action==="admin-del-zone"){if(confirm("Supprimer cette zone ?"))await A.removeZone(id);return;}
   if(action==="admin-toggle-new-stock"){admS.showNewStock=!admS.showNewStock;render();return;}
   if(action==="admin-create-stock"){
     const ns=admS.newStockItem;
@@ -1210,13 +1283,13 @@ document.addEventListener("click",async function(e){
   if(action==="admin-save-settings"){await A.updateSettings(admS.settingsForm);admS.settingsForm=null;toast("Enregistré");return;}
   if(action==="admin-export-csv"){
     const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));
-    const csv=["Date,Heure,Type,Table/Adresse,Serveuse/Livreur,Client,Plats,Prix,Paiement"].concat(paid.map(o=>{
+    const csv=["Date,Heure,Type,Zone/Table,Serveuse/Livreur,Client,Plats,Prix,FraisLivr,Paiement"].concat(paid.map(o=>{
       const d=new Date(o.createdAt);
       const items=o.items.filter(i=>i.statut!=="Refusé").map(i=>i.qty+"x "+i.name).join("; ");
-      const loc=o.type==="livraison"?(o.clientInfo?.address||""):"Table "+(o.tableNumber||"");
+      const loc=o.type==="livraison"?(o.zoneName||o.clientInfo?.address||""):"Table "+(o.tableNumber||"");
       const staff=o.type==="livraison"?(o.livreurName||""):(o.serveuseName||"");
       const cli=o.clientInfo?.name||"";
-      return [o.date,d.toLocaleTimeString("fr-FR"),o.type,loc,staff,cli,'"'+items+'"',orderTotal(o),o.paymentMethod||""].join(",");
+      return [o.date,d.toLocaleTimeString("fr-FR"),o.type,loc,staff,cli,'"'+items+'"',orderTotal(o),deliveryFeeFor(o),o.paymentMethod||""].join(",");
     })).join("\n");
     const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);
@@ -1235,13 +1308,17 @@ document.addEventListener("change",async function(e){
 });
 
 document.addEventListener("input",function(e){
-  const el=e.target;const key=el.dataset.input;if(!key)return;
+  const el=e.target;const key=el.dataset.input;const action=el.dataset.action;
+  if(action==="zone-name"||action==="zone-price") return; // géré au moment du save
+  if(!key)return;
   const v=clientS;
   if(key==="info-name")v.info.name=el.value;
   if(key==="info-phone")v.info.phone=el.value.replace(/[^\d]/g,"").slice(0,10);
   if(key==="info-address")v.info.address=el.value;
   if(key==="new-staff-name")admS.newStaff.name=el.value;
   if(key==="new-staff-pin"){admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);render();}
+  if(key==="new-zone-name")admS.newZone.name=el.value;
+  if(key==="new-zone-price")admS.newZone.price=parseInt(el.value)||0;
   if(key==="new-stock-name")admS.newStockItem.name=el.value;
   if(key==="new-stock-unit")admS.newStockItem.unit=el.value;
   if(key==="new-stock-initial")admS.newStockItem.initial=parseFloat(el.value)||0;
@@ -1252,7 +1329,6 @@ document.addEventListener("input",function(e){
   if(key==="hist-query"){admS.histFilter.query=el.value;render();}
   if(key==="set-name"&&admS.settingsForm)admS.settingsForm.restaurantName=el.value;
   if(key==="set-phone"&&admS.settingsForm)admS.settingsForm.phone=el.value;
-  if(key==="set-frais"&&admS.settingsForm)admS.settingsForm.fraisLivraison=parseInt(el.value)||0;
 });
 
 document.addEventListener("keydown",function(e){
@@ -1270,6 +1346,7 @@ setInterval(function(){
 
 if("Notification" in window && Notification.permission==="default"){setTimeout(()=>Notification.requestPermission(),3000);}
 
+// Restauration côté client
 (function restoreClientOrder(){
   const savedOrderId=localStorage.getItem("ds_client_order");
   if(!savedOrderId) return;
@@ -1283,19 +1360,21 @@ if("Notification" in window && Notification.permission==="default"){setTimeout((
       else if(order.status==="payee") clientS.screen="tracking";
       clearInterval(checkInterval);
       if(SESSION && SESSION.role==="client") render();
-    } else if(order && (order.status==="servie"||order.status==="livree")){
-      localStorage.removeItem("ds_client_order");clearInterval(checkInterval);
-    } else if(!order){ localStorage.removeItem("ds_client_order");clearInterval(checkInterval); }
-    else { clearInterval(checkInterval); }
+    } else {
+      localStorage.removeItem("ds_client_order");
+      clearInterval(checkInterval);
+    }
   }, 500);
   setTimeout(()=>clearInterval(checkInterval), 15000);
 })();
 
+// Lire ?table=N depuis URL
 (function checkUrlTable(){
   const params=new URLSearchParams(window.location.search);
   const t=params.get("table");
   if(t){
-    clientS.urlTable=parseInt(t);clientS.mode="sur_place";
+    clientS.urlTable=parseInt(t);
+    clientS.mode="sur_place";
     const found=DATA.tables.find(x=>x.number===parseInt(t));
     if(found){clientS.tableId=found._docId;clientS.screen="menu";}
     else{clientS.screen="menu";}
