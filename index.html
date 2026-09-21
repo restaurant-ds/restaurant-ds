@@ -13,7 +13,7 @@ button{font-family:inherit;cursor:pointer;border:none}
 input,select,textarea{font-family:inherit;font-size:16px}
 .app{min-height:100vh;display:flex;flex-direction:column}
 .loader{position:fixed;inset:0;background:var(--noir);color:var(--jaune);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;font-family:Georgia,serif}
-.loader-logo{width:80px;height:80px;border-radius:50%;background:var(--jaune);color:var(--noir);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:bold;margin-bottom:16px}
+.loader-logo{width:80px;height:80px;border-radius:50%;background:var(--jaune);color:var(--noir);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:bold;margin-bottom:16px}
 .loader-text{margin-top:20px;font-size:14px;color:#888;text-align:center;padding:0 20px}
 .spin{width:40px;height:40px;border:4px solid #222;border-top-color:var(--jaune);border-radius:50%;animation:spin 1s linear infinite;margin-top:20px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -33,19 +33,20 @@ input,select,textarea{font-family:inherit;font-size:16px}
 .pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid #444}
 .pin-dot.filled{background:var(--jaune);border-color:var(--jaune)}
 .pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.pin-key{aspect-ratio:1.6;background:#1a1a1a;border:1px solid #333;border-radius:12px;color:white;font-size:24px;font-weight:600;display:flex;align-items:center;justify-content:center;transition:background .1s}
+.pin-key{aspect-ratio:1.6;background:#1a1a1a;border:1px solid #333;border-radius:12px;color:white;font-size:24px;font-weight:600;display:flex;align-items:center;justify-content:center}
 .pin-key:active{background:var(--jaune);color:var(--noir)}
 .pin-key.blank{background:transparent;border:none}
 .pin-key.del{background:#333;font-size:20px}
 .pin-error{color:#ff7066;font-size:13px;text-align:center;margin-top:12px}
 .pin-back{display:block;margin:16px auto 0;color:#888;background:transparent;font-size:13px;text-decoration:underline;padding:8px}
 .pin-hint{font-size:11px;color:#666;margin-top:14px;text-align:center;line-height:1.7}
-.topbar{background:var(--noir);color:white;padding:10px 14px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:30;border-bottom:3px solid var(--jaune)}
-.topbar-btn{background:transparent;color:white;padding:8px 10px;border-radius:8px;font-size:20px;display:flex;align-items:center;justify-content:center;min-width:40px;min-height:40px}
+.topbar{background:var(--noir);color:white;padding:8px 10px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:30;border-bottom:3px solid var(--jaune)}
+.topbar-btn{background:transparent;color:white;padding:8px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:4px;min-height:40px}
 .topbar-btn:active{background:#252525}
-.topbar-title{flex:1;font-family:Georgia,serif;font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.topbar-sub{font-size:11px;color:#aaa;margin:0}
-.topbar-logout{background:transparent;color:var(--jaune);font-size:11px;text-decoration:underline;padding:8px;font-weight:600}
+.topbar-btn.home{color:var(--jaune)}
+.topbar-title{flex:1;font-family:Georgia,serif;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+.topbar-sub{font-size:10px;color:#aaa;margin:0;text-align:center}
+.topbar-logout{background:transparent;color:#ff7066;font-size:12px;padding:8px;font-weight:600}
 .tabs-scroll{background:var(--noir);border-top:1px solid #333;padding:0 6px 8px;overflow-x:auto;display:flex;gap:4px;scrollbar-width:none}
 .tabs-scroll::-webkit-scrollbar{display:none}
 .tabs-scroll .tab{background:transparent;color:#aaa;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap}
@@ -85,7 +86,6 @@ input,select,textarea{font-family:inherit;font-size:16px}
 .input:focus{outline:none;border-color:var(--jaune);box-shadow:0 0 0 2px rgba(255,193,7,0.2)}
 .cart-fab{position:fixed;bottom:16px;left:16px;right:16px;padding:16px;background:var(--noir);color:white;border-radius:12px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 8px 32px rgba(0,0,0,0.3);z-index:50;max-width:480px;margin:0 auto;border:2px solid var(--jaune)}
 .cart-fab .total{color:var(--jaune);font-family:monospace;font-weight:bold}
-.cart-fab .label{font-weight:600;font-size:14px}
 .dish-row{background:white;border:1px solid var(--sable);border-radius:12px;padding:12px;display:flex;align-items:center;gap:12px;margin-bottom:8px}
 .dish-info{flex:1;min-width:0}
 .dish-name{font-weight:600;font-size:15px;margin:0}
@@ -98,8 +98,6 @@ input,select,textarea{font-family:inherit;font-size:16px}
 .qty-btn.add{background:var(--noir);color:white;border-color:var(--noir)}
 .qty-val{font-family:monospace;font-weight:bold;min-width:22px;text-align:center;font-size:15px}
 .menu-header{background:var(--noir);color:white;padding:16px;position:sticky;top:0;z-index:10;border-bottom:2px solid var(--jaune)}
-.menu-header h2{font-family:Georgia,serif;font-size:20px;margin:0 0 4px}
-.menu-header .sub{font-size:13px;color:#aaa}
 .cat-tabs{display:flex;gap:8px;margin-top:12px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .cat-tabs::-webkit-scrollbar{display:none}
 .cat-btn{padding:6px 14px;border-radius:999px;font-size:13px;font-weight:500;white-space:nowrap;border:1px solid var(--sable);background:white;color:var(--gris)}
@@ -128,7 +126,6 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 .empty{text-align:center;color:var(--gris);padding:24px 12px;font-size:14px}
 .flex{display:flex}.between{justify-content:space-between}.center{align-items:center}
 .gap-2{gap:8px}.gap-3{gap:12px}
-.mt-2{margin-top:8px}.mt-4{margin-top:16px}.mb-2{margin-bottom:8px}.mb-4{margin-bottom:16px}
 .text-sm{font-size:13px}.text-xs{font-size:11px}
 .muted{color:var(--gris)}.mono{font-family:monospace}.bold{font-weight:700}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -140,9 +137,7 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, limit, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0",
@@ -152,19 +147,14 @@ const firebaseConfig = {
   messagingSenderId: "1026668587499",
   appId: "1:1026668587499:web:7ed7b77fd623070007d1ae"
 };
-
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 
 let DEVICE_ID = localStorage.getItem("ds_device_id");
-if (!DEVICE_ID) {
-  DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  localStorage.setItem("ds_device_id", DEVICE_ID);
-}
+if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); localStorage.setItem("ds_device_id", DEVICE_ID); }
 
 let SESSION = null;
 let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{} };
-let listeners = [];
 
 const SEED = {
   menu: [
@@ -211,103 +201,64 @@ async function seedIfEmpty() {
 }
 
 function money(n){return (n||0).toLocaleString("fr-FR")+" F";}
-function uid(p){return (p||"id")+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function nowDate(){return new Date().toISOString().slice(0,10);}
 function fmtDate(iso){return new Date(iso).toLocaleDateString("fr-FR",{day:"2-digit",month:"short"});}
 function timeAgo(ts){if(!ts)return "à l'instant";const m=Math.floor((Date.now()-ts)/60000);if(m<=0)return "à l'instant";if(m<60)return "il y a "+m+" min";return "il y a "+Math.floor(m/60)+"h";}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
 function subscribeAll(onUpdate) {
-  const subscribe = (col, key, transform) => {
-    const unsub = onSnapshot(collection(db, col), snap => {
-      const arr = [];
-      snap.forEach(d => arr.push({ ...d.data(), _docId: d.id }));
-      DATA[key] = transform ? transform(arr) : arr;
-      onUpdate();
-    });
-    listeners.push(unsub);
-  };
-  subscribe("menu", "menu");
-  subscribe("staff", "staff");
-  subscribe("tables", "tables", arr => arr.sort((a,b)=>a.number-b.number));
-  subscribe("stock", "stock");
-  subscribe("stockMoves", "stockMoves", arr => arr.sort((a,b)=>(b._ts||0)-(a._ts||0)));
-  subscribe("orders", "orders", arr => arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
-  const unsubAff = onSnapshot(collection(db, "affectation"), snap => {
-    const obj = {};
-    snap.forEach(d => { obj[d.id] = d.data(); });
-    DATA.affectation = obj;
-    onUpdate();
+  const sub = (col, key, tr) => onSnapshot(collection(db, col), snap => {
+    const arr = []; snap.forEach(d => arr.push({ ...d.data(), _docId: d.id }));
+    DATA[key] = tr ? tr(arr) : arr; onUpdate();
   });
-  listeners.push(unsubAff);
-  const unsubSet = onSnapshot(doc(db, "settings", "main"), snap => {
-    if (snap.exists()) DATA.settings = snap.data();
-    onUpdate();
-  });
-  listeners.push(unsubSet);
+  sub("menu", "menu");
+  sub("staff", "staff");
+  sub("tables", "tables", arr => arr.sort((a,b)=>a.number-b.number));
+  sub("stock", "stock");
+  sub("stockMoves", "stockMoves", arr => arr.sort((a,b)=>(b._ts||0)-(a._ts||0)));
+  sub("orders", "orders", arr => arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+  onSnapshot(collection(db, "affectation"), snap => { const obj = {}; snap.forEach(d => obj[d.id] = d.data()); DATA.affectation = obj; onUpdate(); });
+  onSnapshot(doc(db, "settings", "main"), snap => { if (snap.exists()) DATA.settings = snap.data(); onUpdate(); });
 }
 
 const A = {
-  login(role, name) {
-    SESSION = { role, name, userId: DEVICE_ID, since: Date.now() };
-    render();
-  },
-  logout() {
-    SESSION = null;
-    loginRole = null; loginPin = ""; loginError = "";
-    render();
-  },
+  login(role, name) { SESSION = { role, name, userId: DEVICE_ID, since: Date.now() }; render(); },
+  logout() { SESSION = null; loginRole = null; loginPin = ""; loginError = ""; render(); },
   async addOrder(order) {
-    const newOrder = {
-      createdAt: Date.now(), date: nowDate(), status: "att_validation",
+    const newOrder = { createdAt: Date.now(), date: nowDate(), status: "att_validation",
       type: order.type||"sur_place", tableId: order.tableId||null, tableNumber: order.tableNumber||null,
-      serveuseId: order.serveuseId||null, serveuseName: order.serveuseName||null,
-      livreurId: null, deliveryStatus: null, clientInfo: order.clientInfo||null,
+      serveuseId: order.serveuseId||null, livreurId: null, deliveryStatus: null,
+      clientInfo: order.clientInfo||null,
       items: order.items.map(i => ({ ...i, statut:null, motif:null })),
-      paymentMethod: null, paymentRef: null, readyAt: null, servedAt: null
-    };
+      paymentMethod: null, paymentRef: null, readyAt: null, servedAt: null };
     const ref = await addDoc(collection(db, "orders"), newOrder);
     return ref.id;
   },
   async updateOrder(id, patch) { await updateDoc(doc(db, "orders", id), patch); },
   async setItemStatut(orderId, idx, statut, motif) {
-    const order = DATA.orders.find(o => o._docId===orderId);
-    if (!order) return;
+    const order = DATA.orders.find(o => o._docId===orderId); if (!order) return;
     const items = order.items.map((it,i) => i===idx ? { ...it, statut, motif: statut==="Refusé"?(motif||it.motif):null } : it);
     await updateDoc(doc(db, "orders", orderId), { items });
   },
   async setItemMotif(orderId, idx, motif) {
-    const order = DATA.orders.find(o => o._docId===orderId);
-    if (!order) return;
+    const order = DATA.orders.find(o => o._docId===orderId); if (!order) return;
     const items = order.items.map((it,i) => i===idx ? { ...it, motif } : it);
     await updateDoc(doc(db, "orders", orderId), { items });
   },
   async validateOrder(id) { await updateDoc(doc(db, "orders", id), { status:"att_paiement" }); },
   async payOrder(id, method, ref) {
-    const order = DATA.orders.find(o => o._docId === id);
-    if (!order) return;
+    const order = DATA.orders.find(o => o._docId === id); if (!order) return;
     const batch = writeBatch(db);
     for (const item of order.items) {
       if (item.statut === "Refusé") continue;
       const dish = DATA.menu.find(d => d._docId === item.id);
-      if (!dish || !dish.recipe || !Array.isArray(dish.recipe)) continue;
+      if (!dish || !dish.recipe) continue;
       for (const ing of dish.recipe) {
-        batch.set(doc(collection(db, "stockMoves")), {
-          stockId: ing.stockId,
-          type: "Sortie",
-          qty: ing.qty * item.qty,
-          motif: "Cmd #" + id.slice(-6) + " — " + dish.name,
-          date: nowDate(),
-          _ts: Date.now()
-        });
+        batch.set(doc(collection(db, "stockMoves")), { stockId: ing.stockId, type: "Sortie", qty: ing.qty * item.qty,
+          motif: "Cmd #" + id.slice(-6) + " — " + dish.name, date: nowDate(), _ts: Date.now() });
       }
     }
-    batch.update(doc(db, "orders", id), {
-      status: "payee",
-      paymentMethod: method,
-      paymentRef: ref || null,
-      paidAt: Date.now()
-    });
+    batch.update(doc(db, "orders", id), { status: "payee", paymentMethod: method, paymentRef: ref || null, paidAt: Date.now() });
     await batch.commit();
   },
   async markReady(id) { await updateDoc(doc(db, "orders", id), { readyAt:Date.now() }); },
@@ -316,65 +267,62 @@ const A = {
   async confirmCash(id) { await updateDoc(doc(db, "orders", id), { cashConfirmed:true, cashConfirmedAt:Date.now() }); },
   async takeDelivery(id, livreurId) { await updateDoc(doc(db, "orders", id), { livreurId, deliveryStatus:"prise" }); },
   async setDeliveryStatus(id, st) { await updateDoc(doc(db, "orders", id), { deliveryStatus:st }); },
+  async assignLivreur(id, livreurId) { await updateDoc(doc(db, "orders", id), { livreurId, deliveryStatus: livreurId ? "prise" : null }); },
   async addDish(d) { await addDoc(collection(db, "menu"), d); },
   async updateDish(id, patch) { await updateDoc(doc(db, "menu", id), patch); },
   async removeDish(id) { await deleteDoc(doc(db, "menu", id)); },
   async addStaff(s) { await addDoc(collection(db, "staff"), s); },
   async removeStaff(id) { await deleteDoc(doc(db, "staff", id)); },
-  async resetPin(id) {
-    const pin = String(Math.floor(1000+Math.random()*9000));
-    await updateDoc(doc(db, "staff", id), { pin });
-    return pin;
-  },
-  async addTable() {
-    const next = DATA.tables.reduce((m,t)=>Math.max(m,t.number),0)+1;
-    await addDoc(collection(db, "tables"), { number: next, token: Math.random().toString(36).slice(2,8) });
-  },
+  async resetPin(id) { const pin = String(Math.floor(1000+Math.random()*9000)); await updateDoc(doc(db, "staff", id), { pin }); return pin; },
+  async addTable() { const next = DATA.tables.reduce((m,t)=>Math.max(m,t.number),0)+1;
+    await addDoc(collection(db, "tables"), { number: next, token: Math.random().toString(36).slice(2,8) }); },
   async removeTable(id) { await deleteDoc(doc(db, "tables", id)); },
   async setAffectation(date, tableId, serveuseId) {
     const day = { ...(DATA.affectation[date]||{}) };
     if (serveuseId === null) delete day[tableId]; else day[tableId] = serveuseId;
     await setDoc(doc(db, "affectation", date), day);
   },
-  async addStockMove(m) {
-    await addDoc(collection(db, "stockMoves"), { ...m, date: nowDate(), _ts: Date.now() });
-  },
+  async addStockMove(m) { await addDoc(collection(db, "stockMoves"), { ...m, date: nowDate(), _ts: Date.now() }); },
   async updateSettings(patch) { await setDoc(doc(db, "settings", "main"), { ...DATA.settings, ...patch }, { merge:true }); }
 };
 
 function stockQty(id) {
-  const item = DATA.stock.find(x => x._docId===id||x.id===id);
-  if (!item) return 0;
-  return DATA.stockMoves.filter(m => m.stockId===(item._docId||item.id)).reduce((a,m)=>a+(m.type==="Entrée"?m.qty:-m.qty), item.initial);
+  const item = DATA.stock.find(x => x._docId===id); if (!item) return 0;
+  return DATA.stockMoves.filter(m => m.stockId===id).reduce((a,m)=>a+(m.type==="Entrée"?m.qty:-m.qty), item.initial);
 }
 function orderTotal(o){return o.items.filter(i=>i.statut!=="Refusé").reduce((s,i)=>s+i.price*i.qty,0);}
 function statusBadge(o){
   if (o.status==="servie") return '<span class="badge badge-vert">Servie</span>';
   if (o.status==="livree") return '<span class="badge badge-vert">Livrée</span>';
-  if (o.status==="payee"){const ready=o.items.every(i=>i.statut==="Refusé"||o.readyAt);return '<span class="badge '+(ready?"badge-vert":"badge-orange")+'">'+(ready?"Prête":"En préparation")+'</span>';}
+  if (o.status==="payee"){const r=o.items.every(i=>i.statut==="Refusé"||o.readyAt);return '<span class="badge '+(r?"badge-vert":"badge-orange")+'">'+(r?"Prête":"En préparation")+'</span>';}
   if (o.status==="att_paiement") return '<span class="badge badge-orange">À payer</span>';
   return '<span class="badge badge-rouge">À valider</span>';
 }
 
+// STATES
 let loginRole=null, loginPin="", loginError="";
 let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
 let gerS={tab:"validation"};
 let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null};
 let livS={tab:"available"};
-let kitchenTimers={};
 function resetClient(){clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0};}
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
 
-function topbar(opts){return '<div class="topbar">'+
-  '<button class="topbar-btn" data-action="'+(opts.homeAction||'logout')+'" title="Accueil">🏠</button>'+
-  '<div style="flex:1;min-width:0">'+
-    '<p class="topbar-sub">'+esc(opts.role||"")+'</p>'+
-    '<div class="topbar-title">'+esc(opts.title||"")+'</div>'+
-  '</div>'+
-  '<button class="topbar-logout" data-action="logout">Déconnexion</button>'+
-'</div>';}
+// TOPBAR avec Home + Retour
+function topbar(opts){
+  const showBack = opts.backAction ? '<button class="topbar-btn" data-action="'+opts.backAction+'">← Retour</button>' : '<button class="topbar-btn" data-action="'+opts.homeAction+'" title="Accueil">🏠</button>';
+  return '<div class="topbar">'+
+    showBack+
+    '<div style="flex:1;min-width:0">'+
+      '<p class="topbar-sub">'+esc(opts.role||"")+'</p>'+
+      '<div class="topbar-title">'+esc(opts.title||"")+'</div>'+
+    '</div>'+
+    '<button class="topbar-logout" data-action="logout">Déco</button>'+
+  '</div>';
+}
 
+// LOGIN
 function screenLogin(){
   const ROLES=[
     {key:"client",em:"🍽️",label:"Client",desc:"Commander"},
@@ -398,7 +346,6 @@ function screenLogin(){
       '</div>'+
     '</div>';
   }
-  if(loginRole==="client"){A.login("client","Client");return "";}
   const labels={serveuse:"Serveuse",gerant:"Gérant",cuisine:"Cuisine",livreur:"Livreur",admin:"Admin"};
   const dots=[0,1,2,3].map(i=>'<div class="pin-dot '+(i<loginPin.length?"filled":"")+'"></div>').join("");
   const keypad=[1,2,3,4,5,6,7,8,9].map(n=>'<button class="pin-key" data-action="pin-digit" data-digit="'+n+'">'+n+'</button>').join("");
@@ -421,16 +368,16 @@ function screenLogin(){
   '</div>';
 }
 
+// CLIENT
 function screenClient(){
   const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables;
   const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
   if(order){
-    const refusedIdx=order.items.findIndex((it,i)=>it.statut==="Refusé"&&v.refusedIdx!==i);
-    if(refusedIdx>=0&&v.screen!=="refused"){v.refusedIdx=refusedIdx;v.screen="refused";}
+    const refIdx=order.items.findIndex((it,i)=>it.statut==="Refusé"&&v.refusedIdx!==i);
+    if(refIdx>=0&&v.screen!=="refused"){v.refusedIdx=refIdx;v.screen="refused";}
     if(order.status==="att_paiement"&&v.screen==="waiting")v.screen="payment";
     if(order.status==="payee"&&v.screen==="payment"){v.screen="tracking";v.timerTotal=0;}
-    if(order.status==="servie"&&v.screen==="tracking")v.screen="done";
-    if(order.status==="livree"&&v.screen==="tracking")v.screen="done";
+    if((order.status==="servie"||order.status==="livree")&&v.screen==="tracking")v.screen="done";
   }
   if(v.screen==="landing"){
     return '<div class="login">'+
@@ -452,7 +399,7 @@ function screenClient(){
     const total=menu.reduce((sum,d)=>sum+(v.cart[d._docId]||0)*d.price,0);
     return '<div class="app" style="padding-bottom:100px">'+
       '<div class="topbar">'+
-        '<button class="topbar-btn" data-action="client-back">←</button>'+
+        '<button class="topbar-btn" data-action="client-back">← Retour</button>'+
         '<div style="flex:1;min-width:0"><p class="topbar-sub">'+(v.mode==="sur_place"?"Sur place":"Livraison")+'</p><div class="topbar-title">Menu</div></div>'+
         '<button class="topbar-logout" data-action="client-home">🏠</button>'+
       '</div>'+
@@ -461,69 +408,45 @@ function screenClient(){
       '</div>'+
       '<div class="content content-narrow" style="padding-top:12px">'+
         (dishes.length===0?'<p class="empty">Aucun plat dans cette catégorie</p>':
-          dishes.map(d=>'<div class="dish-row">'+
-            '<div class="dish-info">'+
-              '<p class="dish-name">'+esc(d.name)+'</p>'+
-              (d.desc?'<p class="dish-desc">'+esc(d.desc)+'</p>':"")+
-              '<div class="dish-meta"><span class="dish-price">'+money(d.price)+'</span><span class="dish-time">⏱ ~'+d.time+' min</span></div>'+
-            '</div>'+
-            '<div class="qty-controls">'+
-              (v.cart[d._docId]>0?'<button class="qty-btn" data-action="client-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.cart[d._docId]+'</span>':"")+
-              '<button class="qty-btn add" data-action="client-add" data-id="'+d._docId+'">+</button>'+
-            '</div>'+
-          '</div>').join(""))+
+          dishes.map(d=>'<div class="dish-row"><div class="dish-info">'+
+            '<p class="dish-name">'+esc(d.name)+'</p>'+(d.desc?'<p class="dish-desc">'+esc(d.desc)+'</p>':"")+
+            '<div class="dish-meta"><span class="dish-price">'+money(d.price)+'</span><span class="dish-time">⏱ ~'+d.time+' min</span></div></div>'+
+            '<div class="qty-controls">'+(v.cart[d._docId]>0?'<button class="qty-btn" data-action="client-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.cart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="client-add" data-id="'+d._docId+'">+</button></div></div>').join(""))+
       '</div>'+
       (count>0?'<div class="cart-fab" data-action="client-cart"><span class="label">Voir le panier ('+count+')</span><span class="total">'+money(total)+'</span></div>':"")+
     '</div>';
   }
   if(v.screen==="table"){
-    return '<div class="app">'+
-      topbar({title:"Choisir une table",homeAction:"client-home"})+
-      '<div class="content content-narrow">'+
-        '<p class="section-sub">Touchez votre numéro de table</p>'+
+    return '<div class="app">'+topbar({title:"Choisir une table",homeAction:"client-home",backAction:"client-back"})+
+      '<div class="content content-narrow"><p class="section-sub">Touchez votre numéro de table</p>'+
         '<div class="table-grid">'+tables.map(t=>'<button class="table-cell '+(v.tableId===t._docId?"active":"")+'" data-action="client-table" data-id="'+t._docId+'">'+t.number+'</button>').join("")+'</div>'+
-        '<button class="btn btn-ghost btn-block" style="margin-top:20px" data-action="client-back">← Retour au menu</button>'+
-      '</div>'+
-    '</div>';
+      '</div></div>';
   }
   if(v.screen==="address"){
-    return '<div class="app">'+
-      topbar({title:"Adresse de livraison",homeAction:"client-home"})+
-      '<div class="content content-narrow">'+
-        '<div style="display:flex;flex-direction:column;gap:14px">'+
-          '<div><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="info-name" value="'+esc(v.info.name)+'" placeholder="Votre nom"></div>'+
-          '<div><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" inputmode="tel" data-input="info-phone" value="'+esc(v.info.phone)+'" placeholder="07 00 00 00 00"></div>'+
-          '<div><label class="text-xs muted bold">ADRESSE / REPÈRES</label><textarea class="input" style="margin-top:6px" rows="3" data-input="info-address" placeholder="Quartier, rue, repère...">'+esc(v.info.address)+'</textarea></div>'+
-          '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-to-cart" '+((!v.info.name||!v.info.phone||!v.info.address)?"disabled":"")+'>Voir le panier</button>'+
-          '<button class="btn btn-ghost btn-block" data-action="client-back">← Retour au menu</button>'+
-        '</div>'+
-      '</div>'+
-    '</div>';
+    return '<div class="app">'+topbar({title:"Adresse de livraison",homeAction:"client-home",backAction:"client-back"})+
+      '<div class="content content-narrow"><div style="display:flex;flex-direction:column;gap:14px">'+
+        '<div><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="info-name" value="'+esc(v.info.name)+'" placeholder="Votre nom"></div>'+
+        '<div><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" inputmode="tel" data-input="info-phone" value="'+esc(v.info.phone)+'" placeholder="07 00 00 00 00"></div>'+
+        '<div><label class="text-xs muted bold">ADRESSE / REPÈRES</label><textarea class="input" style="margin-top:6px" rows="3" data-input="info-address" placeholder="Quartier, rue, repère...">'+esc(v.info.address)+'</textarea></div>'+
+        '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-to-cart" '+((!v.info.name||!v.info.phone||!v.info.address)?"disabled":"")+'>Voir le panier</button>'+
+      '</div></div></div>';
   }
   if(v.screen==="cart"){
     const items=menu.filter(m=>v.cart[m._docId]>0);
     const total=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
     const frais=v.mode==="livraison"?s.fraisLivraison:0;
     const wait=items.length?(s.waitMode==="sum"?items.reduce((a,d)=>a+d.time,0):Math.max(...items.map(d=>d.time))):0;
-    return '<div class="app">'+
-      topbar({title:"Panier",homeAction:"client-home"})+
+    return '<div class="app">'+topbar({title:"Panier",homeAction:"client-home",backAction:"client-back"})+
       '<div class="content content-narrow" style="flex:1">'+
         (items.length===0?'<p class="empty">Votre panier est vide</p>':
-          items.map(d=>'<div class="dish-row">'+
-            '<div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p><p class="dish-desc">'+money(d.price)+' × '+v.cart[d._docId]+'</p></div>'+
-            '<div class="qty-controls">'+
-              '<button class="qty-btn" data-action="client-remove" data-id="'+d._docId+'">−</button>'+
-              '<span class="qty-val">'+v.cart[d._docId]+'</span>'+
-              '<button class="qty-btn add" data-action="client-add" data-id="'+d._docId+'">+</button>'+
-            '</div>'+
-          '</div>').join(""))+
+          items.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p><p class="dish-desc">'+money(d.price)+' × '+v.cart[d._docId]+'</p></div>'+
+            '<div class="qty-controls"><button class="qty-btn" data-action="client-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.cart[d._docId]+'</span><button class="qty-btn add" data-action="client-add" data-id="'+d._docId+'">+</button></div></div>').join(""))+
       '</div>'+
       (items.length>0?'<div style="padding:16px;background:white;border-top:2px solid var(--jaune);position:sticky;bottom:0">'+
         '<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Temps estimé</span><span class="bold" style="color:var(--rouge)">~'+wait+' min</span></div>'+
         (frais>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Frais livraison</span><span class="mono">'+money(frais)+'</span></div>':"")+
         '<div class="flex between" style="font-size:18px;font-weight:bold;margin-bottom:14px"><span>Total</span><span class="mono">'+money(total+frais)+'</span></div>'+
         '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-submit">Envoyer la commande</button>'+
-        '<button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="client-back">← Modifier la commande</button>'+
       '</div>':"")+
     '</div>';
   }
@@ -533,49 +456,37 @@ function screenClient(){
       '<p class="login-sub" style="margin-top:20px">Commande envoyée</p>'+
       '<h1 class="serif" style="text-align:center">En attente de validation</h1>'+
       '<p style="color:#aaa;text-align:center;margin:0 0 24px">Le gérant examine votre commande…</p>'+
-      '<button class="btn btn-ghost" data-action="client-cancel-wait" style="margin-top:16px">Annuler et retourner au menu</button>'+
+      '<button class="btn btn-ghost" data-action="client-cancel-wait">Annuler</button>'+
     '</div>';
   }
   if(v.screen==="refused"&&order){
     const it=order.items[v.refusedIdx];
     if(!it){v.screen="payment";return screenClient();}
-    return '<div class="app">'+
-      topbar({title:"Plat indisponible",homeAction:"client-home"})+
+    return '<div class="app">'+topbar({title:"Plat indisponible",homeAction:"client-home"})+
       '<div class="content content-narrow" style="text-align:center;padding-top:20px">'+
         '<div style="font-size:56px;margin-bottom:16px">❌</div>'+
         '<h2 class="section-title">Un plat n\'est pas disponible</h2>'+
-        '<div class="card" style="margin:16px 0;text-align:left">'+
-          '<p class="card-title">'+it.qty+'× '+esc(it.name)+'</p>'+
-          '<p style="color:var(--rouge);font-size:13px;margin:6px 0 0">'+esc(it.motif||"Indisponible aujourd'hui")+'</p>'+
-        '</div>'+
-        '<p class="text-sm muted" style="margin-bottom:20px">Le reste de votre commande n\'est pas concerné.</p>'+
+        '<div class="card" style="margin:16px 0;text-align:left"><p class="card-title">'+it.qty+'× '+esc(it.name)+'</p>'+
+        '<p style="color:var(--rouge);font-size:13px;margin:6px 0 0">'+esc(it.motif||"Indisponible")+'</p></div>'+
         '<div style="display:flex;flex-direction:column;gap:10px">'+
           '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-remove-refused">Continuer sans ce plat</button>'+
-          '<a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-outline btn-block" style="padding:14px;text-decoration:none">📞 Appeler le restaurant</a>'+
+          '<a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-outline btn-block" style="padding:14px;text-decoration:none">📞 Appeler</a>'+
         '</div>'+
-      '</div>'+
-    '</div>';
+      '</div></div>';
   }
   if(v.screen==="payment"&&order){
     const total=orderTotal(order)+(order.type==="livraison"?s.fraisLivraison:0);
-    return '<div class="app">'+
-      topbar({title:"Paiement",homeAction:"client-home"})+
-      '<div class="content content-narrow">'+
-        '<p class="section-sub">Commande validée — dernière étape.</p>'+
+    return '<div class="app">'+topbar({title:"Paiement",homeAction:"client-home"})+
+      '<div class="content content-narrow"><p class="section-sub">Commande validée — dernière étape.</p>'+
         '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">'+
           '<button class="card card-row" data-action="client-pay" data-method="momo" style="text-align:left;cursor:pointer;border:2px solid var(--sable)">'+
-            '<div><p class="card-title">📱 Mobile Money</p><p class="card-sub">Orange / MTN MoMo</p></div>'+
-          '</button>'+
+            '<div><p class="card-title">📱 Mobile Money</p><p class="card-sub">Orange / MTN MoMo</p></div></button>'+
           '<button class="card card-row" data-action="client-pay" data-method="cash" style="text-align:left;cursor:pointer;border:2px solid var(--sable)">'+
-            '<div><p class="card-title">💵 Cash</p><p class="card-sub">'+(order.type==="livraison"?"À régler au livreur":"À régler à la serveuse")+'</p></div>'+
-          '</button>'+
+            '<div><p class="card-title">💵 Cash</p><p class="card-sub">'+(order.type==="livraison"?"Au livreur":"À la serveuse")+'</p></div></button>'+
         '</div>'+
         '<div class="card" style="display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--jaune)">'+
-          '<span class="bold">Total</span>'+
-          '<span class="mono" style="font-size:22px;font-weight:bold">'+money(total)+'</span>'+
-        '</div>'+
-      '</div>'+
-    '</div>';
+          '<span class="bold">Total</span><span class="mono" style="font-size:22px;font-weight:bold">'+money(total)+'</span></div>'+
+      '</div></div>';
   }
   if(v.screen==="tracking"&&order){
     const allItems=order.items.filter(i=>i.statut!=="Refusé");
@@ -586,56 +497,55 @@ function screenClient(){
     const ss=String(v.timerRemaining%60).padStart(2,"0");
     const progress=v.timerTotal?1-v.timerRemaining/v.timerTotal:1;
     const circ=2*Math.PI*86, dash=circ*(1-progress);
-    return '<div class="app">'+
-      topbar({title:"Suivi de commande",homeAction:"client-home"})+
+    return '<div class="app">'+topbar({title:"Suivi",homeAction:"client-home"})+
       '<div style="background:var(--noir);color:white;flex:1;padding:24px 20px 40px;display:flex;flex-direction:column;align-items:center">'+
-        '<p class="login-sub" style="margin-top:8px">'+(order.type==="livraison"?"Livraison":"Table "+(order.tableNumber||""))+'</p>'+
-        '<h1 class="serif" style="text-align:center;font-size:20px;margin:8px 0 20px;color:white">'+(served?"Commande terminée":ready?"Votre commande est prête !":"Votre commande arrive")+'</h1>'+
-        '<div class="progress-circle">'+
-          '<svg><circle cx="90" cy="90" r="86" stroke="#2a2a2a" stroke-width="10" fill="none"/><circle cx="90" cy="90" r="86" stroke="'+(ready?"#2d7a3e":"#ffc107")+'" stroke-width="10" fill="none" stroke-dasharray="'+circ+'" stroke-dashoffset="'+dash+'" stroke-linecap="round"/></svg>'+
-          '<div class="center">'+(ready?'<div style="font-size:48px">✅</div>':'<span class="mono" style="font-size:26px;font-weight:bold;color:white">'+mm+':'+ss+'</span>')+'</div>'+
-        '</div>'+
+        '<p class="login-sub">'+(order.type==="livraison"?"Livraison":"Table "+(order.tableNumber||""))+'</p>'+
+        '<h1 class="serif" style="text-align:center;font-size:20px;margin:8px 0 20px;color:white">'+(served?"Terminée":ready?"Prête !":"En cours")+'</h1>'+
+        '<div class="progress-circle"><svg><circle cx="90" cy="90" r="86" stroke="#2a2a2a" stroke-width="10" fill="none"/><circle cx="90" cy="90" r="86" stroke="'+(ready?"#2d7a3e":"#ffc107")+'" stroke-width="10" fill="none" stroke-dasharray="'+circ+'" stroke-dashoffset="'+dash+'" stroke-linecap="round"/></svg>'+
+          '<div class="center">'+(ready?'<div style="font-size:48px">✅</div>':'<span class="mono" style="font-size:26px;font-weight:bold;color:white">'+mm+':'+ss+'</span>')+'</div></div>'+
         '<div style="width:100%;max-width:280px;margin-bottom:20px">'+
-          [{label:"Validée",done:true},{label:"Payée",done:true},{label:"En préparation",done:true},{label:"Prête",done:!!ready},{label:order.type==="livraison"?"Livrée":"Servie",done:served}].map(st=>'<div class="flex center gap-2" style="margin-bottom:6px"><div style="width:10px;height:10px;border-radius:50%;background:'+(st.done?"#2d7a3e":"#444")+'"></div><span style="color:'+(st.done?"white":"#666")+'">'+st.label+'</span></div>').join("")+
+          [{l:"Validée",d:true},{l:"Payée",d:true},{l:"Préparation",d:true},{l:"Prête",d:!!ready},{l:order.type==="livraison"?"Livrée":"Servie",d:served}].map(st=>'<div class="flex center gap-2" style="margin-bottom:6px"><div style="width:10px;height:10px;border-radius:50%;background:'+(st.d?"#2d7a3e":"#444")+'"></div><span style="color:'+(st.d?"white":"#666")+'">'+st.l+'</span></div>').join("")+
         '</div>'+
-        '<a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="padding:12px 20px;text-decoration:none;color:var(--jaune);border-color:#444">📞 Appeler le restaurant</a>'+
-        '<button class="btn btn-ghost" style="margin-top:12px;color:var(--jaune);border-color:#444" data-action="client-home">🏠 Retour à l\'accueil</button>'+
-      '</div>'+
-    '</div>';
+        '<a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="color:var(--jaune);border-color:#444">📞 Appeler</a>'+
+      '</div></div>';
   }
   if(v.screen==="done"){
-    return '<div class="app">'+
-      topbar({title:"Terminé",homeAction:"client-home"})+
+    return '<div class="app">'+topbar({title:"Terminé",homeAction:"client-home"})+
       '<div class="content content-narrow" style="text-align:center;padding-top:60px">'+
         '<div style="font-size:64px;margin-bottom:20px">🎉</div>'+
         '<h2 class="section-title" style="font-size:26px">Bon appétit !</h2>'+
-        '<p class="muted" style="margin-bottom:32px">Votre commande a été servie.</p>'+
-        '<button class="btn btn-accent" style="padding:14px 32px" data-action="logout">Terminer et quitter</button>'+
-      '</div>'+
-    '</div>';
+        '<button class="btn btn-accent" style="padding:14px 32px;margin-top:20px" data-action="logout">Terminer</button>'+
+      '</div></div>';
   }
   return "";
 }
 
+// SERVEUSE — avec nouvel onglet Suivi
 function screenServeuse(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
   const today=nowDate();
   const day=DATA.affectation[today]||{};
   const tableIds=me?Object.entries(day).filter(([tid,sid])=>sid===me._docId).map(([tid])=>tid):[];
   const myTables=DATA.tables.filter(t=>tableIds.includes(t._docId));
-  const myOrders=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.status!=="servie"&&o.status!=="livree");
-  const readyOrders=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.readyAt&&o.status==="payee");
-  const cashOrders=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.paymentMethod==="cash"&&o.status==="payee"&&!o.cashConfirmed);
+
+  // Toutes mes commandes en cours (payées non servies)
+  const myActiveOrders=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.status==="payee"&&!o.servedAt);
+  const myReadyOrders=myActiveOrders.filter(o=>o.readyAt);
+  const cashOrders=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.paymentMethod==="cash"&&o.status==="payee"&&!o.cashConfirmed&&!o.servedAt);
   const v=srvS;
   let content="";
+
   if(v.tab==="tables"){
     content='<h2 class="section-title">Mes tables du jour</h2><p class="section-sub">Affectées par le gérant</p>'+
       (myTables.length===0?'<p class="empty">Aucune table affectée.<br><br><span class="text-xs">Le gérant doit vous assigner des tables.</span></p>':
-        myTables.map(t=>{const o=myOrders.find(x=>x.tableId===t._docId);return '<div class="card"><div class="card-row">'+
-          '<div class="flex center gap-3"><div style="width:44px;height:44px;border-radius:50%;background:var(--noir);color:var(--jaune);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:16px">'+t.number+'</div>'+
-          '<div><p class="card-title">Table '+t.number+'</p><p class="card-sub">'+(o?statusBadge(o):"Aucune commande")+'</p></div></div>'+
-          (o?'<span class="mono bold" style="color:var(--jaune-fonce)">'+money(orderTotal(o))+'</span>':"")+
-        '</div></div>';}).join(""));
+        myTables.map(t=>{
+          const o=myActiveOrders.find(x=>x.tableId===t._docId);
+          return '<div class="card"><div class="card-row">'+
+            '<div class="flex center gap-3"><div style="width:44px;height:44px;border-radius:50%;background:var(--noir);color:var(--jaune);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:16px">'+t.number+'</div>'+
+            '<div><p class="card-title">Table '+t.number+'</p><p class="card-sub">'+(o?statusBadge(o):"Aucune commande")+'</p></div></div>'+
+            (o?'<span class="mono bold" style="color:var(--jaune-fonce)">'+money(orderTotal(o))+'</span>':"")+
+          '</div></div>';
+        }).join(""));
   } else if(v.tab==="order"){
     if(v.orderStep==="table"){
       content='<h2 class="section-title">Nouvelle commande</h2><p class="section-sub">Pour un client sans téléphone</p>'+
@@ -650,8 +560,7 @@ function screenServeuse(){
       content='<div style="padding-bottom:100px">'+
         '<div class="flex between center" style="margin-bottom:12px">'+
           '<button class="btn btn-ghost btn-sm" data-action="srv-back-table">← Changer</button>'+
-          '<h2 class="section-title" style="font-size:18px;margin:0">Table '+(t?t.number:"")+'</h2><span></span>'+
-        '</div>'+
+          '<h2 class="section-title" style="font-size:18px;margin:0">Table '+(t?t.number:"")+'</h2><span></span></div>'+
         '<div class="cat-tabs" style="margin:12px 0">'+cats.map(c=>'<button class="cat-btn '+(v.orderCat===c?"active":"")+'" data-action="srv-cat" data-cat="'+c+'">'+c+'</button>').join("")+'</div>'+
         dishes.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p><p class="dish-desc">'+money(d.price)+' · ~'+d.time+' min</p></div>'+
           '<div class="qty-controls">'+(v.orderCart[d._docId]>0?'<button class="qty-btn" data-action="srv-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.orderCart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="srv-add" data-id="'+d._docId+'">+</button></div></div>').join("")+
@@ -662,31 +571,43 @@ function screenServeuse(){
     content='<h2 class="section-title">Encaissements</h2><p class="section-sub">Cash à confirmer</p>'+
       (cashOrders.length===0?'<p class="empty">Rien à encaisser</p>':
         cashOrders.map(o=>'<div class="card"><div class="card-row" style="margin-bottom:12px"><span class="bold">Table '+(o.tableNumber||"—")+'</span><span class="mono bold">'+money(orderTotal(o))+'</span></div>'+
-        '<button class="btn btn-success btn-block" data-action="srv-confirm-cash" data-id="'+o._docId+'">💰 Argent reçu — Confirmer</button></div>').join(""));
-  } else if(v.tab==="notif"){
-    content='<h2 class="section-title">Notifications</h2><p class="section-sub">Plats prêts à aller chercher</p>'+
-      (readyOrders.length===0?'<p class="empty">Aucune commande prête</p>':
-        readyOrders.map(o=>'<div class="card" style="border:2px solid var(--jaune);background:#fffdf5;margin-bottom:12px">'+
-          '<p class="bold" style="margin-bottom:8px">🔔 Table '+(o.tableNumber||"—")+' — plat prêt !</p>'+
-          '<ul style="margin:0 0 12px 0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+'</ul>'+
-          '<button class="btn btn-primary btn-block" data-action="srv-served" data-id="'+o._docId+'">J\'ai récupéré et servi</button>'+
-        '</div>').join(""));
+        '<button class="btn btn-success btn-block" data-action="srv-confirm-cash" data-id="'+o._docId+'">💰 Argent reçu</button></div>').join(""));
+  } else if(v.tab==="suivi"){
+    // NOUVEAU : toutes les commandes en cours + prêtes
+    content='<h2 class="section-title">Suivi des commandes</h2><p class="section-sub">'+myActiveOrders.length+' commande(s) en cours</p>'+
+      (myActiveOrders.length===0?'<p class="empty">Aucune commande active</p>':
+        myActiveOrders.map(o=>{
+          const isReady=!!o.readyAt;
+          return '<div class="card" style="margin-bottom:10px;border-left:4px solid '+(isReady?"var(--vert)":"var(--jaune)")+'">'+
+            '<div class="flex between center" style="margin-bottom:8px">'+
+              '<div><p class="card-title">Table '+(o.tableNumber||"—")+'</p>'+
+              '<p class="card-sub">'+timeAgo(o.createdAt)+' · '+money(orderTotal(o))+'</p></div>'+
+              (isReady?'<span class="badge badge-vert">🔔 Prête</span>':'<span class="badge badge-orange">⏳ En cuisine</span>')+
+            '</div>'+
+            '<ul style="margin:0 0 10px 0;padding-left:20px;font-size:13px;color:#555">'+
+              o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+
+            '</ul>'+
+            (isReady?'<button class="btn btn-success btn-block" data-action="srv-served" data-id="'+o._docId+'">✓ J\'ai servi</button>':'<p class="text-xs muted" style="text-align:center">Attente cuisine…</p>')+
+          '</div>';
+        }).join(""));
   }
+  const suiviBadge = myActiveOrders.length;
   return '<div class="app" style="max-width:520px;margin:0 auto">'+
     topbar({role:"Serveuse",title:SESSION.name,homeAction:"srv-home"})+
     '<div class="content">'+content+'</div>'+
     '<div class="bottom-nav cols-4">'+
-      [{key:"tables",em:"🗂️",label:"Tables"},{key:"order",em:"🛍️",label:"Commander"},{key:"cash",em:"💰",label:"Encaisser",badge:cashOrders.length},{key:"notif",em:"🔔",label:"Alertes",badge:readyOrders.length}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="srv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+
-    '</div>'+
-  '</div>';
+      [{key:"tables",em:"🗂️",label:"Tables"},{key:"order",em:"🛍️",label:"Commander"},{key:"cash",em:"💰",label:"Encaisser",badge:cashOrders.length},{key:"suivi",em:"📋",label:"Suivi",badge:suiviBadge}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="srv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+
+    '</div></div>';
 }
 
+// GÉRANT — avec onglet Livraisons
 function screenGerant(){
   const v=gerS;
   const pending=DATA.orders.filter(o=>o.status==="att_validation");
   const awaitingPay=DATA.orders.filter(o=>o.status==="att_paiement");
   const live=DATA.orders.filter(o=>o.status==="payee"&&!o.servedAt&&o.type!=="livraison");
   const delivering=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.servedAt);
+  const livreurs=DATA.staff.filter(s=>s.role==="livreur");
   let content="";
   if(v.tab==="validation"){
     content='<div style="display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">'+
@@ -698,8 +619,7 @@ function screenGerant(){
           return '<div class="card" style="margin-bottom:12px">'+
             '<div class="card-row" style="margin-bottom:10px">'+
               '<div style="min-width:0"><p class="card-title">'+esc(label)+'</p><p class="card-sub">'+timeAgo(o.createdAt)+'</p></div>'+
-              '<span class="badge '+(o.type==="livraison"?"badge-orange":"badge-neutre")+'">'+(o.type==="livraison"?"Livraison":"Sur place")+'</span>'+
-            '</div>'+
+              '<span class="badge '+(o.type==="livraison"?"badge-orange":"badge-neutre")+'">'+(o.type==="livraison"?"Livraison":"Sur place")+'</span></div>'+
             o.items.map((it,idx)=>{
               const motifs=["Rupture de stock","Ingrédient manquant","Cuisine surchargée"];
               return '<div style="margin-bottom:10px">'+
@@ -708,8 +628,7 @@ function screenGerant(){
                   '<div class="flex gap-2">'+
                     '<button class="qty-btn '+(it.statut==="Validé"?"add":"")+'" style="'+(it.statut==="Validé"?"background:var(--vert);border-color:var(--vert)":"")+'" data-action="ger-item-valid" data-id="'+o._docId+'" data-idx="'+idx+'">✓</button>'+
                     '<button class="qty-btn" style="'+(it.statut==="Refusé"?"background:var(--rouge);color:white;border-color:var(--rouge)":"color:var(--rouge)")+'" data-action="ger-item-refuse" data-id="'+o._docId+'" data-idx="'+idx+'">✕</button>'+
-                  '</div>'+
-                '</div>'+
+                  '</div></div>'+
                 (it.statut==="Refusé"?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-left:6px">'+motifs.map(m=>'<button class="badge '+(it.motif===m?"badge-rouge":"badge-neutre")+'" style="border:1px solid var(--sable);cursor:pointer;padding:6px 10px" data-action="ger-motif" data-id="'+o._docId+'" data-idx="'+idx+'" data-motif="'+esc(m)+'">'+esc(m)+'</button>').join("")+'</div>':"")+
               '</div>';
             }).join("")+
@@ -720,20 +639,35 @@ function screenGerant(){
       '<div><h2 class="section-title" style="font-size:17px">⏳ En attente de paiement ('+awaitingPay.length+')</h2>'+
       (awaitingPay.length===0?'<p class="empty">Aucune commande</p>':
         awaitingPay.map(o=>'<div class="card" style="margin-bottom:10px"><p class="card-title">'+(o.type==="livraison"?"Livraison — "+(o.clientInfo?.name||""):"Table "+(o.tableNumber||"—"))+'</p><p class="card-sub">'+money(orderTotal(o))+' · en attente</p></div>').join(""))+
-      '</div>'+
-    '</div>';
+      '</div></div>';
   } else if(v.tab==="salle"){
     content='<div style="display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">'+
       '<div><h2 class="section-title" style="font-size:17px">👥 Salle ('+live.length+')</h2>'+
       (live.length===0?'<p class="empty">Aucune commande</p>':
         live.map(o=>'<div class="card card-row" style="margin-bottom:8px"><div><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+(o.paymentMethod||"")+'</p></div>'+statusBadge(o)+'</div>').join(""))+
-      '</div>'+
-      '<div><h2 class="section-title" style="font-size:17px">🛵 Livraisons ('+delivering.length+')</h2>'+
-      (delivering.length===0?'<p class="empty">Aucune livraison</p>':
-        delivering.map(o=>'<div class="card" style="margin-bottom:10px"><p class="card-title">'+esc(o.clientInfo?.name||"Client")+'</p><p class="card-sub">'+esc(o.clientInfo?.address||"")+'</p>'+
-          '<div class="flex between center" style="margin-top:8px"><span class="text-xs muted">'+(o.livreurId?"Livreur assigné":"En attente livreur")+'</span>'+statusBadge(o)+'</div></div>').join(""))+
-      '</div>'+
-    '</div>';
+      '</div></div>';
+  } else if(v.tab==="livraisons"){
+    // NOUVEAU : assigner les livreurs
+    content='<h2 class="section-title">🛵 Livraisons à dispatcher</h2><p class="section-sub">'+delivering.length+' en cours</p>'+
+      (livreurs.length===0?'<p class="empty">Aucun livreur enregistré</p>':"")+
+      (delivering.length===0?'<p class="empty">Aucune livraison en cours</p>':
+        delivering.map(o=>{
+          const assigned=livreurs.find(l=>l._docId===o.livreurId);
+          return '<div class="card" style="margin-bottom:12px">'+
+            '<p class="card-title">'+esc(o.clientInfo?.name||"Client")+'</p>'+
+            '<p class="card-sub">📍 '+esc(o.clientInfo?.address||"")+'</p>'+
+            '<p class="text-xs muted" style="margin-top:4px">📞 '+esc(o.clientInfo?.phone||"")+' · '+money(orderTotal(o))+'</p>'+
+            '<div style="margin-top:10px">'+
+              '<label class="text-xs muted bold">ASSIGNER À</label>'+
+              '<select class="input" style="margin-top:4px" data-action="ger-assign-livreur" data-id="'+o._docId+'">'+
+                '<option value="">— Non assignée —</option>'+
+                livreurs.map(l=>'<option value="'+l._docId+'" '+(o.livreurId===l._docId?"selected":"")+'>'+esc(l.name)+'</option>').join("")+
+              '</select>'+
+            '</div>'+
+            (assigned?'<p class="text-sm" style="margin-top:8px;color:var(--vert)"><strong>'+esc(assigned.name)+'</strong> a la livraison</p>':"")+
+          '</div>';
+        }).join(""))+
+      (delivering.length>0&&livreurs.length>0?'<p class="text-xs muted" style="text-align:center;margin-top:12px">Les livreurs peuvent aussi se servir eux-mêmes dans leur propre interface.</p>':"");
   } else if(v.tab==="affectation"){
     const today=nowDate();
     const day=DATA.affectation[today]||{};
@@ -759,25 +693,29 @@ function screenGerant(){
       '<div class="stats-grid" style="margin-bottom:20px">'+
         '<div class="stat-card"><p class="stat-label">CA aujourd\'hui</p><p class="stat-value">'+money(todayCA)+'</p></div>'+
         '<div class="stat-card"><p class="stat-label">CA total</p><p class="stat-value">'+money(totalCA)+'</p></div>'+
-        '<div class="stat-card"><p class="stat-label">Commandes servies</p><p class="stat-value">'+served.length+'</p></div>'+
+        '<div class="stat-card"><p class="stat-label">Commandes</p><p class="stat-value">'+served.length+'</p></div>'+
         '<div class="stat-card"><p class="stat-label">Panier moyen</p><p class="stat-value">'+money(panier)+'</p></div>'+
-        '<div class="stat-card"><p class="stat-label">CA Cash</p><p class="stat-value">'+money(cash)+'</p></div>'+
-        '<div class="stat-card"><p class="stat-label">CA Mobile Money</p><p class="stat-value">'+money(momo)+'</p></div>'+
-        '<div class="stat-card"><p class="stat-label">Plats refusés</p><p class="stat-value">'+DATA.orders.reduce((s,o)=>s+o.items.filter(i=>i.statut==="Refusé").length,0)+'</p></div>'+
-        '<div class="stat-card"><p class="stat-label">Stock en alerte</p><p class="stat-value">'+alertStock.length+'</p></div>'+
+        '<div class="stat-card"><p class="stat-label">Cash</p><p class="stat-value">'+money(cash)+'</p></div>'+
+        '<div class="stat-card"><p class="stat-label">MoMo</p><p class="stat-value">'+money(momo)+'</p></div>'+
+        '<div class="stat-card"><p class="stat-label">Refusés</p><p class="stat-value">'+DATA.orders.reduce((s,o)=>s+o.items.filter(i=>i.statut==="Refusé").length,0)+'</p></div>'+
+        '<div class="stat-card"><p class="stat-label">Stock alerte</p><p class="stat-value">'+alertStock.length+'</p></div>'+
       '</div>'+
       '<div style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">'+
-        '<div class="card"><p class="bold" style="margin-bottom:10px">📈 Top 5 plats</p>'+(top.length===0?'<p class="empty">Aucune vente</p>':top.map(([n,st])=>'<div class="flex between text-sm" style="margin-bottom:4px"><span>'+esc(n)+'</span><span class="mono muted">'+st.qty+' · '+money(st.ca)+'</span></div>').join(""))+'</div>'+
+        '<div class="card"><p class="bold" style="margin-bottom:10px">📈 Top 5</p>'+(top.length===0?'<p class="empty">Aucune vente</p>':top.map(([n,st])=>'<div class="flex between text-sm" style="margin-bottom:4px"><span>'+esc(n)+'</span><span class="mono muted">'+st.qty+' · '+money(st.ca)+'</span></div>').join(""))+'</div>'+
         '<div class="card"><p class="bold" style="margin-bottom:10px">📉 À promouvoir</p>'+(flop.length===0?'<p class="empty">Aucune vente</p>':flop.map(([n,st])=>'<div class="flex between text-sm" style="margin-bottom:4px"><span>'+esc(n)+'</span><span class="mono muted">'+st.qty+'</span></div>').join(""))+'</div>'+
       '</div>';
   }
+  const livBadge = delivering.filter(o=>!o.livreurId).length;
   return '<div class="app">'+
     topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+
-    '<div class="tabs-scroll">'+[{key:"validation",label:"Validation"},{key:"salle",label:"Salle"},{key:"affectation",label:"Tables"},{key:"bilan",label:"Bilan"}].map(t=>'<button class="tab '+(v.tab===t.key?"active":"")+'" data-action="ger-tab" data-tab="'+t.key+'">'+t.label+'</button>').join("")+'</div>'+
+    '<div class="tabs-scroll">'+
+      [{k:"validation",l:"Validation"},{k:"salle",l:"Salle"},{k:"livraisons",l:"🛵 Livraisons",b:livBadge},{k:"affectation",l:"Tables"},{k:"bilan",l:"Bilan"}].map(t=>'<button class="tab '+(v.tab===t.k?"active":"")+'" data-action="ger-tab" data-tab="'+t.k+'">'+t.l+(t.b?' ('+t.b+')':"")+'</button>').join("")+
+    '</div>'+
     '<div class="content">'+content+'</div>'+
   '</div>';
 }
 
+// CUISINE
 function screenCuisine(){
   const active=DATA.orders.filter(o=>o.status==="payee"&&!o.readyAt);
   const ready=DATA.orders.filter(o=>o.readyAt&&o.status==="payee");
@@ -788,31 +726,28 @@ function screenCuisine(){
     const deadline=paidAt+maxTime*60*1000;
     const now=Date.now();
     const remainingMs=deadline-now;
-    const remainingSec=Math.floor(remainingMs/1000);
-    const mm=String(Math.floor(Math.abs(remainingSec)/60)).padStart(2,"0");
-    const ss=String(Math.abs(remainingSec)%60).padStart(2,"0");
+    const remSec=Math.floor(remainingMs/1000);
+    const mm=String(Math.floor(Math.abs(remSec)/60)).padStart(2,"0");
+    const ss=String(Math.abs(remSec)%60).padStart(2,"0");
     const urgent=remainingMs>0&&remainingMs<maxTime*60*1000*0.25;
     const overdue=remainingMs<=0;
     return '<div class="ticket '+(urgent||overdue?"urgent":"")+'">'+
       '<div class="flex between" style="margin-bottom:12px">'+
         '<div><p class="serif" style="font-size:19px;font-weight:bold;margin:0">Table '+(o.tableNumber||"—")+'</p><p class="text-xs muted">'+timeAgo(o.createdAt)+'</p></div>'+
-        '<div class="timer '+(urgent||overdue?"urgent":"")+'">'+(overdue?"+"+mm+":"+ss:mm+":"+ss)+'</div>'+
-      '</div>'+
+        '<div class="timer '+(urgent||overdue?"urgent":"")+'">'+(overdue?"+"+mm+":"+ss:mm+":"+ss)+'</div></div>'+
       '<ul style="margin:0 0 14px 0;padding-left:20px;font-size:14px">'+allItems.map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul>'+
-      '<button class="btn btn-outline btn-block" data-action="cui-ready" data-id="'+o._docId+'">Marquer prêt</button>'+
-    '</div>';
+      '<button class="btn btn-outline btn-block" data-action="cui-ready" data-id="'+o._docId+'">Marquer prêt</button></div>';
   };
-  return '<div class="app">'+
-    topbar({role:"Cuisine",title:SESSION.name,homeAction:"cui-home"})+
+  return '<div class="app">'+topbar({role:"Cuisine",title:SESSION.name,homeAction:"cui-home"})+
     '<div class="content">'+
-      '<h2 class="section-title" style="font-size:17px">👨‍🍳 File de préparation ('+active.length+')</h2>'+
+      '<h2 class="section-title" style="font-size:17px">👨‍🍳 File ('+active.length+')</h2>'+
       (active.length===0?'<p class="empty">Aucune commande en attente</p>':'<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+active.map(ticket).join("")+'</div>')+
       (ready.length>0?'<h2 class="section-title" style="font-size:17px;margin-top:24px">✅ Prêtes ('+ready.length+')</h2>'+
         '<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+ready.map(o=>'<div class="card" style="border:2px solid var(--vert)"><p class="bold">Table '+(o.tableNumber||"—")+'</p><ul style="margin:8px 0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul><p style="color:var(--vert);font-weight:bold;text-align:center">✓ Notifiée</p></div>').join("")+'</div>':"")+
-    '</div>'+
-  '</div>';
+    '</div></div>';
 }
 
+// LIVREUR
 function screenLivreur(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");
   const available=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.livreurId);
@@ -839,23 +774,23 @@ function screenLivreur(){
           '</div>'+
           '<div style="background:#faf8f2;padding:10px;border-radius:8px;margin-bottom:12px">'+
             '<ul style="margin:0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul>'+
-            '<p class="mono bold" style="margin-top:6px">'+money(orderTotal(o))+'</p>'+
-          '</div>'+
-          ((!o.deliveryStatus||o.deliveryStatus==="prise")?'<button class="btn btn-primary btn-block" data-action="liv-enroute" data-id="'+o._docId+'">🧭 Je suis en route</button>':"")+
-          (o.deliveryStatus==="en_route"?'<button class="btn btn-success btn-block" data-action="liv-done" data-id="'+o._docId+'">✅ Marquer comme livrée</button>':"")+
+            '<p class="mono bold" style="margin-top:6px">'+money(orderTotal(o))+'</p></div>'+
+          ((!o.deliveryStatus||o.deliveryStatus==="prise")?'<button class="btn btn-primary btn-block" data-action="liv-enroute" data-id="'+o._docId+'">🧭 En route</button>':"")+
+          (o.deliveryStatus==="en_route"?'<button class="btn btn-success btn-block" data-action="liv-done" data-id="'+o._docId+'">✅ Livrée</button>':"")+
         '</div>').join(""));
   } else if(v.tab==="history"){
-    content='<h2 class="section-title">Mes livraisons du jour</h2><p class="section-sub">'+done.length+' livraison(s)</p>'+
+    content='<h2 class="section-title">Historique du jour</h2><p class="section-sub">'+done.length+' livraison(s)</p>'+
       (done.length===0?'<p class="empty">Aucune livraison terminée</p>':
         done.map(o=>'<div class="card card-row" style="margin-bottom:8px"><div style="min-width:0"><p class="card-title">'+esc(o.clientInfo?.address||"")+'</p><p class="card-sub">'+(o.servedAt?new Date(o.servedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"")+'</p></div><span class="mono bold">'+money(orderTotal(o))+'</span></div>').join(""));
   }
   return '<div class="app" style="max-width:520px;margin:0 auto">'+
     topbar({role:"Livreur",title:SESSION.name,homeAction:"liv-home"})+
     '<div class="content">'+content+'</div>'+
-    '<div class="bottom-nav cols-3">'+[{key:"available",em:"📦",label:"Disponibles",badge:available.length},{key:"current",em:"🧭",label:"En cours",badge:mine.length},{key:"history",em:"📋",label:"Historique"}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="liv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+'</div>'+
+    '<div class="bottom-nav cols-3">'+[{key:"available",em:"📦",label:"Dispos",badge:available.length},{key:"current",em:"🧭",label:"En cours",badge:mine.length},{key:"history",em:"📋",label:"Historique"}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="liv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+'</div>'+
   '</div>';
 }
 
+// ADMIN
 function screenAdmin(){
   const v=admS;
   const sections=[{key:"menu",em:"🍽️",label:"Menu"},{key:"staff",em:"👥",label:"Personnel"},{key:"tables",em:"📱",label:"Tables"},{key:"stock",em:"📦",label:"Stock"},{key:"history",em:"📊",label:"Historique"},{key:"settings",em:"⚙️",label:"Paramètres"}];
@@ -882,22 +817,21 @@ function screenAdmin(){
       '<div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">'+
         '<input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'">'+
         '<select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select>'+
-        '<input class="input mono" placeholder="PIN 4 chiffres" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'">'+
+        '<input class="input mono" placeholder="PIN" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'">'+
         '<button class="btn btn-primary" data-action="admin-add-staff" '+((!v.newStaff.name||v.newStaff.pin.length<4)?"disabled":"")+'>Ajouter</button>'+
       '</div></div>'+
       '<div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+
         DATA.staff.map(p=>'<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+'</p><p class="mono" style="color:var(--jaune-fonce);margin-top:4px">PIN '+esc(p.pin)+'</p>'+
-        '<div class="flex gap-2" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit. PIN</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>').join("")+
+        '<div class="flex gap-2" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>').join("")+
       '</div>';
   } else if(v.section==="tables"){
-    content='<div class="flex between center" style="margin-bottom:16px"><h2 class="section-title" style="font-size:19px;margin:0">Tables & QR</h2><button class="btn btn-primary btn-sm" data-action="admin-add-table">+ Ajouter</button></div>'+
+    content='<div class="flex between center" style="margin-bottom:16px"><h2 class="section-title" style="font-size:19px;margin:0">Tables</h2><button class="btn btn-primary btn-sm" data-action="admin-add-table">+ Ajouter</button></div>'+
       '<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">'+
       DATA.tables.map(t=>'<div class="card" style="text-align:center">'+
         '<div style="width:70px;height:70px;margin:0 auto 10px;background:var(--noir);color:var(--jaune);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:bold;font-family:Georgia,serif">'+t.number+'</div>'+
         '<p class="bold">Table '+t.number+'</p><p class="text-xs muted mono" style="margin:4px 0 10px">/t/'+t.number+'-'+t.token+'</p>'+
         '<div class="flex gap-2"><button class="btn btn-ghost btn-sm" style="flex:1" onclick="window.print()">📥 PDF</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-table" data-id="'+t._docId+'">🗑️</button></div>'+
-      '</div>').join("")+
-      '</div>';
+      '</div>').join("")+'</div>';
   } else if(v.section==="stock"){
     if(!v.stockForm.stockId&&DATA.stock[0])v.stockForm.stockId=DATA.stock[0]._docId;
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Stock</h2>'+
@@ -908,13 +842,13 @@ function screenAdmin(){
       '<div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">'+
         '<select class="input" data-input="stock-id">'+DATA.stock.map(s=>'<option value="'+s._docId+'" '+(v.stockForm.stockId===s._docId?"selected":"")+'>'+esc(s.name)+'</option>').join("")+'</select>'+
         '<select class="input" data-input="stock-type">'+["Entrée","Sortie"].map(t=>'<option '+(v.stockForm.type===t?"selected":"")+'>'+t+'</option>').join("")+'</select>'+
-        '<input class="input" type="number" placeholder="Quantité" data-input="stock-qty" value="'+(v.stockForm.qty||"")+'">'+
+        '<input class="input" type="number" placeholder="Qté" data-input="stock-qty" value="'+(v.stockForm.qty||"")+'">'+
         '<input class="input" placeholder="Motif" data-input="stock-motif" value="'+esc(v.stockForm.motif)+'">'+
         '<button class="btn btn-primary" data-action="admin-add-move">Enregistrer</button>'+
       '</div></div>'+
-      '<h3 class="bold" style="margin-bottom:10px;font-size:15px">Derniers mouvements</h3>'+
-      '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Ingrédient</th><th>Type</th><th>Qté</th><th>Motif</th></tr></thead><tbody>'+
-      DATA.stockMoves.slice(0,20).map(m=>{const s=DATA.stock.find(x=>x._docId===m.stockId||x.id===m.stockId);return '<tr><td>'+fmtDate(m.date)+'</td><td>'+esc(s?s.name:"?")+'</td><td><span class="badge '+(m.type==="Entrée"?"badge-vert":"badge-rouge")+'">'+esc(m.type)+'</span></td><td class="mono">'+m.qty+'</td><td class="muted">'+esc(m.motif||"")+'</td></tr>';}).join("")+
+      '<h3 class="bold" style="margin-bottom:10px;font-size:15px">Mouvements</h3>'+
+      '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Ingr.</th><th>Type</th><th>Qté</th><th>Motif</th></tr></thead><tbody>'+
+      DATA.stockMoves.slice(0,20).map(m=>{const s=DATA.stock.find(x=>x._docId===m.stockId);return '<tr><td>'+fmtDate(m.date)+'</td><td>'+esc(s?s.name:"?")+'</td><td><span class="badge '+(m.type==="Entrée"?"badge-vert":"badge-rouge")+'">'+esc(m.type)+'</span></td><td class="mono">'+m.qty+'</td><td class="muted">'+esc(m.motif||"")+'</td></tr>';}).join("")+
       (DATA.stockMoves.length===0?'<tr><td colspan="5" class="empty">Aucun mouvement</td></tr>':"")+
       '</tbody></table></div>';
   } else if(v.section==="history"){
@@ -938,8 +872,8 @@ function screenAdmin(){
       '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Table/Adresse</th><th>Plats</th><th>Prix</th><th>Paiement</th></tr></thead><tbody>'+
       filtered.slice(0,100).map(o=>'<tr>'+
         '<td><strong>'+fmtDate(o.date)+'</strong><br><span class="text-xs muted">'+new Date(o.createdAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})+'</span></td>'+
-        '<td><span class="badge '+(o.type==="livraison"?"badge-orange":"badge-vert")+'">'+(o.type==="livraison"?"Livraison":"Sur place")+'</span></td>'+
-        '<td>'+(o.type==="livraison"?esc(o.clientInfo?.address||""):"Table "+(o.tableNumber||"—"))+'</td>'+
+        '<td><span class="badge '+(o.type==="livraison"?"badge-orange":"badge-vert")+'">'+(o.type==="livraison"?"Livr.":"Place")+'</span></td>'+
+        '<td>'+(o.type==="livraison"?esc(o.clientInfo?.address||""):"T."+(o.tableNumber||"—"))+'</td>'+
         '<td class="muted">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>i.qty+'× '+esc(i.name)).join(", ")+'</td>'+
         '<td class="mono bold">'+money(orderTotal(o))+'</td>'+
         '<td>'+(o.paymentMethod==="cash"?"Cash":o.paymentMethod==="momo"?"MoMo":"—")+'</td>'+
@@ -951,21 +885,20 @@ function screenAdmin(){
     const f=v.settingsForm;
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Paramètres</h2>'+
       '<div class="card" style="max-width:520px">'+
-        '<div style="margin-bottom:14px"><label class="text-xs muted bold">NOM DU RESTAURANT</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div>'+
+        '<div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div>'+
         '<div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div>'+
-        '<div style="margin-bottom:14px"><label class="text-xs muted bold">FRAIS DE LIVRAISON (F)</label><input class="input" type="number" style="margin-top:6px" data-input="set-frais" value="'+(f.fraisLivraison||0)+'"></div>'+
-        '<div style="margin-bottom:14px"><label class="text-xs muted bold">MODE MINUTEUR CUISINE</label><select class="input" style="margin-top:6px" data-input="set-timer"><option value="auto" '+(f.timerMode==="auto"?"selected":"")+'>Automatique</option><option value="manuel" '+(f.timerMode==="manuel"?"selected":"")+'>Manuel</option></select></div>'+
-        '<div style="margin-bottom:16px"><label class="text-xs muted bold">TEMPS D\'ATTENTE AFFICHÉ =</label><select class="input" style="margin-top:6px" data-input="set-wait"><option value="max" '+(f.waitMode==="max"?"selected":"")+'>Le plat le plus long</option><option value="sum" '+(f.waitMode==="sum"?"selected":"")+'>Somme des plats</option></select></div>'+
+        '<div style="margin-bottom:14px"><label class="text-xs muted bold">FRAIS LIVRAISON</label><input class="input" type="number" style="margin-top:6px" data-input="set-frais" value="'+(f.fraisLivraison||0)+'"></div>'+
+        '<div style="margin-bottom:14px"><label class="text-xs muted bold">MINUTEUR</label><select class="input" style="margin-top:6px" data-input="set-timer"><option value="auto" '+(f.timerMode==="auto"?"selected":"")+'>Auto</option><option value="manuel" '+(f.timerMode==="manuel"?"selected":"")+'>Manuel</option></select></div>'+
+        '<div style="margin-bottom:16px"><label class="text-xs muted bold">TEMPS ATTENTE</label><select class="input" style="margin-top:6px" data-input="set-wait"><option value="max" '+(f.waitMode==="max"?"selected":"")+'>Plat le plus long</option><option value="sum" '+(f.waitMode==="sum"?"selected":"")+'>Somme</option></select></div>'+
         '<button class="btn btn-accent btn-block" data-action="admin-save-settings">Enregistrer</button>'+
       '</div>';
   }
-  return '<div class="app">'+
-    topbar({role:"Administration D&S",title:SESSION.name,homeAction:"admin-home"})+
+  return '<div class="app">'+topbar({role:"Admin D&S",title:SESSION.name,homeAction:"admin-home"})+
     '<div class="tabs-scroll">'+sections.map(s=>'<button class="tab '+(v.section===s.key?"active":"")+'" data-action="admin-section" data-section="'+s.key+'">'+s.em+' '+s.label+'</button>').join("")+'</div>'+
-    '<div class="content">'+content+'</div>'+
-  '</div>';
+    '<div class="content">'+content+'</div></div>';
 }
 
+// RENDER
 function render(){
   const root=document.getElementById("root");
   if(!SESSION){root.innerHTML=screenLogin();return;}
@@ -992,6 +925,7 @@ function pinAdd(d){
 }
 function pinDel(){loginPin=loginPin.slice(0,-1);loginError="";render();}
 
+// HANDLERS
 document.addEventListener("click",async function(e){
   const el=e.target.closest("[data-action]");
   if(!el)return;
@@ -1000,14 +934,22 @@ document.addEventListener("click",async function(e){
   const idx=el.dataset.idx!==undefined?parseInt(el.dataset.idx):null;
   const v=clientS;
 
-  if(action==="pick-role"){loginRole=el.dataset.role;loginPin="";loginError="";render();return;}
+  // FIX : pick-role gère le client directement
+  if(action==="pick-role"){
+    loginRole=el.dataset.role;loginPin="";loginError="";
+    if(loginRole==="client"){
+      A.login("client","Client");
+    } else {
+      render();
+    }
+    return;
+  }
   if(action==="back-role"){loginRole=null;loginPin="";loginError="";render();return;}
   if(action==="pin-digit"){pinAdd(el.dataset.digit);return;}
   if(action==="pin-del"){pinDel();return;}
 
   if(action==="logout"){
     resetClient();
-    kitchenTimers={};
     srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
     gerS={tab:"validation"};
     admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null};
@@ -1016,6 +958,7 @@ document.addEventListener("click",async function(e){
     return;
   }
 
+  // CLIENT
   if(action==="client-mode"){v.mode=el.dataset.mode;v.screen="menu";render();return;}
   if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;render();return;}
   if(action==="client-back"){
@@ -1038,171 +981,4 @@ document.addEventListener("click",async function(e){
     if(v.mode==="sur_place"){
       const t=DATA.tables.find(x=>x._docId===v.tableId);
       const day=DATA.affectation[nowDate()]||{};
-      orderData.tableId=v.tableId;orderData.tableNumber=t?t.number:null;orderData.serveuseId=day[v.tableId]||null;
-    }else{
-      orderData.clientInfo={name:v.info.name,phone:v.info.phone,address:v.info.address};
-    }
-    v.orderId=await A.addOrder(orderData);
-    v.screen="waiting";render();return;
-  }
-  if(action==="client-remove-refused"){
-    const order=DATA.orders.find(o=>o._docId===v.orderId);
-    if(order){
-      const newItems=order.items.filter((it,i)=>i!==v.refusedIdx);
-      await A.updateOrder(order._docId,{items:newItems});
-    }
-    v.refusedIdx=null;v.screen="payment";render();return;
-  }
-  if(action==="client-pay"){
-    const method=el.dataset.method;
-    const ref=method==="momo"?"REF"+Math.floor(Math.random()*1000000):null;
-    await A.payOrder(v.orderId,method,ref);
-    v.timerTotal=0;v.timerRemaining=0;render();return;
-  }
-
-  if(action==="srv-home"){srvS.tab="tables";srvS.orderStep="table";srvS.orderTable=null;srvS.orderCart={};render();return;}
-  if(action==="srv-tab"){srvS.tab=el.dataset.tab;render();return;}
-  if(action==="srv-pick-table"){srvS.orderTable=id;srvS.orderStep="menu";render();return;}
-  if(action==="srv-back-table"){srvS.orderStep="table";srvS.orderTable=null;srvS.orderCart={};render();return;}
-  if(action==="srv-cat"){srvS.orderCat=el.dataset.cat;render();return;}
-  if(action==="srv-add"){srvS.orderCart[id]=(srvS.orderCart[id]||0)+1;render();return;}
-  if(action==="srv-remove"){if(srvS.orderCart[id]>1)srvS.orderCart[id]--;else delete srvS.orderCart[id];render();return;}
-  if(action==="srv-send"){
-    const items=DATA.menu.filter(m=>srvS.orderCart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:srvS.orderCart[d._docId],time:d.time}));
-    const t=DATA.tables.find(x=>x._docId===srvS.orderTable);
-    const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
-    await A.addOrder({type:"sur_place",tableId:srvS.orderTable,tableNumber:t?t.number:null,serveuseId:me?me._docId:null,serveuseName:SESSION.name,items});
-    srvS.orderCart={};srvS.orderTable=null;srvS.orderStep="table";
-    toast("Commande envoyée au gérant");
-    render();return;
-  }
-  if(action==="srv-confirm-cash"){await A.confirmCash(id);toast("Paiement cash confirmé");return;}
-  if(action==="srv-served"){await A.markServed(id);render();return;}
-
-  if(action==="ger-home"){gerS.tab="validation";render();return;}
-  if(action==="ger-tab"){gerS.tab=el.dataset.tab;render();return;}
-  if(action==="ger-item-valid"){await A.setItemStatut(id,idx,"Validé");return;}
-  if(action==="ger-item-refuse"){await A.setItemStatut(id,idx,"Refusé");return;}
-  if(action==="ger-motif"){await A.setItemMotif(id,idx,el.dataset.motif);return;}
-  if(action==="ger-validate"){await A.validateOrder(id);toast("Commande validée");return;}
-  if(action==="ger-affect"){
-    const today=nowDate();
-    const day=DATA.affectation[today]||{};
-    const currentlyMine=day[el.dataset.table]===el.dataset.serveuse;
-    await A.setAffectation(today,el.dataset.table,currentlyMine?null:el.dataset.serveuse);
-    return;
-  }
-
-  if(action==="cui-home"){render();return;}
-  if(action==="cui-ready"){await A.markReady(id);toast("Cuisine : plat prêt");return;}
-
-  if(action==="liv-home"){livS.tab="available";render();return;}
-  if(action==="liv-tab"){livS.tab=el.dataset.tab;render();return;}
-  if(action==="liv-take"){
-    const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");
-    if(me)await A.takeDelivery(id,me._docId);
-    livS.tab="current";render();return;
-  }
-  if(action==="liv-enroute"){await A.setDeliveryStatus(id,"en_route");return;}
-  if(action==="liv-done"){await A.markDelivered(id);return;}
-
-  if(action==="admin-home"){admS.section="menu";admS.editingDish=null;render();return;}
-  if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;render();return;}
-  if(action==="admin-add-dish"){await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:""});return;}
-  if(action==="admin-edit-dish"){admS.editingDish=id;render();return;}
-  if(action==="admin-save-dish"){
-    const row=el.closest("tr");
-    const name=row.querySelector('[data-input="dish-name"]').value;
-    const cat=row.querySelector('[data-input="dish-cat"]').value;
-    const price=parseInt(row.querySelector('[data-input="dish-price"]').value)||0;
-    const time=parseInt(row.querySelector('[data-input="dish-time"]').value)||0;
-    const avail=row.querySelector('[data-input="dish-avail"]').checked;
-    await A.updateDish(id,{name,cat,price,time,available:avail});
-    admS.editingDish=null;return;
-  }
-  if(action==="admin-del-dish"){if(confirm("Supprimer ce plat ?"))await A.removeDish(id);return;}
-  if(action==="admin-add-staff"){await A.addStaff({...admS.newStaff});admS.newStaff={name:"",role:"serveuse",pin:""};render();return;}
-  if(action==="admin-reset-pin"){const pin=await A.resetPin(id);toast("Nouveau PIN : "+pin);return;}
-  if(action==="admin-del-staff"){if(confirm("Supprimer ce compte ?"))await A.removeStaff(id);return;}
-  if(action==="admin-add-table"){await A.addTable();return;}
-  if(action==="admin-del-table"){if(confirm("Supprimer cette table ?"))await A.removeTable(id);return;}
-  if(action==="admin-add-move"){
-    if(!admS.stockForm.stockId||!admS.stockForm.qty)return;
-    await A.addStockMove({...admS.stockForm});
-    admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};
-    toast("Mouvement enregistré");return;
-  }
-  if(action==="admin-save-settings"){await A.updateSettings(admS.settingsForm);admS.settingsForm=null;toast("Paramètres enregistrés");return;}
-  if(action==="admin-export-csv"){
-    const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));
-    const csv=["Date,Heure,Type,Table/Adresse,Plats,Prix,Paiement"].concat(paid.map(o=>{
-      const d=new Date(o.createdAt);
-      const items=o.items.filter(i=>i.statut!=="Refusé").map(i=>i.qty+"x "+i.name).join("; ");
-      const loc=o.type==="livraison"?(o.clientInfo?.address||""):"Table "+(o.tableNumber||"");
-      return [o.date,d.toLocaleTimeString("fr-FR"),o.type,loc,'"'+items+'"',orderTotal(o),o.paymentMethod||""].join(",");
-    })).join("\n");
-    const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");a.href=url;a.download="historique_ventes.csv";a.click();
-    URL.revokeObjectURL(url);return;
-  }
-});
-
-document.addEventListener("input",function(e){
-  const el=e.target;const key=el.dataset.input;if(!key)return;
-  const v=clientS;
-  if(key==="info-name")v.info.name=el.value;
-  if(key==="info-phone")v.info.phone=el.value;
-  if(key==="info-address")v.info.address=el.value;
-  if(key==="new-staff-name")admS.newStaff.name=el.value;
-  if(key==="new-staff-pin"){admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);render();}
-  if(key==="stock-id")admS.stockForm.stockId=el.value;
-  if(key==="stock-qty")admS.stockForm.qty=parseFloat(el.value)||0;
-  if(key==="stock-motif")admS.stockForm.motif=el.value;
-  if(key==="hist-query"){admS.histFilter.query=el.value;render();}
-  if(key==="set-name"&&admS.settingsForm)admS.settingsForm.restaurantName=el.value;
-  if(key==="set-phone"&&admS.settingsForm)admS.settingsForm.phone=el.value;
-  if(key==="set-frais"&&admS.settingsForm)admS.settingsForm.fraisLivraison=parseInt(el.value)||0;
-});
-document.addEventListener("change",function(e){
-  const el=e.target;const key=el.dataset.input;if(!key)return;
-  if(key==="new-staff-role")admS.newStaff.role=el.value;
-  if(key==="stock-type")admS.stockForm.type=el.value;
-  if(key==="hist-type"){admS.histFilter.type=el.value;render();}
-  if(key==="hist-payment"){admS.histFilter.payment=el.value;render();}
-  if(key==="set-timer"&&admS.settingsForm)admS.settingsForm.timerMode=el.value;
-  if(key==="set-wait"&&admS.settingsForm)admS.settingsForm.waitMode=el.value;
-});
-
-document.addEventListener("keydown",function(e){
-  if(SESSION)return;
-  if(!loginRole||loginRole==="client")return;
-  if(/^\d$/.test(e.key)){pinAdd(e.key);e.preventDefault();return;}
-  if(e.key==="Backspace"){pinDel();e.preventDefault();return;}
-});
-
-setInterval(function(){
-  if(!SESSION)return;
-  if(SESSION.role==="cuisine"){render();}
-  if(SESSION.role==="client"&&clientS.screen==="tracking"&&clientS.timerRemaining>0){
-    clientS.timerRemaining--;render();
-  }
-},1000);
-
-(async function boot(){
-  try {
-    await seedIfEmpty();
-    subscribeAll(render);
-    render();
-  } catch(e) {
-    console.error(e);
-    document.getElementById("root").innerHTML =
-      '<div class="loader"><div class="loader-logo">⚠️</div>'+
-      '<p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">Erreur : '+esc(e.message||e)+'</p>'+
-      '<button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#ffc107;color:#0a0a0a;border:none;border-radius:8px;font-weight:bold;font-size:14px;cursor:pointer">Réessayer</button>'+
-      '</div>';
-  }
-})();
-</script>
-</body>
-</html>
+      orderData.tableId=v.tableId;orderData.tableNumber=t?t.number:null;orderData.serveuseId=day[v.tableId
