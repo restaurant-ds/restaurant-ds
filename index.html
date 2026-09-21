@@ -144,7 +144,6 @@ import {
   getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// ============ CONFIG FIREBASE ============
 const firebaseConfig = {
   apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0",
   authDomain: "restaurant-ds-494a6.firebaseapp.com",
@@ -157,19 +156,16 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 
-// Identifiant unique persistant par appareil (pas besoin de Firebase Auth)
 let DEVICE_ID = localStorage.getItem("ds_device_id");
 if (!DEVICE_ID) {
   DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   localStorage.setItem("ds_device_id", DEVICE_ID);
 }
 
-// ============ ÉTAT GLOBAL ============
 let SESSION = null;
 let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{} };
 let listeners = [];
 
-// ============ DONNÉES INITIALES ============
 const SEED = {
   menu: [
     { id:"m1", name:"Salade César", cat:"Entrées", price:2500, time:5, available:true, desc:"Romaine, parmesan" },
@@ -214,7 +210,6 @@ async function seedIfEmpty() {
   await batch.commit();
 }
 
-// ============ UTILITAIRES ============
 function money(n){return (n||0).toLocaleString("fr-FR")+" F";}
 function uid(p){return (p||"id")+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function nowDate(){return new Date().toISOString().slice(0,10);}
@@ -222,7 +217,6 @@ function fmtDate(iso){return new Date(iso).toLocaleDateString("fr-FR",{day:"2-di
 function timeAgo(ts){if(!ts)return "à l'instant";const m=Math.floor((Date.now()-ts)/60000);if(m<=0)return "à l'instant";if(m<60)return "il y a "+m+" min";return "il y a "+Math.floor(m/60)+"h";}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
-// ============ ABONNEMENTS TEMPS RÉEL ============
 function subscribeAll(onUpdate) {
   const subscribe = (col, key, transform) => {
     const unsub = onSnapshot(collection(db, col), snap => {
@@ -253,7 +247,6 @@ function subscribeAll(onUpdate) {
   listeners.push(unsubSet);
 }
 
-// ============ ACTIONS ============
 const A = {
   login(role, name) {
     SESSION = { role, name, userId: DEVICE_ID, since: Date.now() };
@@ -323,11 +316,9 @@ const A = {
   async confirmCash(id) { await updateDoc(doc(db, "orders", id), { cashConfirmed:true, cashConfirmedAt:Date.now() }); },
   async takeDelivery(id, livreurId) { await updateDoc(doc(db, "orders", id), { livreurId, deliveryStatus:"prise" }); },
   async setDeliveryStatus(id, st) { await updateDoc(doc(db, "orders", id), { deliveryStatus:st }); },
-
   async addDish(d) { await addDoc(collection(db, "menu"), d); },
   async updateDish(id, patch) { await updateDoc(doc(db, "menu", id), patch); },
   async removeDish(id) { await deleteDoc(doc(db, "menu", id)); },
-
   async addStaff(s) { await addDoc(collection(db, "staff"), s); },
   async removeStaff(id) { await deleteDoc(doc(db, "staff", id)); },
   async resetPin(id) {
@@ -335,19 +326,16 @@ const A = {
     await updateDoc(doc(db, "staff", id), { pin });
     return pin;
   },
-
   async addTable() {
     const next = DATA.tables.reduce((m,t)=>Math.max(m,t.number),0)+1;
     await addDoc(collection(db, "tables"), { number: next, token: Math.random().toString(36).slice(2,8) });
   },
   async removeTable(id) { await deleteDoc(doc(db, "tables", id)); },
-
   async setAffectation(date, tableId, serveuseId) {
     const day = { ...(DATA.affectation[date]||{}) };
     if (serveuseId === null) delete day[tableId]; else day[tableId] = serveuseId;
     await setDoc(doc(db, "affectation", date), day);
   },
-
   async addStockMove(m) {
     await addDoc(collection(db, "stockMoves"), { ...m, date: nowDate(), _ts: Date.now() });
   },
@@ -368,7 +356,6 @@ function statusBadge(o){
   return '<span class="badge badge-rouge">À valider</span>';
 }
 
-// ============ NAV STATES ============
 let loginRole=null, loginPin="", loginError="";
 let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
@@ -379,7 +366,6 @@ let kitchenTimers={};
 function resetClient(){clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0};}
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
 
-// ============ TOPBAR ============
 function topbar(opts){return '<div class="topbar">'+
   '<button class="topbar-btn" data-action="'+(opts.homeAction||'logout')+'" title="Accueil">🏠</button>'+
   '<div style="flex:1;min-width:0">'+
@@ -389,7 +375,6 @@ function topbar(opts){return '<div class="topbar">'+
   '<button class="topbar-logout" data-action="logout">Déconnexion</button>'+
 '</div>';}
 
-// ============ LOGIN ============
 function screenLogin(){
   const ROLES=[
     {key:"client",em:"🍽️",label:"Client",desc:"Commander"},
@@ -436,7 +421,6 @@ function screenLogin(){
   '</div>';
 }
 
-// ============ CLIENT ============
 function screenClient(){
   const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables;
   const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
@@ -633,7 +617,6 @@ function screenClient(){
   return "";
 }
 
-// ============ SERVEUSE ============
 function screenServeuse(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
   const today=nowDate();
@@ -698,7 +681,6 @@ function screenServeuse(){
   '</div>';
 }
 
-// ============ GÉRANT ============
 function screenGerant(){
   const v=gerS;
   const pending=DATA.orders.filter(o=>o.status==="att_validation");
@@ -796,7 +778,6 @@ function screenGerant(){
   '</div>';
 }
 
-// ============ CUISINE ============
 function screenCuisine(){
   const active=DATA.orders.filter(o=>o.status==="payee"&&!o.readyAt);
   const ready=DATA.orders.filter(o=>o.readyAt&&o.status==="payee");
@@ -832,7 +813,6 @@ function screenCuisine(){
   '</div>';
 }
 
-// ============ LIVREUR ============
 function screenLivreur(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");
   const available=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.livreurId);
@@ -876,7 +856,6 @@ function screenLivreur(){
   '</div>';
 }
 
-// ============ ADMIN ============
 function screenAdmin(){
   const v=admS;
   const sections=[{key:"menu",em:"🍽️",label:"Menu"},{key:"staff",em:"👥",label:"Personnel"},{key:"tables",em:"📱",label:"Tables"},{key:"stock",em:"📦",label:"Stock"},{key:"history",em:"📊",label:"Historique"},{key:"settings",em:"⚙️",label:"Paramètres"}];
@@ -987,7 +966,6 @@ function screenAdmin(){
   '</div>';
 }
 
-// ============ RENDER ============
 function render(){
   const root=document.getElementById("root");
   if(!SESSION){root.innerHTML=screenLogin();return;}
@@ -1014,7 +992,6 @@ function pinAdd(d){
 }
 function pinDel(){loginPin=loginPin.slice(0,-1);loginError="";render();}
 
-// ============ EVENT DELEGATION ============
 document.addEventListener("click",async function(e){
   const el=e.target.closest("[data-action]");
   if(!el)return;
@@ -1039,7 +1016,6 @@ document.addEventListener("click",async function(e){
     return;
   }
 
-  // CLIENT
   if(action==="client-mode"){v.mode=el.dataset.mode;v.screen="menu";render();return;}
   if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;render();return;}
   if(action==="client-back"){
@@ -1084,7 +1060,6 @@ document.addEventListener("click",async function(e){
     v.timerTotal=0;v.timerRemaining=0;render();return;
   }
 
-  // SERVEUSE
   if(action==="srv-home"){srvS.tab="tables";srvS.orderStep="table";srvS.orderTable=null;srvS.orderCart={};render();return;}
   if(action==="srv-tab"){srvS.tab=el.dataset.tab;render();return;}
   if(action==="srv-pick-table"){srvS.orderTable=id;srvS.orderStep="menu";render();return;}
@@ -1104,7 +1079,6 @@ document.addEventListener("click",async function(e){
   if(action==="srv-confirm-cash"){await A.confirmCash(id);toast("Paiement cash confirmé");return;}
   if(action==="srv-served"){await A.markServed(id);render();return;}
 
-  // GÉRANT
   if(action==="ger-home"){gerS.tab="validation";render();return;}
   if(action==="ger-tab"){gerS.tab=el.dataset.tab;render();return;}
   if(action==="ger-item-valid"){await A.setItemStatut(id,idx,"Validé");return;}
@@ -1119,11 +1093,9 @@ document.addEventListener("click",async function(e){
     return;
   }
 
-  // CUISINE
   if(action==="cui-home"){render();return;}
   if(action==="cui-ready"){await A.markReady(id);toast("Cuisine : plat prêt");return;}
 
-  // LIVREUR
   if(action==="liv-home"){livS.tab="available";render();return;}
   if(action==="liv-tab"){livS.tab=el.dataset.tab;render();return;}
   if(action==="liv-take"){
@@ -1134,7 +1106,6 @@ document.addEventListener("click",async function(e){
   if(action==="liv-enroute"){await A.setDeliveryStatus(id,"en_route");return;}
   if(action==="liv-done"){await A.markDelivered(id);return;}
 
-  // ADMIN
   if(action==="admin-home"){admS.section="menu";admS.editingDish=null;render();return;}
   if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;render();return;}
   if(action==="admin-add-dish"){await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:""});return;}
@@ -1177,7 +1148,6 @@ document.addEventListener("click",async function(e){
   }
 });
 
-// INPUTS
 document.addEventListener("input",function(e){
   const el=e.target;const key=el.dataset.input;if(!key)return;
   const v=clientS;
@@ -1213,15 +1183,12 @@ document.addEventListener("keydown",function(e){
 
 setInterval(function(){
   if(!SESSION)return;
-  if(SESSION.role==="cuisine"){
-    render();
-  }
+  if(SESSION.role==="cuisine"){render();}
   if(SESSION.role==="client"&&clientS.screen==="tracking"&&clientS.timerRemaining>0){
     clientS.timerRemaining--;render();
   }
 },1000);
 
-// ============ DÉMARRAGE ============
 (async function boot(){
   try {
     await seedIfEmpty();
@@ -1232,7 +1199,7 @@ setInterval(function(){
     document.getElementById("root").innerHTML =
       '<div class="loader"><div class="loader-logo">⚠️</div>'+
       '<p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">Erreur : '+esc(e.message||e)+'</p>'+
-      '<button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:var(--jaune);color:var(--noir);border:none;border-radius:8px;font-weight:bold;font-size:14px;cursor:pointer">Réessayer</button>'+
+      '<button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#ffc107;color:#0a0a0a;border:none;border-radius:8px;font-weight:bold;font-size:14px;cursor:pointer">Réessayer</button>'+
       '</div>';
   }
 })();
