@@ -981,4 +981,184 @@ document.addEventListener("click",async function(e){
     if(v.mode==="sur_place"){
       const t=DATA.tables.find(x=>x._docId===v.tableId);
       const day=DATA.affectation[nowDate()]||{};
-      orderData.tableId=v.tableId;orderData.tableNumber=t?t.number:null;orderData.serveuseId=day[v.tableId
+      orderData.tableId=v.tableId;orderData.tableNumber=t?t.number:null;orderData.serveuseId=day[v.tableId]||null;
+    }else{
+      orderData.clientInfo={name:v.info.name,phone:v.info.phone,address:v.info.address};
+    }
+    v.orderId=await A.addOrder(orderData);
+    v.screen="waiting";render();return;
+  }
+  if(action==="client-remove-refused"){
+    const order=DATA.orders.find(o=>o._docId===v.orderId);
+    if(order){
+      const newItems=order.items.filter((it,i)=>i!==v.refusedIdx);
+      await A.updateOrder(order._docId,{items:newItems});
+    }
+    v.refusedIdx=null;v.screen="payment";render();return;
+  }
+  if(action==="client-pay"){
+    const method=el.dataset.method;
+    const ref=method==="momo"?"REF"+Math.floor(Math.random()*1000000):null;
+    await A.payOrder(v.orderId,method,ref);
+    v.timerTotal=0;v.timerRemaining=0;render();return;
+  }
+
+  // SERVEUSE
+  if(action==="srv-home"){srvS.tab="tables";srvS.orderStep="table";srvS.orderTable=null;srvS.orderCart={};render();return;}
+  if(action==="srv-tab"){srvS.tab=el.dataset.tab;render();return;}
+  if(action==="srv-pick-table"){srvS.orderTable=id;srvS.orderStep="menu";render();return;}
+  if(action==="srv-back-table"){srvS.orderStep="table";srvS.orderTable=null;srvS.orderCart={};render();return;}
+  if(action==="srv-cat"){srvS.orderCat=el.dataset.cat;render();return;}
+  if(action==="srv-add"){srvS.orderCart[id]=(srvS.orderCart[id]||0)+1;render();return;}
+  if(action==="srv-remove"){if(srvS.orderCart[id]>1)srvS.orderCart[id]--;else delete srvS.orderCart[id];render();return;}
+  if(action==="srv-send"){
+    const items=DATA.menu.filter(m=>srvS.orderCart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:srvS.orderCart[d._docId],time:d.time}));
+    const t=DATA.tables.find(x=>x._docId===srvS.orderTable);
+    const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
+    await A.addOrder({type:"sur_place",tableId:srvS.orderTable,tableNumber:t?t.number:null,serveuseId:me?me._docId:null,items});
+    srvS.orderCart={};srvS.orderTable=null;srvS.orderStep="table";
+    toast("Commande envoyée au gérant");render();return;
+  }
+  if(action==="srv-confirm-cash"){await A.confirmCash(id);toast("Cash confirmé");render();return;}
+  if(action==="srv-served"){await A.markServed(id);toast("Servie !");render();return;}
+
+  // GÉRANT
+  if(action==="ger-home"){gerS.tab="validation";render();return;}
+  if(action==="ger-tab"){gerS.tab=el.dataset.tab;render();return;}
+  if(action==="ger-item-valid"){await A.setItemStatut(id,idx,"Validé");return;}
+  if(action==="ger-item-refuse"){await A.setItemStatut(id,idx,"Refusé");return;}
+  if(action==="ger-motif"){await A.setItemMotif(id,idx,el.dataset.motif);return;}
+  if(action==="ger-validate"){await A.validateOrder(id);toast("Commande validée");return;}
+  if(action==="ger-affect"){
+    const today=nowDate();
+    const day=DATA.affectation[today]||{};
+    const cur=day[el.dataset.table]===el.dataset.serveuse;
+    await A.setAffectation(today,el.dataset.table,cur?null:el.dataset.serveuse);return;
+  }
+
+  // CUISINE
+  if(action==="cui-home"){render();return;}
+  if(action==="cui-ready"){await A.markReady(id);toast("Prêt !");render();return;}
+
+  // LIVREUR
+  if(action==="liv-home"){livS.tab="available";render();return;}
+  if(action==="liv-tab"){livS.tab=el.dataset.tab;render();return;}
+  if(action==="liv-take"){
+    const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");
+    if(me)await A.takeDelivery(id,me._docId);
+    livS.tab="current";render();return;
+  }
+  if(action==="liv-enroute"){await A.setDeliveryStatus(id,"en_route");return;}
+  if(action==="liv-done"){await A.markDelivered(id);render();return;}
+
+  // ADMIN
+  if(action==="admin-home"){admS.section="menu";admS.editingDish=null;render();return;}
+  if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;render();return;}
+  if(action==="admin-add-dish"){await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:""});return;}
+  if(action==="admin-edit-dish"){admS.editingDish=id;render();return;}
+  if(action==="admin-save-dish"){
+    const row=el.closest("tr");
+    const name=row.querySelector('[data-input="dish-name"]').value;
+    const cat=row.querySelector('[data-input="dish-cat"]').value;
+    const price=parseInt(row.querySelector('[data-input="dish-price"]').value)||0;
+    const time=parseInt(row.querySelector('[data-input="dish-time"]').value)||0;
+    const avail=row.querySelector('[data-input="dish-avail"]').checked;
+    await A.updateDish(id,{name,cat,price,time,available:avail});
+    admS.editingDish=null;return;
+  }
+  if(action==="admin-del-dish"){if(confirm("Supprimer ?"))await A.removeDish(id);return;}
+  if(action==="admin-add-staff"){await A.addStaff({...admS.newStaff});admS.newStaff={name:"",role:"serveuse",pin:""};render();return;}
+  if(action==="admin-reset-pin"){const pin=await A.resetPin(id);toast("Nouveau PIN : "+pin);return;}
+  if(action==="admin-del-staff"){if(confirm("Supprimer ?"))await A.removeStaff(id);return;}
+  if(action==="admin-add-table"){await A.addTable();return;}
+  if(action==="admin-del-table"){if(confirm("Supprimer ?"))await A.removeTable(id);return;}
+  if(action==="admin-add-move"){
+    if(!admS.stockForm.stockId||!admS.stockForm.qty)return;
+    await A.addStockMove({...admS.stockForm});
+    admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};
+    toast("Enregistré");return;
+  }
+  if(action==="admin-save-settings"){await A.updateSettings(admS.settingsForm);admS.settingsForm=null;toast("Enregistré");return;}
+  if(action==="admin-export-csv"){
+    const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));
+    const csv=["Date,Heure,Type,Table/Adresse,Plats,Prix,Paiement"].concat(paid.map(o=>{
+      const d=new Date(o.createdAt);
+      const items=o.items.filter(i=>i.statut!=="Refusé").map(i=>i.qty+"x "+i.name).join("; ");
+      const loc=o.type==="livraison"?(o.clientInfo?.address||""):"Table "+(o.tableNumber||"");
+      return [o.date,d.toLocaleTimeString("fr-FR"),o.type,loc,'"'+items+'"',orderTotal(o),o.paymentMethod||""].join(",");
+    })).join("\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download="historique_ventes.csv";a.click();
+    URL.revokeObjectURL(url);return;
+  }
+});
+
+// SELECT CHANGE (pour assigner livreur)
+document.addEventListener("change",async function(e){
+  const el=e.target;const key=el.dataset.input;const action=el.dataset.action;
+  if(action==="ger-assign-livreur"){
+    const orderId=el.dataset.id;const livreurId=el.value;
+    await A.assignLivreur(orderId,livreurId||null);
+    toast(livreurId?"Livreur assigné":"Assignation retirée");
+    return;
+  }
+  if(!key)return;
+  if(key==="new-staff-role")admS.newStaff.role=el.value;
+  if(key==="stock-type")admS.stockForm.type=el.value;
+  if(key==="hist-type"){admS.histFilter.type=el.value;render();}
+  if(key==="hist-payment"){admS.histFilter.payment=el.value;render();}
+  if(key==="set-timer"&&admS.settingsForm)admS.settingsForm.timerMode=el.value;
+  if(key==="set-wait"&&admS.settingsForm)admS.settingsForm.waitMode=el.value;
+});
+
+document.addEventListener("input",function(e){
+  const el=e.target;const key=el.dataset.input;if(!key)return;
+  const v=clientS;
+  if(key==="info-name")v.info.name=el.value;
+  if(key==="info-phone")v.info.phone=el.value;
+  if(key==="info-address")v.info.address=el.value;
+  if(key==="new-staff-name")admS.newStaff.name=el.value;
+  if(key==="new-staff-pin"){admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);render();}
+  if(key==="stock-id")admS.stockForm.stockId=el.value;
+  if(key==="stock-qty")admS.stockForm.qty=parseFloat(el.value)||0;
+  if(key==="stock-motif")admS.stockForm.motif=el.value;
+  if(key==="hist-query"){admS.histFilter.query=el.value;render();}
+  if(key==="set-name"&&admS.settingsForm)admS.settingsForm.restaurantName=el.value;
+  if(key==="set-phone"&&admS.settingsForm)admS.settingsForm.phone=el.value;
+  if(key==="set-frais"&&admS.settingsForm)admS.settingsForm.fraisLivraison=parseInt(el.value)||0;
+});
+
+document.addEventListener("keydown",function(e){
+  if(SESSION)return;
+  if(!loginRole)return;
+  if(/^\d$/.test(e.key)){pinAdd(e.key);e.preventDefault();return;}
+  if(e.key==="Backspace"){pinDel();e.preventDefault();return;}
+});
+
+setInterval(function(){
+  if(!SESSION)return;
+  if(SESSION.role==="cuisine"){render();}
+  if(SESSION.role==="client"&&clientS.screen==="tracking"&&clientS.timerRemaining>0){
+    clientS.timerRemaining--;render();
+  }
+},1000);
+
+// DÉMARRAGE
+(async function boot(){
+  try {
+    await seedIfEmpty();
+    subscribeAll(render);
+    render();
+  } catch(e) {
+    console.error(e);
+    document.getElementById("root").innerHTML =
+      '<div class="loader"><div class="loader-logo">⚠️</div>'+
+      '<p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">Erreur : '+esc(e.message||e)+'</p>'+
+      '<button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#ffc107;color:#0a0a0a;border:none;border-radius:8px;font-weight:bold;cursor:pointer">Réessayer</button>'+
+      '</div>';
+  }
+})();
+</script>
+</body>
+</html>
