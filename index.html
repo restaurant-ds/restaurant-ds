@@ -42,6 +42,8 @@ input,select,textarea{font-family:inherit;font-size:16px}
 .pin-error{color:#ff7066;font-size:13px;text-align:center;margin-top:12px}
 .pin-back{display:block;margin:16px auto 0;color:#888;background:transparent;font-size:13px;text-decoration:underline;padding:8px}
 .pin-hint{font-size:11px;color:#666;margin-top:14px;text-align:center;line-height:1.7}
+.auth-input{width:100%;padding:12px;border:1px solid #333;border-radius:8px;font-size:16px;background:#1a1a1a;color:white;margin-top:6px}
+.auth-input:focus{outline:none;border-color:var(--jaune);box-shadow:0 0 0 2px rgba(255,193,7,0.2)}
 .topbar{background:var(--noir);color:white;padding:8px 10px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:30;border-bottom:3px solid var(--jaune)}
 .topbar-btn{background:transparent;color:white;padding:8px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:4px;min-height:40px}
 .topbar-title{flex:1;font-family:Georgia,serif;font-size:15px;font-weight:600;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -151,11 +153,11 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 .modal-card{background:white;border-radius:16px;max-width:400px;width:100%;padding:24px;text-align:center;border:3px solid var(--jaune)}
 .modal-card h2{font-family:Georgia,serif;font-size:22px;margin:0 0 12px}
 .modal-card p{color:var(--gris);font-size:14px;margin-bottom:12px}
-.pin-modal-input{text-align:center;font-size:32px;letter-spacing:1em;font-family:monospace;padding:12px 12px 12px 20px;width:200px;margin:12px auto;display:block;border:2px solid var(--sable);border-radius:12px;background:var(--creme)}
+.pin-modal-input{text-align:center;font-size:28px;letter-spacing:0.8em;font-family:monospace;padding:12px 12px 12px 20px;width:220px;margin:12px auto;display:block;border:2px solid var(--sable);border-radius:12px;background:var(--creme);color:#000}
 .pin-modal-input:focus{outline:none;border-color:var(--jaune)}
-.log-row{display:flex;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #f0ede4;font-size:12px}
+.log-row{display:flex;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #f0ede4;font-size:12px;gap:10px;align-items:flex-start}
 .log-row:last-child{border-bottom:none}
-.log-row .when{color:var(--gris);font-family:monospace}
+.log-row .when{color:var(--gris);font-family:monospace;font-size:10px;margin-top:2px}
 .log-ok{color:var(--vert);font-weight:600}
 .log-fail{color:var(--rouge);font-weight:600}
 @media print{@page{size:80mm auto;margin:0}body *{visibility:hidden}#qr-print-area,#qr-print-area *{visibility:visible}#qr-print-area{position:absolute;left:0;top:0;width:100%;padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:20px}#invoice-print,#invoice-print *{visibility:visible}#invoice-print{position:absolute;left:0;top:0;width:80mm;padding:2mm 3mm;font-family:'Courier New',monospace;font-size:11px;color:#000;background:#fff}#invoice-print .inv-line{border-top:1px dashed #000;margin:4px 0}}
@@ -173,8 +175,9 @@ const firebaseConfig = { apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0", auth
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 
-const RESTO_COORDS = { lat: 6.454877410013232, lon: 2.279816313097269 };
-const PRIX_PAR_KM = 110;
+// Valeurs par défaut (utilisées si absent de settings)
+const DEFAULT_RESTO = { lat: 6.454877410013232, lon: 2.279816313097269 };
+const DEFAULT_PRIX_KM = 110;
 const SITE_URL = "https://restaurant-ds.github.io/restaurant-ds/";
 
 let DEVICE_ID = localStorage.getItem("ds_device_id");
@@ -182,6 +185,17 @@ if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().t
 
 let SESSION = null;
 let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{}, zones:[], resetLogs:[] };
+
+// Lecture des coordonnées depuis settings (fallback sur valeurs par défaut)
+function restoCoords(){
+  return {
+    lat: (DATA.settings.restoLat != null) ? Number(DATA.settings.restoLat) : DEFAULT_RESTO.lat,
+    lon: (DATA.settings.restoLon != null) ? Number(DATA.settings.restoLon) : DEFAULT_RESTO.lon
+  };
+}
+function prixParKm(){
+  return DATA.settings.prixKm != null ? Number(DATA.settings.prixKm) : DEFAULT_PRIX_KM;
+}
 
 const SEED = {
   menu: [
@@ -200,9 +214,9 @@ const SEED = {
     { id:"s1", name:"Aïcha", role:"serveuse", pin:"4821" },
     { id:"s2", name:"Fatou", role:"serveuse", pin:"3390" },
     { id:"s3", name:"Moussa", role:"cuisine", pin:"1234" },
-    { id:"s4", name:"Ibrahim", role:"gerant", pin:"0000" },
+    { id:"s4", name:"Ibrahim", role:"gerant", pin:"0000", email:"ibrahim@restaurant-ds.com", password:"Ibrahim2024!" },
     { id:"s5", name:"Salif", role:"livreur", pin:"5678" },
-    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999" }
+    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999", email:"admin@restaurant-ds.com", password:"AdminD&S2024!" }
   ],
   tables: Array.from({length:25},(_,i)=>({ id:"t"+(i+1), number:i+1, token:Math.random().toString(36).slice(2,8) })),
   stock: [
@@ -212,7 +226,7 @@ const SEED = {
     { id:"st4", name:"Huile", unit:"L", initial:40, threshold:8 },
     { id:"st5", name:"Légumes", unit:"kg", initial:20, threshold:5 }
   ],
-  settings: { restaurantName:"Restaurant D&S", phone:"27 20 00 00 00", timerMode:"auto", waitMode:"max", bilanResetHour:6 }
+  settings: { restaurantName:"Restaurant D&S", phone:"27 20 00 00 00", timerMode:"auto", waitMode:"max", bilanResetHour:6, restoLat: DEFAULT_RESTO.lat, restoLon: DEFAULT_RESTO.lon, prixKm: DEFAULT_PRIX_KM }
 };
 
 async function seedIfEmpty() {
@@ -225,6 +239,43 @@ async function seedIfEmpty() {
   SEED.stock.forEach(s => batch.set(doc(db, "stock", s.id), s));
   batch.set(doc(db, "settings", "main"), SEED.settings);
   await batch.commit();
+}
+
+// Migration : ajoute restoLat/restoLon/prixKm aux settings et email/password aux gérants/admins existants
+async function migrateIfNeeded(){
+  try{
+    // Settings
+    const sRef = doc(db, "settings", "main");
+    const sSnap = await getDoc(sRef);
+    if(sSnap.exists()){
+      const s = sSnap.data();
+      const up = {};
+      if(s.restoLat == null) up.restoLat = DEFAULT_RESTO.lat;
+      if(s.restoLon == null) up.restoLon = DEFAULT_RESTO.lon;
+      if(s.prixKm == null) up.prixKm = DEFAULT_PRIX_KM;
+      if(Object.keys(up).length > 0){
+        await updateDoc(sRef, up);
+      }
+    }
+    // Staff : gérant/admin sans email
+    const staffSnap = await getDocs(collection(db, "staff"));
+    const batch = writeBatch(db);
+    let needs = false;
+    staffSnap.forEach(d => {
+      const s = d.data();
+      if((s.role==="gerant" || s.role==="admin") && !s.email){
+        let defaults;
+        if(s.role==="admin"){
+          defaults = { email:"admin@restaurant-ds.com", password:"AdminD&S2024!" };
+        } else {
+          defaults = { email:"ibrahim@restaurant-ds.com", password:"Ibrahim2024!" };
+        }
+        batch.update(d.ref, defaults);
+        needs = true;
+      }
+    });
+    if(needs) await batch.commit();
+  }catch(e){ console.warn("Migration skip:", e.message); }
 }
 
 function money(n){return (n||0).toLocaleString("fr-FR")+" F";}
@@ -254,7 +305,8 @@ function haversineKm(lat1,lon1,lat2,lon2){
   return 2*R*Math.asin(Math.sqrt(a));
 }
 async function calcRoadDistanceKm(clientLat, clientLon){
-  const url = "https://router.project-osrm.org/route/v1/driving/"+RESTO_COORDS.lon+","+RESTO_COORDS.lat+";"+clientLon+","+clientLat+"?overview=false&alternatives=false";
+  const rc = restoCoords();
+  const url = "https://router.project-osrm.org/route/v1/driving/"+rc.lon+","+rc.lat+";"+clientLon+","+clientLat+"?overview=false&alternatives=false";
   try{
     const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),8000);
     const res=await fetch(url,{signal:ctrl.signal});clearTimeout(t);
@@ -263,7 +315,7 @@ async function calcRoadDistanceKm(clientLat, clientLon){
       return { km: data.routes[0].distance/1000, source:"route" };
     }
   }catch(e){console.warn("OSRM fail",e);}
-  const straight=haversineKm(RESTO_COORDS.lat,RESTO_COORDS.lon,clientLat,clientLon);
+  const straight=haversineKm(rc.lat,rc.lon,clientLat,clientLon);
   return { km: straight*1.4, source:"approx" };
 }
 function orderTimerInfo(o){
@@ -280,7 +332,7 @@ function orderTimerInfo(o){
 }
 function deliveryFeeFor(o){
   if(!o||o.type!=="livraison") return 0;
-  if(o.deliveryKm!=null) return Math.round(o.deliveryKm * PRIX_PAR_KM);
+  if(o.deliveryKm!=null) return Math.round(o.deliveryKm * prixParKm());
   return 0;
 }
 function orderTotal(o){return o.items.filter(i=>i.statut!=="Refusé").reduce((s,i)=>s+i.price*i.qty,0);}
@@ -314,10 +366,9 @@ function subscribeAll(onUpdate) {
   onSnapshot(doc(db,"settings","main"),snap=>{if(snap.exists())DATA.settings=snap.data();onUpdate();});
 }
 
-// ==================== ACTIONS ====================
 const A = {
   login(role,name){ SESSION={role,name,userId:DEVICE_ID,since:Date.now()}; render(); },
-  logout(){ SESSION=null; loginRole=null; loginPin=""; loginError=""; render(); },
+  logout(){ SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; render(); },
   async addOrder(order){
     const newOrder={ createdAt:Date.now(), date:nowDate(), status:"att_validation",
       type:order.type||"sur_place", tableId:order.tableId||null, tableNumber:order.tableNumber||null,
@@ -393,7 +444,6 @@ const A = {
     if(nc>=3) p.escalated=true;
     await updateDoc(doc(db,"orders",orderId),p);
   },
-  // RESET OPERATIONS
   async resetTodayOrders(){
     const today=nowDate();
     const toDelete=DATA.orders.filter(o=>o.date===today);
@@ -458,6 +508,16 @@ const A = {
     const batch=writeBatch(db);
     DATA.resetLogs.forEach(l=>batch.delete(doc(db,"resetLogs",l._docId)));
     await batch.commit();
+  },
+  // AUTH logs
+  async logAuth(role, email, result){
+    await addDoc(collection(db,"resetLogs"),{
+      createdAt: Date.now(),
+      adminName: email || "?",
+      action: "Connexion " + (role==="admin"?"Admin":"Gérant"),
+      result: result,
+      pinTried: ""
+    });
   }
 };
 
@@ -477,13 +537,13 @@ function statusBadge(o){
   return '<span class="badge badge-rouge">À valider</span>';
 }
 
-let loginRole=null, loginPin="", loginError="";
+let loginRole=null, loginPin="", loginEmail="", loginPassword="", loginError="";
 let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
 let gerS={tab:"validation"};
 let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:""};
 let livS={tab:"available"};
-let pendingReset=null;  // { action, pin, error }
+let pendingReset=null;
 let mapInstance=null, mapMarker=null;
 
 function resetClient(){clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};localStorage.removeItem("ds_client_order");}
@@ -498,20 +558,42 @@ function topbar(opts){
 function screenLogin(){
   const ROLES=[
     {key:"client",em:"🍽️",label:"Client",desc:"Commander"},
-    {key:"serveuse",em:"👩‍🍳",label:"Serveuse",desc:"Service"},
-    {key:"gerant",em:"📋",label:"Gérant",desc:"Valide"},
-    {key:"cuisine",em:"👨‍🍳",label:"Cuisine",desc:"Prépare"},
-    {key:"livreur",em:"🛵",label:"Livreur",desc:"Livraisons"},
-    {key:"admin",em:"⚙️",label:"Admin",desc:"Config"}
+    {key:"serveuse",em:"👩‍🍳",label:"Serveuse",desc:"Service (PIN)"},
+    {key:"gerant",em:"📋",label:"Gérant",desc:"Identifiants"},
+    {key:"cuisine",em:"👨‍🍳",label:"Cuisine",desc:"Prépare (PIN)"},
+    {key:"livreur",em:"🛵",label:"Livreur",desc:"Livraisons (PIN)"},
+    {key:"admin",em:"⚙️",label:"Admin",desc:"Identifiants"}
   ];
   if(!loginRole){
     return '<div class="login"><div class="login-logo">D&S</div><p class="login-sub">Bienvenue au</p><h1 class="serif">Restaurant <span>D&S</span></h1><div class="role-grid">'+
       ROLES.map(r=>'<button class="role-btn" data-action="pick-role" data-role="'+r.key+'"><div class="em">'+r.em+'</div><p class="lab">'+r.label+'</p><p class="desc">'+r.desc+'</p></button>').join("")+'</div></div>';
   }
-  const labels={serveuse:"Serveuse",gerant:"Gérant",cuisine:"Cuisine",livreur:"Livreur",admin:"Admin"};
+  // Gérant/Admin : identifiants
+  if(loginRole==="gerant" || loginRole==="admin"){
+    const labels={gerant:"Gérant",admin:"Administrateur"};
+    const demo={gerant:"ibrahim@restaurant-ds.com / Ibrahim2024!",admin:"admin@restaurant-ds.com / AdminD&S2024!"};
+    return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div>'+
+      '<h1 class="serif">'+labels[loginRole]+'</h1>'+
+      '<div class="pin-wrap">'+
+        '<p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Identifiez-vous</p>'+
+        '<div style="display:flex;flex-direction:column;gap:14px">'+
+          '<div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label>'+
+            '<input class="auth-input" type="email" inputmode="email" data-input="login-email" value="'+esc(loginEmail)+'" placeholder="votre@email.com" autocomplete="username" autocapitalize="none"></div>'+
+          '<div><label class="text-xs" style="color:#aaa;font-weight:600">MOT DE PASSE</label>'+
+            '<input class="auth-input" type="password" data-input="login-password" value="'+esc(loginPassword)+'" placeholder="••••••••" autocomplete="current-password" id="login-pwd-input"></div>'+
+          (loginError?'<p class="pin-error" style="margin:0">'+esc(loginError)+'</p>':"")+
+          '<button class="btn btn-accent btn-block" style="padding:14px;font-size:15px;margin-top:6px" data-action="login-submit">Se connecter</button>'+
+          '<button class="pin-back" data-action="back-role" style="margin-top:4px">← Changer de rôle</button>'+
+          '<p class="pin-hint">Démo : '+demo[loginRole]+'</p>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
+  // Serveuse/Cuisine/Livreur : PIN
+  const labels={serveuse:"Serveuse",cuisine:"Cuisine",livreur:"Livreur"};
   const dots=[0,1,2,3].map(i=>'<div class="pin-dot '+(i<loginPin.length?"filled":"")+'"></div>').join("");
   const keypad=[1,2,3,4,5,6,7,8,9].map(n=>'<button class="pin-key" data-action="pin-digit" data-digit="'+n+'">'+n+'</button>').join("");
-  const hint={serveuse:"PIN démo : 4821 (Aïcha)",gerant:"PIN démo : 0000 (Ibrahim)",cuisine:"PIN démo : 1234 (Moussa)",livreur:"PIN démo : 5678 (Salif)",admin:"PIN démo : 9999"}[loginRole]||"";
+  const hint={serveuse:"PIN démo : 4821 (Aïcha)",cuisine:"PIN démo : 1234 (Moussa)",livreur:"PIN démo : 5678 (Salif)"}[loginRole]||"";
   return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap">'+
     '<p style="color:#aaa;font-size:13px;text-align:center;margin:0">Entrez votre code PIN</p><div class="pin-display">'+dots+'</div><div class="pin-pad">'+keypad+
     '<button class="pin-key blank" disabled></button><button class="pin-key" data-action="pin-digit" data-digit="0">0</button><button class="pin-key del" data-action="pin-del">⌫</button></div>'+
@@ -566,7 +648,7 @@ function screenClient(){
     const phoneOk=validPhoneBJ(v.info.phone);
     const nameOk=v.info.name && v.info.name.trim().length>1;
     const locOk=v.deliveryLat!=null && v.deliveryLon!=null;
-    const fee=v.deliveryKm!=null?Math.round(v.deliveryKm*PRIX_PAR_KM):0;
+    const fee=v.deliveryKm!=null?Math.round(v.deliveryKm*prixParKm()):0;
     return '<div class="app">'+topbar({title:"Adresse livraison",homeAction:"client-home",backAction:"client-back"})+
       '<div class="content content-narrow"><div style="display:flex;flex-direction:column;gap:14px">'+
         '<div><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="info-name" value="'+esc(v.info.name)+'" placeholder="Votre nom"></div>'+
@@ -579,7 +661,7 @@ function screenClient(){
           (v.deliveryLat!=null?('<div class="map-info" style="margin-top:12px"><div class="flex between center"><div><div class="text-xs" style="color:#aaa">Distance route</div>'+
             '<div class="dist">'+(v.deliveryKm!=null?v.deliveryKm.toFixed(2)+" km":"Calcul…")+'</div></div>'+
             '<div style="text-align:right"><div class="text-xs" style="color:#aaa">Frais livraison</div><div class="dist">'+(fee?money(fee):"—")+'</div></div></div>'+
-            '<div class="text-xs" style="color:#aaa;margin-top:6px">'+(v.deliveryKm!=null?(v.deliveryKm*PRIX_PAR_KM).toFixed(0)+" F à "+PRIX_PAR_KM+" F/km":"")+'</div></div>')
+            '<div class="text-xs" style="color:#aaa;margin-top:6px">'+(v.deliveryKm!=null?(v.deliveryKm*prixParKm()).toFixed(0)+" F à "+prixParKm()+" F/km":"")+'</div></div>')
             :'<div class="card" style="text-align:center;color:var(--gris);font-size:13px;margin-top:12px">Aucune position sélectionnée</div>')+
         '</div>'+
         '<div><label class="text-xs muted bold">REPÈRES (optionnel)</label><textarea class="input" style="margin-top:6px" rows="2" data-input="info-address" placeholder="Rue, porte, repère...">'+esc(v.info.address)+'</textarea></div>'+
@@ -589,7 +671,7 @@ function screenClient(){
   if(v.screen==="cart"){
     const items=menu.filter(m=>v.cart[m._docId]>0);
     const total=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
-    const fee=v.mode==="livraison"&&v.deliveryKm!=null?Math.round(v.deliveryKm*PRIX_PAR_KM):0;
+    const fee=v.mode==="livraison"&&v.deliveryKm!=null?Math.round(v.deliveryKm*prixParKm()):0;
     const wait=items.length?(s.waitMode==="sum"?items.reduce((a,d)=>a+d.time,0):Math.max(...items.map(d=>d.time))):0;
     return '<div class="app">'+topbar({title:"Panier",homeAction:"client-home",backAction:"client-back"})+
       '<div class="content content-narrow" style="flex:1">'+
@@ -671,11 +753,12 @@ function screenClient(){
 function initLeafletMap(){
   const mapEl=document.getElementById("map");
   if(!mapEl||mapInstance) return;
-  mapInstance=L.map("map").setView([RESTO_COORDS.lat,RESTO_COORDS.lon],13);
+  const rc = restoCoords();
+  mapInstance=L.map("map").setView([rc.lat,rc.lon],13);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OSM"}).addTo(mapInstance);
-  L.marker([RESTO_COORDS.lat,RESTO_COORDS.lon]).addTo(mapInstance).bindPopup("🍽️ Restaurant D&S").openPopup();
-  const lat=clientS.deliveryLat||RESTO_COORDS.lat;
-  const lon=clientS.deliveryLon||RESTO_COORDS.lon;
+  L.marker([rc.lat,rc.lon]).addTo(mapInstance).bindPopup("🍽️ Restaurant D&S").openPopup();
+  const lat=clientS.deliveryLat||rc.lat;
+  const lon=clientS.deliveryLon||rc.lon;
   if(clientS.deliveryLat!=null){
     mapMarker=L.marker([lat,lon],{draggable:true}).addTo(mapInstance);
     mapMarker.on("dragend",()=>{const p=mapMarker.getLatLng();setClientPosition(p.lat,p.lng);});
@@ -695,9 +778,7 @@ function setClientPosition(lat,lon){
   calcRoadDistanceKm(lat,lon).then(r=>{
     clientS.deliveryKm=r.km;
     render();
-  }).catch(e=>{
-    toast("Erreur calcul distance : "+e.message);
-  });
+  }).catch(e=>{ toast("Erreur calcul distance : "+e.message); });
 }
 function destroyMap(){ if(mapInstance){ mapInstance.remove(); mapInstance=null; mapMarker=null; } }
 
@@ -838,7 +919,7 @@ function screenGerant(){
         }).join("")+'</div>');
   } else if(v.tab==="invoices"){
     content='<h2 class="section-title">🧾 Factures à imprimer</h2><p class="section-sub">'+invoicesToPrint.length+' en attente</p>'+
-      '<p class="text-sm muted" style="margin-bottom:14px">Facture générée dès que le paiement est confirmé. Imprimez et remettez à la serveuse.</p>'+
+      '<p class="text-sm muted" style="margin-bottom:14px">Facture générée dès que le paiement est confirmé.</p>'+
       (invoicesToPrint.length===0?'<p class="empty">Aucune facture en attente</p>':
         invoicesToPrint.map(o=>'<div class="card" style="margin-bottom:10px">'+
           '<div class="card-row"><div><p class="card-title">'+(o.type==="livraison"?"Livraison — "+(o.clientInfo?.name||""):"Table "+(o.tableNumber||"—"))+'</p>'+
@@ -984,10 +1065,19 @@ function screenAdmin(){
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2><div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">'+
       '<input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'">'+
       '<select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select>'+
-      '<input class="input mono" placeholder="PIN" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'">'+
-      '<button class="btn btn-primary" data-action="admin-add-staff" '+((!v.newStaff.name||v.newStaff.pin.length<4)?"disabled":"")+'>Ajouter</button></div></div>'+
-      '<div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>'<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+'</p><p class="mono" style="color:var(--jaune-fonce);margin-top:4px">PIN '+esc(p.pin)+'</p>'+
-      '<div class="flex gap-2" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>').join("")+'</div>';
+      '<input class="input mono" placeholder="PIN (serveuse/cuisine/livreur)" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'">'+
+      '<input class="input" placeholder="Email (gérant/admin)" type="email" data-input="new-staff-email" value="'+esc(v.newStaff.email||"")+'">'+
+      '<input class="input" placeholder="Mot de passe (gérant/admin)" type="text" data-input="new-staff-pwd" value="'+esc(v.newStaff.password||"")+'">'+
+      '<button class="btn btn-primary" data-action="admin-add-staff">Ajouter</button></div>'+
+      '<p class="text-xs muted" style="margin-top:8px">Remplissez PIN pour serveuse/cuisine/livreur, email+mot de passe pour gérant/admin.</p></div>'+
+      '<div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>{
+        const creds = (p.role==="gerant"||p.role==="admin")
+          ? '📧 '+esc(p.email||"—")+'<br>🔑 '+esc(p.password||"—")
+          : 'PIN '+esc(p.pin||"—");
+        return '<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+'</p><p class="mono text-xs" style="color:var(--jaune-fonce);margin-top:6px">'+creds+'</p>'+
+        '<div class="flex gap-2" style="margin-top:12px">'+(p.role==="gerant"||p.role==="admin"?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Réinit MDP</button>':'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+
+        '<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>';
+      }).join("")+'</div>';
   } else if(v.section==="tables"){
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Tables & QR</h2>'+
       '<div class="flex gap-2" style="flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-action="admin-add-table">+ Ajouter</button>'+
@@ -1088,20 +1178,37 @@ function screenAdmin(){
   } else if(v.section==="settings"){
     if(!v.settingsForm)v.settingsForm={...DATA.settings};
     const f=v.settingsForm;
-    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Paramètres</h2><div class="card" style="max-width:520px">'+
-      '<div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div>'+
-      '<div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div>'+
-      '<div style="margin-bottom:14px"><label class="text-xs muted bold">HEURE RÉINITIALISATION BILAN (gérant)</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-bilan-hour" value="'+(f.bilanResetHour||6)+'"></div>'+
-      '<div style="margin-bottom:14px"><label class="text-xs muted bold">PRIX PAR KM (F)</label><input class="input" type="number" style="margin-top:6px" data-input="set-km-price" value="'+(f.prixKm||110)+'" disabled></div>'+
-      '<div style="margin-bottom:16px"><label class="text-xs muted bold">TEMPS ATTENTE</label><select class="input" style="margin-top:6px" data-input="set-wait"><option value="max" '+(f.waitMode==="max"?"selected":"")+'>Plat le plus long</option><option value="sum" '+(f.waitMode==="sum"?"selected":"")+'>Somme</option></select></div>'+
-      '<button class="btn btn-accent btn-block" data-action="admin-save-settings">Enregistrer</button></div>';
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Paramètres</h2>'+
+      '<div class="card" style="max-width:600px;margin-bottom:16px">'+
+        '<h3 class="bold" style="margin-bottom:14px;font-size:15px">🆔 Identité</h3>'+
+        '<div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div>'+
+        '<div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div>'+
+        '<div style="margin-bottom:14px"><label class="text-xs muted bold">HEURE RÉINITIALISATION BILAN (gérant)</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-bilan-hour" value="'+(f.bilanResetHour||6)+'"></div>'+
+        '<div style="margin-bottom:14px"><label class="text-xs muted bold">TEMPS ATTENTE</label><select class="input" style="margin-top:6px" data-input="set-wait"><option value="max" '+(f.waitMode==="max"?"selected":"")+'>Plat le plus long</option><option value="sum" '+(f.waitMode==="sum"?"selected":"")+'>Somme</option></select></div>'+
+      '</div>'+
+      '<div class="card" style="max-width:600px;margin-bottom:16px">'+
+        '<h3 class="bold" style="margin-bottom:14px;font-size:15px">📍 Localisation du restaurant</h3>'+
+        '<p class="text-xs muted" style="margin-bottom:12px">Ces coordonnées servent à calculer la distance de livraison (itinéraire le plus court via OSRM).</p>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+          '<div><label class="text-xs muted bold">LATITUDE</label><input class="input" type="text" inputmode="decimal" style="margin-top:6px;font-family:monospace;font-size:13px" data-input="set-resto-lat" value="'+esc(String(f.restoLat!=null?f.restoLat:DEFAULT_RESTO.lat))+'"></div>'+
+          '<div><label class="text-xs muted bold">LONGITUDE</label><input class="input" type="text" inputmode="decimal" style="margin-top:6px;font-family:monospace;font-size:13px" data-input="set-resto-lon" value="'+esc(String(f.restoLon!=null?f.restoLon:DEFAULT_RESTO.lon))+'"></div>'+
+        '</div>'+
+        '<p class="text-xs muted" style="margin-top:10px">Valeur actuelle : <strong>'+restoCoords().lat.toFixed(6)+', '+restoCoords().lon.toFixed(6)+'</strong></p>'+
+        '<a href="https://www.google.com/maps?q='+restoCoords().lat+','+restoCoords().lon+'" target="_blank" class="btn btn-ghost btn-sm" style="margin-top:10px;text-decoration:none">🗺️ Vérifier sur Google Maps</a>'+
+      '</div>'+
+      '<div class="card" style="max-width:600px;margin-bottom:16px">'+
+        '<h3 class="bold" style="margin-bottom:14px;font-size:15px">💰 Tarifs livraison</h3>'+
+        '<div><label class="text-xs muted bold">PRIX PAR KM (F)</label><input class="input" type="number" min="0" style="margin-top:6px" data-input="set-km-price" value="'+(f.prixKm||DEFAULT_PRIX_KM)+'"></div>'+
+        '<p class="text-xs muted" style="margin-top:6px">Exemple : 5 km = '+(5*(f.prixKm||DEFAULT_PRIX_KM))+' F</p>'+
+      '</div>'+
+      '<button class="btn btn-accent btn-block" style="max-width:600px" data-action="admin-save-settings">Enregistrer les paramètres</button>';
   } else if(v.section==="maintenance"){
     const totalOrders=DATA.orders.length;
     const todayOrders=DATA.orders.filter(o=>o.date===nowDate()).length;
     const activeOrders=DATA.orders.filter(o=>o.status==="att_validation"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt)).length;
     const paidOrders=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status)).length;
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:4px">🧹 Maintenance & Réinitialisation</h2>'+
-      '<p class="section-sub">Effacez les données de test pour repartir sur des bilans propres. Chaque action demande votre PIN administrateur.</p>'+
+      '<p class="section-sub">Effacez les données de test. Chaque action demande votre <strong>mot de passe admin</strong>.</p>'+
       '<div class="stats-grid" style="margin-bottom:20px">'+
         '<div class="stat-card"><p class="stat-label">Total commandes</p><p class="stat-value">'+totalOrders+'</p></div>'+
         '<div class="stat-card"><p class="stat-label">Aujourd\'hui</p><p class="stat-value">'+todayOrders+'</p></div>'+
@@ -1115,11 +1222,11 @@ function screenAdmin(){
           '<button class="btn btn-danger btn-block" data-action="admin-reset-today">🔐 Effacer ventes du jour ('+todayOrders+')</button></div>'+
         '<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)">'+
           '<p class="bold" style="margin-bottom:4px">Effacer les commandes en cours</p>'+
-          '<p class="text-xs muted" style="margin-bottom:10px">Uniquement les commandes non payées. Ventes payées conservées.</p>'+
+          '<p class="text-xs muted" style="margin-bottom:10px">Uniquement les commandes non payées.</p>'+
           '<button class="btn btn-danger btn-block" data-action="admin-reset-active">🔐 Effacer commandes en cours ('+activeOrders+')</button></div>'+
         '<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)">'+
           '<p class="bold" style="margin-bottom:4px">Effacer TOUTES les ventes</p>'+
-          '<p class="text-xs muted" style="margin-bottom:10px">Supprime tout l\'historique. Utile au démarrage réel.</p>'+
+          '<p class="text-xs muted" style="margin-bottom:10px">Supprime tout l\'historique.</p>'+
           '<button class="btn btn-danger btn-block" data-action="admin-reset-all">🔐 Effacer TOUTES les ventes ('+totalOrders+')</button></div>'+
         '<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)">'+
           '<p class="bold" style="margin-bottom:4px">Réinitialiser le menu</p>'+
@@ -1131,7 +1238,7 @@ function screenAdmin(){
           '<button class="btn btn-danger btn-block" data-action="admin-reset-stock">🔐 Réinitialiser le stock</button></div>'+
         '<div>'+
           '<p class="bold" style="margin-bottom:4px">Remise à zéro complète</p>'+
-          '<p class="text-xs muted" style="margin-bottom:10px">Réinitialise TOUT : menu, personnel, tables, stock, zones, paramètres, commandes.</p>'+
+          '<p class="text-xs muted" style="margin-bottom:10px">Réinitialise TOUT (menu, personnel, tables, stock, paramètres, commandes).</p>'+
           '<button class="btn btn-danger btn-block" data-action="admin-reset-everything">🔥 TOUT RÉINITIALISER</button></div>'+
       '</div>'+
       '<h3 class="bold" style="margin-bottom:10px;font-size:15px">📜 Journal des tentatives ('+DATA.resetLogs.length+')</h3>'+
@@ -1139,9 +1246,9 @@ function screenAdmin(){
         '<div class="card" style="padding:0;margin-bottom:12px;max-height:400px;overflow-y:auto">'+
           DATA.resetLogs.slice(0,50).map(l=>{
             const ok = l.result && l.result.indexOf("✅")===0;
-            return '<div class="log-row"><div style="flex:1;min-width:0"><div style="font-weight:600">'+esc(l.action||"?")+'</div>'+
-              '<div class="text-xs muted">'+esc(l.adminName||"?")+(l.pinTried?' · PIN tenté '+esc(l.pinTried):"")+'</div></div>'+
-              '<div style="text-align:right"><div class="'+(ok?"log-ok":"log-fail")+'">'+esc(l.result||"?")+'</div>'+
+            return '<div class="log-row"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12px">'+esc(l.action||"?")+'</div>'+
+              '<div class="text-xs muted">'+esc(l.adminName||"?")+(l.pinTried?' · MDP tenté '+esc(l.pinTried):"")+'</div></div>'+
+              '<div style="text-align:right;white-space:nowrap"><div class="'+(ok?"log-ok":"log-fail")+'" style="font-size:11px">'+esc(l.result||"?")+'</div>'+
               '<div class="when">'+fmtDateTime(l.createdAt)+'</div></div></div>';
           }).join("")+'</div>'+
         '<button class="btn btn-ghost" data-action="admin-clear-logs">🔐 Vider le journal</button>');
@@ -1154,14 +1261,15 @@ function screenAdmin(){
 function screenPinModal(){
   if(!pendingReset) return "";
   const labels = { today:"Effacer les ventes du jour", all:"Effacer TOUTES les ventes", active:"Effacer les commandes en cours", menu:"Réinitialiser le menu", stock:"Réinitialiser le stock", everything:"TOUT RÉINITIALISER", "clear-logs":"Vider le journal" };
-  const colors = { today:"var(--rouge)", all:"var(--rouge)", active:"var(--rouge)", menu:"var(--rouge)", stock:"var(--rouge)", everything:"var(--rouge)", "clear-logs":"var(--rouge)" };
+  // Nom aléatoire pour éviter le pré-remplissage navigateur
+  const fieldName = "pwd-" + Math.random().toString(36).slice(2,10);
   return '<div class="modal-overlay"><div class="modal-card">'+
     '<div style="font-size:48px;margin-bottom:12px">🔐</div>'+
     '<h2>Vérification requise</h2>'+
-    '<p style="margin-bottom:6px">Action :</p>'+
-    '<p style="font-weight:700;color:'+colors[pendingReset.action]+';font-size:16px;margin-bottom:12px">'+esc(labels[pendingReset.action]||pendingReset.action)+'</p>'+
-    '<p style="font-size:13px">Entrez votre PIN administrateur pour confirmer.</p>'+
-    '<input type="password" inputmode="numeric" maxlength="4" id="reset-pin-input" value="'+esc(pendingReset.pin)+'" class="pin-modal-input" placeholder="••••">'+
+    '<p style="margin-bottom:6px;font-size:13px">Action :</p>'+
+    '<p style="font-weight:700;color:var(--rouge);font-size:15px;margin-bottom:14px">'+esc(labels[pendingReset.action]||pendingReset.action)+'</p>'+
+    '<p style="font-size:13px;margin-bottom:10px">Saisissez votre <strong>mot de passe administrateur</strong> pour confirmer.</p>'+
+    '<input type="password" id="reset-pin-input" name="'+fieldName+'" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" value="" class="pin-modal-input" placeholder="••••">'+
     (pendingReset.error?'<p style="color:var(--rouge);font-size:13px;margin:0 0 10px;font-weight:600">'+esc(pendingReset.error)+'</p>':'<div style="height:20px"></div>')+
     '<div style="display:flex;gap:8px;margin-top:8px">'+
       '<button class="btn btn-ghost" style="flex:1" data-action="reset-cancel">Annuler</button>'+
@@ -1185,16 +1293,15 @@ function render(){
   else if(SESSION.role==="cuisine")html=screenCuisine();
   else if(SESSION.role==="livreur")html=screenLivreur();
   else if(SESSION.role==="admin")html=screenAdmin();
-  // PIN modal on top if admin has pending reset
   if(SESSION.role==="admin" && pendingReset) html+=screenPinModal();
   root.innerHTML=html;
   restoreInput(saved);
   if(SESSION.role==="client" && clientS.screen==="deliveryInfo"){
     setTimeout(initLeafletMap, 100);
   }
-  // Auto-focus on PIN modal input
+  // Force clear the PIN input after render (sécurité : jamais pré-rempli)
   if(pendingReset){
-    setTimeout(()=>{ const el=document.getElementById("reset-pin-input"); if(el) el.focus(); }, 50);
+    setTimeout(()=>{ const el=document.getElementById("reset-pin-input"); if(el){ el.value=""; el.focus(); } }, 60);
   }
 }
 
@@ -1268,31 +1375,58 @@ document.addEventListener("click",async function(e){
   const idx=el.dataset.idx!==undefined?parseInt(el.dataset.idx):null;
   const v=clientS;
 
-  if(action==="pick-role"){loginRole=el.dataset.role;loginPin="";loginError="";
-    if(loginRole==="client"){A.login("client","Client");}else{render();}return;}
-  if(action==="back-role"){loginRole=null;loginPin="";loginError="";render();return;}
+  if(action==="pick-role"){
+    loginRole=el.dataset.role;loginPin="";loginEmail="";loginPassword="";loginError="";
+    if(loginRole==="client"){A.login("client","Client");}else{render();}
+    return;
+  }
+  if(action==="back-role"){loginRole=null;loginPin="";loginEmail="";loginPassword="";loginError="";render();return;}
   if(action==="pin-digit"){pinAdd(el.dataset.digit);return;}
   if(action==="pin-del"){pinDel();return;}
+
+  // LOGIN SUBMIT (gérant/admin avec email+mdp)
+  if(action==="login-submit"){
+    const email=loginEmail.trim().toLowerCase();
+    const pwd=loginPassword;
+    if(!email||!pwd){ loginError="Remplissez tous les champs"; render(); return; }
+    const user=DATA.staff.find(s=>s.role===loginRole && s.email && s.email.toLowerCase()===email && s.password===pwd);
+    if(user){
+      A.login(loginRole,user.name);
+      loginRole=null; loginEmail=""; loginPassword=""; loginError="";
+      // trace de connexion réussie
+      A.logAuth(user.role, user.email, "✅ Connexion réussie");
+    } else {
+      loginError="Identifiants incorrects";
+      loginPassword="";
+      // trace tentative échouée
+      A.logAuth(loginRole, email, "❌ Échec connexion");
+      render();
+    }
+    return;
+  }
 
   if(action==="logout"){resetClient();destroyMap();pendingReset=null;
     srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
     gerS={tab:"validation"};livS={tab:"available"};
-    admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:""};
+    admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:""};
     A.logout();return;}
 
-  // === RESET MODAL HANDLERS ===
+  // === RESET MODAL ===
   if(action==="reset-cancel"){ pendingReset=null; render(); return; }
   if(action==="reset-confirm"){
     if(!pendingReset) return;
     const admin=DATA.staff.find(s=>s.role==="admin");
-    if(!admin){ pendingReset.error="Aucun compte admin configuré"; render(); return; }
-    if(pendingReset.pin.length<4){ pendingReset.error="PIN incomplet"; render(); return; }
-    if(pendingReset.pin!==admin.pin){
-      const wrongPin = pendingReset.pin;
+    if(!admin){ pendingReset.error="Aucun admin configuré"; render(); return; }
+    if(!pendingReset.pin || pendingReset.pin.length<4){ pendingReset.error="Mot de passe trop court"; render(); return; }
+    // Accepte le password OU le pin legacy
+    const okPwd = admin.password && admin.password === pendingReset.pin;
+    const okPin = !admin.password && admin.pin === pendingReset.pin;
+    if(!(okPwd || okPin)){
+      const wrong = pendingReset.pin;
       const failedAction = pendingReset.action;
-      pendingReset.error="PIN incorrect — tentative enregistrée";
+      pendingReset.error="Mot de passe incorrect — tentative enregistrée";
       pendingReset.pin="";
-      await A.logReset(failedAction, "❌ PIN incorrect", wrongPin);
+      await A.logReset(failedAction, "❌ Mot de passe incorrect", wrong);
       render();
       return;
     }
@@ -1305,7 +1439,7 @@ document.addEventListener("click",async function(e){
       else if(act==="active"){ const n=await A.resetActiveOrders(); resultMsg=n+" commande(s) effacée(s)"; }
       else if(act==="menu"){ await A.resetMenu(); resultMsg="Menu réinitialisé"; }
       else if(act==="stock"){ await A.resetStock(); resultMsg="Stock réinitialisé"; }
-      else if(act==="everything"){ await A.resetEverything(); resultMsg="Remise à zéro complète effectuée"; }
+      else if(act==="everything"){ await A.resetEverything(); resultMsg="Remise à zéro effectuée"; }
       else if(act==="clear-logs"){ const n=DATA.resetLogs.length; await A.clearResetLogs(); resultMsg=n+" entrée(s) supprimée(s)"; }
       await A.logReset(act, "✅ Succès", null);
       toast(resultMsg);
@@ -1317,7 +1451,6 @@ document.addEventListener("click",async function(e){
     return;
   }
 
-  // CLIENT
   if(action==="client-mode"){v.mode=el.dataset.mode;v.screen="menu";render();return;}
   if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;destroyMap();render();return;}
   if(action==="client-back"){
@@ -1387,7 +1520,6 @@ document.addEventListener("click",async function(e){
     const o=DATA.orders.find(o=>o._docId===v.orderId); if(!o) return;
     await A.callServeuse(o._docId);notify("🔔 Client appelle","Table "+(o.tableNumber||"—"));toast("Serveuse notifiée");render();return;}
 
-  // SERVEUSE
   if(action==="srv-home"){srvS.tab="tables";srvS.orderStep="table";srvS.orderTable=null;srvS.orderCart={};render();return;}
   if(action==="srv-tab"){srvS.tab=el.dataset.tab;render();return;}
   if(action==="srv-pick-table"){srvS.orderTable=id;srvS.orderStep="menu";render();return;}
@@ -1405,7 +1537,6 @@ document.addEventListener("click",async function(e){
   if(action==="srv-cash-issue"){if(!confirm("Signaler paiement NON reçu ?"))return;await A.confirmCash(id,false);toast("Signalé");render();return;}
   if(action==="srv-served"){await A.markServed(id);toast("Servie !");render();return;}
 
-  // GÉRANT
   if(action==="ger-home"){gerS.tab="validation";render();return;}
   if(action==="ger-tab"){gerS.tab=el.dataset.tab;render();return;}
   if(action==="ger-force-affect"){gerS.tab="affectation";render();return;}
@@ -1420,11 +1551,9 @@ document.addEventListener("click",async function(e){
     const cur=day[el.dataset.table]===el.dataset.serveuse;
     await A.setAffectation(today,el.dataset.table,cur?null:el.dataset.serveuse);return;}
 
-  // CUISINE
   if(action==="cui-home"){render();return;}
   if(action==="cui-ready"){await A.markReady(id);toast("Prêt !");render();return;}
 
-  // LIVREUR
   if(action==="liv-home"){livS.tab="available";render();return;}
   if(action==="liv-tab"){livS.tab=el.dataset.tab;render();return;}
   if(action==="liv-take"){
@@ -1434,7 +1563,6 @@ document.addEventListener("click",async function(e){
   if(action==="liv-enroute"){await A.setDeliveryStatus(id,"en_route");return;}
   if(action==="liv-done"){await A.markDelivered(id);render();return;}
 
-  // ADMIN
   if(action==="admin-home"){admS.section="menu";admS.editingDish=null;render();return;}
   if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;admS.showNewStock=false;
     if(el.dataset.section==="bilan"){
@@ -1442,6 +1570,7 @@ document.addEventListener("click",async function(e){
       if(!admS.bilanFrom) admS.bilanFrom=today;
       if(!admS.bilanTo) admS.bilanTo=today;
     }
+    if(el.dataset.section==="settings"){ admS.settingsForm={...DATA.settings}; }
     render();return;}
   if(action==="admin-add-dish"){await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:""});return;}
   if(action==="admin-edit-dish"){admS.editingDish=id;render();return;}
@@ -1456,8 +1585,23 @@ document.addEventListener("click",async function(e){
     await A.updateDish(id,{name,desc,cat,price,time,available:avail});
     admS.editingDish=null;return;}
   if(action==="admin-del-dish"){if(confirm("Supprimer ?"))await A.removeDish(id);return;}
-  if(action==="admin-add-staff"){await A.addStaff({...admS.newStaff});admS.newStaff={name:"",role:"serveuse",pin:""};render();return;}
+  if(action==="admin-add-staff"){
+    const s={...admS.newStaff};
+    if((s.role==="gerant"||s.role==="admin")){
+      if(!s.email || !s.password){ toast("Email + mot de passe requis"); return; }
+    } else {
+      if(!s.pin || s.pin.length<4){ toast("PIN 4 chiffres requis"); return; }
+      s.email=""; s.password="";
+    }
+    await A.addStaff(s);
+    admS.newStaff={name:"",role:"serveuse",pin:"",email:"",password:""};
+    render();return;}
   if(action==="admin-reset-pin"){const pin=await A.resetPin(id);toast("PIN: "+pin);return;}
+  if(action==="admin-reset-creds"){
+    const newPwd=prompt("Nouveau mot de passe :");
+    if(!newPwd||newPwd.length<6){ toast("Min 6 caractères"); return; }
+    await A.updateStaff(id,{password:newPwd});
+    toast("Mot de passe mis à jour");return;}
   if(action==="admin-del-staff"){if(confirm("Supprimer ?"))await A.removeStaff(id);return;}
   if(action==="admin-add-table"){await A.addTable();return;}
   if(action==="admin-del-table"){if(confirm("Supprimer ?"))await A.removeTable(id);return;}
@@ -1472,14 +1616,31 @@ document.addEventListener("click",async function(e){
   if(action==="admin-del-stock"){if(confirm("Supprimer ?"))await A.removeStockItem(id);return;}
   if(action==="admin-add-move"){if(!admS.stockForm.stockId||!admS.stockForm.qty)return;
     await A.addStockMove({...admS.stockForm});admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};toast("Enregistré");return;}
-  if(action==="admin-save-settings"){await A.updateSettings(admS.settingsForm);admS.settingsForm=null;toast("Enregistré");return;}
+  if(action==="admin-save-settings"){
+    // Valider les coordonnées
+    const f = admS.settingsForm;
+    const lat = parseFloat(f.restoLat);
+    const lon = parseFloat(f.restoLon);
+    const km = parseInt(f.prixKm);
+    if(isNaN(lat) || lat < -90 || lat > 90){ toast("Latitude invalide"); return; }
+    if(isNaN(lon) || lon < -180 || lon > 180){ toast("Longitude invalide"); return; }
+    if(isNaN(km) || km < 0){ toast("Prix/km invalide"); return; }
+    await A.updateSettings({
+      restaurantName: f.restaurantName||"",
+      phone: f.phone||"",
+      bilanResetHour: parseInt(f.bilanResetHour)||6,
+      waitMode: f.waitMode||"max",
+      restoLat: lat,
+      restoLon: lon,
+      prixKm: km
+    });
+    admS.settingsForm=null;toast("Paramètres enregistrés ✓");render();return;}
   if(action==="admin-bilan-apply"){render();return;}
   if(action==="admin-bilan-today"){const t=nowDate();admS.bilanFrom=t;admS.bilanTo=t;render();return;}
   if(action==="admin-bilan-week"){const to=new Date();const from=new Date();from.setDate(from.getDate()-6);
     admS.bilanFrom=from.toISOString().slice(0,10);admS.bilanTo=to.toISOString().slice(0,10);render();return;}
   if(action==="admin-bilan-month"){const to=new Date();const from=new Date();from.setDate(from.getDate()-29);
     admS.bilanFrom=from.toISOString().slice(0,10);admS.bilanTo=to.toISOString().slice(0,10);render();return;}
-  // RESET BUTTONS → open PIN modal
   if(action==="admin-reset-today"){pendingReset={action:"today",pin:"",error:""};render();return;}
   if(action==="admin-reset-all"){pendingReset={action:"all",pin:"",error:""};render();return;}
   if(action==="admin-reset-active"){pendingReset={action:"active",pin:"",error:""};render();return;}
@@ -1514,23 +1675,29 @@ document.addEventListener("change",async function(e){
 });
 
 document.addEventListener("input",function(e){
-  // Special PIN modal input - no re-render
+  // === PIN MODAL ===
   if(e.target.id==="reset-pin-input"){
     if(pendingReset){
-      const cleaned=e.target.value.replace(/\D/g,"").slice(0,4);
-      pendingReset.pin=cleaned;
-      if(e.target.value!==cleaned) e.target.value=cleaned;
+      const val=e.target.value;
+      pendingReset.pin=val;
       pendingReset.error="";
     }
     return;
   }
-  const el=e.target;const key=el.dataset.input;if(!key)return;
+  // === LOGIN EMAIL/PASSWORD (no re-render) ===
+  const el=e.target;const key=el.dataset.input;
+  if(key==="login-email"){ loginEmail=el.value; return; }
+  if(key==="login-password"){ loginPassword=el.value; return; }
+  // === Reste ===
+  if(!key)return;
   const v=clientS;
   if(key==="info-name")v.info.name=el.value;
   if(key==="info-phone")v.info.phone=el.value.replace(/[^\d]/g,"").slice(0,10);
   if(key==="info-address")v.info.address=el.value;
   if(key==="new-staff-name")admS.newStaff.name=el.value;
   if(key==="new-staff-pin"){admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);render();}
+  if(key==="new-staff-email")admS.newStaff.email=el.value;
+  if(key==="new-staff-pwd")admS.newStaff.password=el.value;
   if(key==="new-stock-name")admS.newStockItem.name=el.value;
   if(key==="new-stock-unit")admS.newStockItem.unit=el.value;
   if(key==="new-stock-initial")admS.newStockItem.initial=parseFloat(el.value)||0;
@@ -1542,29 +1709,36 @@ document.addEventListener("input",function(e){
   if(key==="set-name"&&admS.settingsForm)admS.settingsForm.restaurantName=el.value;
   if(key==="set-phone"&&admS.settingsForm)admS.settingsForm.phone=el.value;
   if(key==="set-bilan-hour"&&admS.settingsForm)admS.settingsForm.bilanResetHour=parseInt(el.value)||6;
+  if(key==="set-resto-lat"&&admS.settingsForm)admS.settingsForm.restoLat=el.value;
+  if(key==="set-resto-lon"&&admS.settingsForm)admS.settingsForm.restoLon=el.value;
+  if(key==="set-km-price"&&admS.settingsForm)admS.settingsForm.prixKm=parseInt(el.value)||0;
   if(key==="bilan-from")admS.bilanFrom=el.value;
   if(key==="bilan-to")admS.bilanTo=el.value;
 });
 
 document.addEventListener("keydown",function(e){
-  // Handle Enter in PIN modal
   if(pendingReset && document.activeElement && document.activeElement.id==="reset-pin-input"){
-    if(e.key==="Enter"){
-      e.preventDefault();
-      document.querySelector('[data-action="reset-confirm"]')?.click();
-      return;
-    }
+    if(e.key==="Enter"){ e.preventDefault(); document.querySelector('[data-action="reset-confirm"]')?.click(); return; }
     return;
   }
   if(SESSION)return;
   if(!loginRole)return;
+  // Ne s'applique qu'aux rôles avec PIN
+  if(loginRole==="gerant" || loginRole==="admin"){
+    // Entrée sur password = submit
+    if(e.key==="Enter" && document.activeElement && document.activeElement.dataset.input==="login-password"){
+      e.preventDefault();
+      document.querySelector('[data-action="login-submit"]')?.click();
+    }
+    return;
+  }
   if(/^\d$/.test(e.key)){pinAdd(e.key);e.preventDefault();return;}
   if(e.key==="Backspace"){pinDel();e.preventDefault();return;}
 });
 
 setInterval(function(){
   if(!SESSION)return;
-  if(pendingReset) return; // Ne pas re-render pendant la saisie du PIN
+  if(pendingReset) return;
   if(SESSION.role==="cuisine"||SESSION.role==="serveuse"||SESSION.role==="gerant"){render();}
   if(SESSION.role==="client"&&clientS.screen==="tracking"&&clientS.timerRemaining>0){clientS.timerRemaining--;render();}
 },1000);
@@ -1599,9 +1773,16 @@ if("Notification" in window && Notification.permission==="default"){setTimeout((
 })();
 
 (async function boot(){
-  try{await seedIfEmpty();subscribeAll(render);render();}
-  catch(e){console.error(e);
-    document.getElementById("root").innerHTML='<div class="loader"><div class="loader-logo">⚠️</div><p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">Erreur : '+esc(e.message||e)+'</p><button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#ffc107;color:#0a0a0a;border:none;border-radius:8px;font-weight:bold;cursor:pointer">Réessayer</button></div>';}
+  try{
+    await seedIfEmpty();
+    await migrateIfNeeded();
+    subscribeAll(render);
+    render();
+  }
+  catch(e){
+    console.error(e);
+    document.getElementById("root").innerHTML='<div class="loader"><div class="loader-logo">⚠️</div><p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">Erreur : '+esc(e.message||e)+'</p><button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#ffc107;color:#0a0a0a;border:none;border-radius:8px;font-weight:bold;cursor:pointer">Réessayer</button></div>';
+  }
 })();
 </script>
 </body>
