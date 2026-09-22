@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Restaurant D&S</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{--noir:#0a0a0a;--jaune:#ffc107;--jaune-fonce:#e0a800;--creme:#f7f5ef;--sable:#e8e2d0;--vert:#2d7a3e;--rouge:#c0392b;--gris:#6b6b6b}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -12,7 +14,7 @@ html,body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe
 button{font-family:inherit;cursor:pointer;border:none}
 input,select,textarea{font-family:inherit;font-size:16px}
 .app{min-height:100vh;display:flex;flex-direction:column}
-.loader{position:fixed;inset:0;background:var(--noir);color:var(--jaune);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;font-family:Georgia,serif}
+.loader{position:fixed;inset:0;background:var(--noir);color:var(--jaune);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999}
 .loader-logo{width:80px;height:80px;border-radius:50%;background:var(--jaune);color:var(--noir);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:bold;margin-bottom:16px}
 .loader-text{margin-top:20px;font-size:14px;color:#888;text-align:center;padding:0 20px}
 .spin{width:40px;height:40px;border:4px solid #222;border-top-color:var(--jaune);border-radius:50%;animation:spin 1s linear infinite;margin-top:20px}
@@ -42,7 +44,6 @@ input,select,textarea{font-family:inherit;font-size:16px}
 .pin-hint{font-size:11px;color:#666;margin-top:14px;text-align:center;line-height:1.7}
 .topbar{background:var(--noir);color:white;padding:8px 10px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:30;border-bottom:3px solid var(--jaune)}
 .topbar-btn{background:transparent;color:white;padding:8px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:4px;min-height:40px}
-.topbar-btn:active{background:#252525}
 .topbar-title{flex:1;font-family:Georgia,serif;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
 .topbar-sub{font-size:10px;color:#aaa;margin:0;text-align:center}
 .topbar-logout{background:transparent;color:#ff7066;font-size:12px;padding:8px;font-weight:600}
@@ -139,32 +140,17 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 .cat-group-title{font-family:Georgia,serif;font-size:18px;color:var(--noir);padding:8px 12px;background:var(--jaune);border-radius:8px;margin-bottom:8px;display:inline-block}
 .alert-banner{background:rgba(192,57,43,0.1);border:2px solid var(--rouge);border-radius:12px;padding:14px;margin-bottom:16px}
 .alert-banner strong{color:var(--rouge)}
-.zone-item{display:flex;align-items:center;gap:10px;padding:10px;background:white;border:1px solid var(--sable);border-radius:8px;margin-bottom:8px}
-.zone-item input{padding:6px;border:1px solid var(--sable);border-radius:6px}
-.distance-info{background:rgba(45,122,62,0.08);border:2px solid var(--vert);border-radius:12px;padding:12px;margin-top:8px}
-.distance-info .val{font-family:monospace;font-weight:bold;color:var(--vert);font-size:16px}
-/* FACTURE 80mm */
-#receipt-print-area{display:none}
-@media print{
-  body *{visibility:hidden}
-  #receipt-print-area,#receipt-print-area *{visibility:visible}
-  #receipt-print-area{display:block!important;position:absolute;left:0;top:0;width:80mm;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.4;color:#000;background:white;padding:2mm}
-  #qr-print-area,#qr-print-area *{visibility:visible}
-  #qr-print-area{position:absolute;left:0;top:0;width:100%;padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
-  .no-print{display:none!important}
-}
-.receipt-paper{width:80mm;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.4;color:#000;background:white;padding:4mm;border:1px dashed #999;margin:0 auto}
-.receipt-paper h2{font-size:15px;text-align:center;margin:0 0 2px}
-.receipt-paper .r-sub{text-align:center;font-size:10px;margin:0 0 8px}
-.receipt-paper .r-line{border-top:1px dashed #000;margin:6px 0}
-.receipt-paper .r-row{display:flex;justify-content:space-between;font-size:12px}
-.receipt-paper .r-total{display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:4px}
-.receipt-paper .r-center{text-align:center;font-size:11px;margin:4px 0}
+#leaflet-map{width:100%;height:320px;border-radius:12px;border:2px solid var(--sable);z-index:1}
+.fee-box{background:var(--noir);color:white;border-radius:12px;padding:14px;margin-top:12px}
+.fee-box .fee-line{display:flex;justify-content:space-between;margin-bottom:6px;font-size:14px}
+.fee-box .fee-line.total{font-weight:bold;font-size:16px;color:var(--jaune);border-top:1px solid #444;padding-top:8px;margin-top:8px}
+@media print{body *{visibility:hidden}#qr-print-area,#qr-print-area *{visibility:visible}#qr-print-area{position:absolute;left:0;top:0;width:100%;padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:20px}}
+@media print{body.print-receipt #receipt-print-area,body.print-receipt #receipt-print-area *{visibility:visible}body.print-receipt #receipt-print-area{position:absolute;left:0;top:0;width:72mm;font-family:'Courier New',monospace;font-size:11pt;line-height:1.3;color:#000;background:#fff;padding:2mm}@page{size:80mm auto;margin:2mm}}
+@media print{body.print-qr #qr-print-area{visibility:visible}#qr-print-area *{visibility:visible}@page{size:A4;margin:10mm}}
 </style>
 </head>
 <body>
 <div id="root"><div class="loader"><div class="loader-logo">D&S</div><h1 style="font-family:Georgia,serif;margin:0 0 20px;color:var(--jaune)">Restaurant D&S</h1><div class="spin"></div><p class="loader-text">Connexion…</p></div></div>
-<div id="receipt-print-area"></div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, limit, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -173,16 +159,18 @@ const firebaseConfig = { apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0", auth
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 
-// Coordonnées GPS du restaurant D&S
-const RESTO_LAT = 6.43737;
-const RESTO_LON = 2.34484;
-const PRIX_PAR_KM = 110; // F CFA par kilomètre
+// ========== CONFIG RESTAURANT (GÉOLOCALISATION) ==========
+const RESTAURANT_LAT = 6.454877410013232;
+const RESTAURANT_LNG = 2.279816313097269;
+const DEFAULT_FEE_PER_KM = 110;
+const DEFAULT_MIN_FEE = 500;
+const DEFAULT_MAX_KM = 15;
 
 let DEVICE_ID = localStorage.getItem("ds_device_id");
 if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); localStorage.setItem("ds_device_id", DEVICE_ID); }
 
 let SESSION = null;
-let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{}, zones:[] };
+let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{} };
 const SITE_URL = "https://restaurant-ds.github.io/restaurant-ds/";
 
 const SEED = {
@@ -214,8 +202,11 @@ const SEED = {
     { id:"st4", name:"Huile", unit:"L", initial:40, threshold:8 },
     { id:"st5", name:"Légumes", unit:"kg", initial:20, threshold:5 }
   ],
-  zones: [],
-  settings: { restaurantName:"Restaurant D&S", phone:"27 20 00 00 00", fraisLivraison:1000, prixParKm:110, timerMode:"auto", waitMode:"max" }
+  settings: {
+    restaurantName:"Restaurant D&S", phone:"27 20 00 00 00", timerMode:"auto", waitMode:"max",
+    restaurantLat: RESTAURANT_LAT, restaurantLng: RESTAURANT_LNG,
+    feePerKm: DEFAULT_FEE_PER_KM, minFee: DEFAULT_MIN_FEE, maxKm: DEFAULT_MAX_KM
+  }
 };
 
 async function seedIfEmpty() {
@@ -230,12 +221,45 @@ async function seedIfEmpty() {
   await batch.commit();
 }
 
+// ========== UTILITAIRES ==========
 function money(n){return (n||0).toLocaleString("fr-FR")+" F";}
 function nowDate(){return new Date().toISOString().slice(0,10);}
 function fmtDate(iso){return new Date(iso).toLocaleDateString("fr-FR",{day:"2-digit",month:"short"});}
 function timeAgo(ts){if(!ts)return "à l'instant";const m=Math.floor((Date.now()-ts)/60000);if(m<=0)return "à l'instant";if(m<60)return "il y a "+m+" min";return "il y a "+Math.floor(m/60)+"h";}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function validPhoneBJ(p){return /^01\d{8}$/.test(String(p||"").replace(/\s/g,""));}
+
+// Haversine : distance à vol d'oiseau en km
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+// Calcule les frais selon les coordonnées client + paramètres settings
+function calcDeliveryFee(lat, lng) {
+  if (lat == null || lng == null) return { km: 0, fee: 0, valid: false, tooFar: false };
+  const rLat = DATA.settings.restaurantLat || RESTAURANT_LAT;
+  const rLng = DATA.settings.restaurantLng || RESTAURANT_LNG;
+  const feePerKm = DATA.settings.feePerKm || DEFAULT_FEE_PER_KM;
+  const minFee = DATA.settings.minFee || DEFAULT_MIN_FEE;
+  const maxKm = DATA.settings.maxKm || DEFAULT_MAX_KM;
+  const km = haversine(rLat, rLng, lat, lng);
+  if (km > maxKm) return { km: Math.round(km*10)/10, fee: 0, valid: false, tooFar: true };
+  const rawFee = km * feePerKm;
+  const fee = Math.max(minFee, Math.round(rawFee / 50) * 50); // arrondi à 50F
+  return { km: Math.round(km*10)/10, fee, valid: true, tooFar: false };
+}
+
+// Récupère les frais d'une commande (déjà calculés et stockés)
+function deliveryFeeFor(o){
+  if(!o||o.type!=="livraison") return 0;
+  return o.deliveryFee || 0;
+}
+
 function orderTimerInfo(o){
   const items=o.items.filter(i=>i.statut!=="Refusé");
   const maxTime=Math.max(...items.map(i=>i.time),0);
@@ -253,7 +277,7 @@ function qrUrl(text, size){ size=size||400; return "https://api.qrserver.com/v1/
 function preserveInput(){
   const active=document.activeElement;
   if(!active||!active.dataset||!active.dataset.input) return null;
-  return { key:active.dataset.input, start:active.selectionStart, end:active.selectionEnd, value:active.value };
+  return { key:active.dataset.input, start:active.selectionStart, end:active.selectionEnd };
 }
 function restoreInput(saved){
   if(!saved) return;
@@ -272,44 +296,8 @@ function subscribeAll(onUpdate) {
   sub("stock", "stock");
   sub("stockMoves", "stockMoves", arr => arr.sort((a,b)=>(b._ts||0)-(a._ts||0)));
   sub("orders", "orders", arr => arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
-  sub("zones", "zones", arr => arr.sort((a,b)=>a.price-b.price));
   onSnapshot(collection(db, "affectation"), snap => { const obj={}; snap.forEach(d => obj[d.id]=d.data()); DATA.affectation=obj; onUpdate(); });
   onSnapshot(doc(db, "settings", "main"), snap => { if (snap.exists()) DATA.settings=snap.data(); onUpdate(); });
-}
-
-// ============ CALCUL DISTANCE OSRM ============
-async function geocodeAddress(address){
-  try{
-    const url="https://nominatim.openstreetmap.org/search?format=json&q="+encodeURIComponent(address+" Bénin")+"&limit=1";
-    const res=await fetch(url,{headers:{"Accept":"application/json"}});
-    const data=await res.json();
-    if(data&&data.length>0) return {lat:parseFloat(data[0].lat),lon:parseFloat(data[0].lon),display:data[0].display_name};
-    return null;
-  }catch(e){ console.error("Geocode error:",e); return null; }
-}
-async function calculateDistanceKm(fromLat,fromLon,toLat,toLon){
-  try{
-    const url="https://router.project-osrm.org/route/v1/driving/"+fromLon+","+fromLat+";"+toLon+","+toLat+"?overview=false";
-    const res=await fetch(url);
-    const data=await res.json();
-    if(data&&data.routes&&data.routes.length>0){
-      const meters=data.routes[0].distance;
-      return { km: meters/1000, meters: meters };
-    }
-    return null;
-  }catch(e){ console.error("OSRM error:",e); return null; }
-}
-async function calculateDeliveryFee(clientLat,clientLon){
-  const dist=await calculateDistanceKm(RESTO_LAT,RESTO_LON,clientLat,clientLon);
-  if(!dist) return null;
-  const km=Math.round(dist.km*10)/10;
-  const fee=Math.round(km*PRIX_PAR_KM);
-  return { km: km, fee: fee };
-}
-function getDeliveryFee(o){
-  if(!o||o.type!=="livraison") return 0;
-  if(o.deliveryFee!=null) return o.deliveryFee;
-  return DATA.settings.fraisLivraison||0;
 }
 
 const A = {
@@ -320,13 +308,10 @@ const A = {
       type:order.type||"sur_place", tableId:order.tableId||null, tableNumber:order.tableNumber||null,
       serveuseId:order.serveuseId||null, serveuseName:order.serveuseName||null,
       livreurId:null, deliveryStatus:null, clientInfo:order.clientInfo||null, source:order.source||"client",
-      zoneId:null, zoneName:null,
-      deliveryDistanceKm:order.deliveryDistanceKm||null,
-      deliveryFee:order.deliveryFee||0,
-      clientLat:order.clientLat||null, clientLon:order.clientLon||null,
+      clientLat:order.clientLat||null, clientLng:order.clientLng||null,
+      distanceKm:order.distanceKm||null, deliveryFee:order.deliveryFee||0,
       items:order.items.map(i=>({ ...i, statut:null, motif:null })),
-      paymentMethod:null, paymentRef:null, readyAt:null, servedAt:null, cashIssue:null, callCount:0,
-      invoiceNumber:null, paidConfirmedAt:null };
+      paymentMethod:null, paymentRef:null, readyAt:null, servedAt:null, cashIssue:null, callCount:0, receiptNo:null };
     const ref=await addDoc(collection(db,"orders"),newOrder);
     return ref.id;
   },
@@ -346,6 +331,7 @@ const A = {
   async validateOrder(id){ await updateDoc(doc(db,"orders",id),{ status:"att_paiement" }); },
   async markOrderPaid(id, method, ref){
     const order=DATA.orders.find(o=>o._docId===id); if(!order) return;
+    const receiptNo = "R" + new Date().getFullYear().toString().slice(-2) + String(Date.now()).slice(-6);
     const batch=writeBatch(db);
     for(const item of order.items){
       if(item.statut==="Refusé") continue;
@@ -356,12 +342,11 @@ const A = {
           motif:"Cmd #"+id.slice(-6)+" — "+dish.name,date:nowDate(),_ts:Date.now()});
       }
     }
-    batch.update(doc(db,"orders",id),{ status:"payee", paymentMethod:method, paymentRef:ref||null, paidAt:Date.now(), cashIssue:null });
+    batch.update(doc(db,"orders",id),{ status:"payee", paymentMethod:method, paymentRef:ref||null, paidAt:Date.now(), cashIssue:null, receiptNo });
     await batch.commit();
   },
   async confirmCash(id, confirmed){
-    const invoiceNum="DS-"+nowDate().replace(/-/g,"")+"-"+id.slice(-4).toUpperCase();
-    await updateDoc(doc(db,"orders",id),{ cashConfirmed:true, cashConfirmedAt:Date.now(), cashIssue: confirmed?null:"non_recu", paidConfirmedAt:Date.now(), invoiceNumber:invoiceNum });
+    await updateDoc(doc(db,"orders",id),{ cashConfirmed:true, cashConfirmedAt:Date.now(), cashIssue: confirmed?null:"non_recu" });
   },
   async resolveCashIssue(id){ await updateDoc(doc(db,"orders",id),{ cashIssue:null, cashIssueResolvedAt:Date.now() }); },
   async markReady(id){ await updateDoc(doc(db,"orders",id),{ readyAt:Date.now() }); },
@@ -397,12 +382,6 @@ const A = {
     const patch={ callCount:newCount, lastCall:Date.now() };
     if(newCount>=3) patch.escalated=true;
     await updateDoc(doc(db,"orders",orderId), patch);
-  },
-  async requestInvoice(orderId, byName){
-    await updateDoc(doc(db,"orders",orderId),{ invoiceRequested:true, invoiceRequestedBy:byName, invoiceRequestedAt:Date.now() });
-  },
-  async markInvoicePrinted(orderId){
-    await updateDoc(doc(db,"orders",orderId),{ invoicePrinted:true, invoicePrintedAt:Date.now() });
   }
 };
 
@@ -411,7 +390,7 @@ function stockQty(id){
   return DATA.stockMoves.filter(m=>m.stockId===id).reduce((a,m)=>a+(m.type==="Entrée"?m.qty:-m.qty), item.initial);
 }
 function orderTotal(o){return o.items.filter(i=>i.statut!=="Refusé").reduce((s,i)=>s+i.price*i.qty,0);}
-function orderGrandTotal(o){ return orderTotal(o) + getDeliveryFee(o); }
+function orderGrandTotal(o){ return orderTotal(o) + deliveryFeeFor(o); }
 function statusBadge(o){
   if(o.status==="annulee") return '<span class="badge badge-neutre">Annulée</span>';
   if(o.status==="servie") return '<span class="badge badge-vert">Servie</span>';
@@ -426,13 +405,14 @@ function statusBadge(o){
 }
 
 let loginRole=null, loginPin="", loginError="";
-let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},clientLat:null,clientLon:null,deliveryDistanceKm:null,deliveryFee:0,calculatingDistance:false,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};
+let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},clientLat:null,clientLng:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
-let gerS={tab:"validation",invoiceOrderId:null};
+let gerS={tab:"validation"};
 let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false};
 let livS={tab:"available"};
+let addressMap = null;
 
-function resetClient(){clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},clientLat:null,clientLon:null,deliveryDistanceKm:null,deliveryFee:0,calculatingDistance:false,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};localStorage.removeItem("ds_client_order");}
+function resetClient(){clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},clientLat:null,clientLng:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};localStorage.removeItem("ds_client_order");}
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
 function notify(title, body){ if(!("Notification" in window)) return; if(Notification.permission==="granted"){ try{ new Notification(title,{body}); }catch(e){} } }
 
@@ -443,11 +423,82 @@ function topbar(opts){
     '<button class="topbar-logout" data-action="logout">Déco</button></div>';
 }
 
+// ========== LEAFLET MAP ==========
+function initAddressMap() {
+  if (!window.L) { setTimeout(initAddressMap, 200); return; }
+  const container = document.getElementById('leaflet-map');
+  if (!container) return;
+  if (addressMap) { addressMap.remove(); addressMap = null; }
+  const rLat = DATA.settings.restaurantLat || RESTAURANT_LAT;
+  const rLng = DATA.settings.restaurantLng || RESTAURANT_LNG;
+  const startLat = clientS.clientLat || rLat;
+  const startLng = clientS.clientLng || rLng;
+  addressMap = L.map('leaflet-map', { zoomControl: true }).setView([startLat, startLng], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(addressMap);
+  // Restaurant
+  L.circleMarker([rLat, rLng], { radius: 10, color:'#0a0a0a', fillColor:'#ffc107', fillOpacity:1, weight:3 })
+    .addTo(addressMap).bindPopup('<strong>Restaurant D&S</strong>');
+  // Client
+  if (clientS.clientLat && clientS.clientLng) {
+    addressMap.clientMarker = L.marker([clientS.clientLat, clientS.clientLng]).addTo(addressMap).bindPopup('Vous êtes ici');
+  }
+  addressMap.on('click', (e) => {
+    clientS.clientLat = e.latlng.lat;
+    clientS.clientLng = e.latlng.lng;
+    if (addressMap.clientMarker) addressMap.clientMarker.setLatLng(e.latlng);
+    else addressMap.clientMarker = L.marker(e.latlng).addTo(addressMap).bindPopup('Vous êtes ici');
+    updateAddressFeeBox();
+  });
+  // Si position déjà placée, zoom dessus
+  if (clientS.clientLat && clientS.clientLng) addressMap.setView([clientS.clientLat, clientS.clientLng], 14);
+}
+
+function updateAddressFeeBox() {
+  const box = document.getElementById('address-fee-box');
+  const btn = document.getElementById('address-next-btn');
+  if (!box) return;
+  if (!clientS.clientLat || !clientS.clientLng) {
+    box.innerHTML = '<p class="text-sm" style="color:#aaa;margin:0;text-align:center">👆 Touchez la carte pour indiquer votre position</p>';
+    if (btn) btn.disabled = true;
+    return;
+  }
+  const calc = calcDeliveryFee(clientS.clientLat, clientS.clientLng);
+  if (calc.tooFar) {
+    box.innerHTML = '<p class="bold" style="color:#ff7066;margin:0;text-align:center">⚠️ Trop loin ('+calc.km+' km) — nous ne livrons pas au-delà de '+DATA.settings.maxKm+' km</p>';
+    if (btn) btn.disabled = true;
+    return;
+  }
+  box.innerHTML = '<div class="fee-line"><span>Distance restaurant</span><span>'+calc.km+' km</span></div>'+
+    '<div class="fee-line"><span>Tarif ('+(DATA.settings.feePerKm||DEFAULT_FEE_PER_KM)+' F/km)</span><span>'+money(calc.fee)+'</span></div>'+
+    '<div class="fee-line total"><span>Frais de livraison</span><span>'+money(calc.fee)+'</span></div>';
+  if (btn) btn.disabled = false;
+}
+
+function locateMe() {
+  if (!navigator.geolocation) { toast("Géolocalisation non disponible"); return; }
+  toast("Localisation…");
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      clientS.clientLat = pos.coords.latitude;
+      clientS.clientLng = pos.coords.longitude;
+      if (addressMap) {
+        addressMap.setView([clientS.clientLat, clientS.clientLng], 16);
+        if (addressMap.clientMarker) addressMap.clientMarker.setLatLng([clientS.clientLat, clientS.clientLng]);
+        else addressMap.clientMarker = L.marker([clientS.clientLat, clientS.clientLng]).addTo(addressMap).bindPopup('Vous êtes ici');
+      }
+      updateAddressFeeBox();
+      toast("Position trouvée ✓");
+    },
+    err => toast("Position indisponible — touchez la carte"),
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
 function screenLogin(){
   const ROLES=[
     {key:"client",em:"🍽️",label:"Client",desc:"Commander"},
     {key:"serveuse",em:"👩‍🍳",label:"Serveuse",desc:"Service"},
-    {key:"gerant",em:"📋",label:"Gérant",desc:"Valide + Factures"},
+    {key:"gerant",em:"📋",label:"Gérant",desc:"Valide + factures"},
     {key:"cuisine",em:"👨‍🍳",label:"Cuisine",desc:"Prépare"},
     {key:"livreur",em:"🛵",label:"Livreur",desc:"Livraisons"},
     {key:"admin",em:"⚙️",label:"Admin",desc:"Config"}
@@ -472,7 +523,6 @@ function screenLogin(){
     '<button class="pin-back" data-action="back-role">← Changer de rôle</button><p class="pin-hint">'+hint+'</p></div></div>';
 }
 
-// ==================== CLIENT ====================
 function screenClient(){
   const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables;
   const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
@@ -522,37 +572,44 @@ function screenClient(){
       '</div></div>';
   }
   if(v.screen==="address"){
+    // ÉCRAN DE LIVRAISON AVEC CARTE LEAFLET
     const phoneOk=validPhoneBJ(v.info.phone);
-    const addrOk=v.info.address && v.info.address.trim().length>5;
     const nameOk=v.info.name && v.info.name.trim().length>1;
-    const distanceOk=v.deliveryDistanceKm!=null;
-    const valid=nameOk && phoneOk && addrOk && distanceOk;
-    const distanceHtml = v.calculatingDistance
-      ? '<div class="distance-info"><p class="text-sm muted">📡 Calcul de la distance en cours…</p></div>'
-      : (v.deliveryDistanceKm!=null
-        ? '<div class="distance-info"><p class="text-sm"><strong>Distance estimée</strong> : <span class="val">'+v.deliveryDistanceKm+' km</span></p>'+
-          '<p class="text-sm" style="margin-top:4px"><strong>Frais de livraison</strong> : <span class="val">'+money(v.deliveryFee)+'</span></p>'+
-          '<p class="text-xs muted" style="margin-top:4px">Tarif : 110 F / km</p></div>'
-        : (addrOk?'<p class="text-xs muted" style="margin-top:8px">Cliquez sur <strong>📍 Calculer la livraison</strong> après avoir saisi votre adresse.</p>':""));
-    return '<div class="app">'+topbar({title:"Livraison",homeAction:"client-home",backAction:"client-back"})+
-      '<div class="content content-narrow"><div style="display:flex;flex-direction:column;gap:14px">'+
+    const hasPosition=!!(v.clientLat && v.clientLng);
+    const calc=hasPosition?calcDeliveryFee(v.clientLat,v.clientLng):{valid:false,tooFar:false};
+    const valid=nameOk && phoneOk && hasPosition && !calc.tooFar;
+    return '<div class="app">'+topbar({title:"Où livrer ?",homeAction:"client-home",backAction:"client-back"})+
+      '<div class="content content-narrow">'+
         '<div><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="info-name" value="'+esc(v.info.name)+'" placeholder="Votre nom"></div>'+
-        '<div><label class="text-xs muted bold">TÉLÉPHONE (01 + 8 chiffres)</label>'+
+        '<div style="margin-top:12px"><label class="text-xs muted bold">TÉLÉPHONE (01 + 8 chiffres)</label>'+
           '<input class="input" style="margin-top:6px;'+(v.info.phone&&!phoneOk?"border-color:var(--rouge)":"")+'" inputmode="tel" data-input="info-phone" value="'+esc(v.info.phone)+'" maxlength="10" placeholder="01 XX XX XX XX">'+
-          (v.info.phone&&!phoneOk?'<p class="text-xs" style="color:var(--rouge);margin-top:4px">Format invalide</p>':"")+
+          (v.info.phone&&!phoneOk?'<p class="text-xs" style="color:var(--rouge);margin-top:4px">Format invalide — 01 + 8 chiffres</p>':"")+
         '</div>'+
-        '<div><label class="text-xs muted bold">ADRESSE DE LIVRAISON</label>'+
-          '<textarea class="input" style="margin-top:6px" rows="3" data-input="info-address" placeholder="Quartier, rue, repère précis...">'+esc(v.info.address)+'</textarea>'+
-          '<button class="btn btn-accent btn-block" style="margin-top:8px" data-action="client-calc-distance" '+(v.calculatingDistance?"disabled":"")+'>'+(v.calculatingDistance?"⏳ Calcul en cours…":"📍 Calculer la livraison")+'</button>'+
+        '<div style="margin-top:16px">'+
+          '<div class="flex between center" style="margin-bottom:8px">'+
+            '<label class="text-xs muted bold">POSITION SUR LA CARTE</label>'+
+            '<button class="btn btn-accent btn-sm" data-action="client-locate">📍 Ma position</button>'+
+          '</div>'+
+          '<p class="text-xs muted" style="margin-bottom:8px">Touchez la carte à l\'endroit où vous souhaitez être livré.</p>'+
+          '<div id="leaflet-map"></div>'+
+          '<div id="address-fee-box" class="fee-box">'+
+            (hasPosition?'':'<p class="text-sm" style="color:#aaa;margin:0;text-align:center">👆 Touchez la carte pour indiquer votre position</p>')+
+          '</div>'+
         '</div>'+
-        distanceHtml+
-        '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-to-cart" '+(valid?"":"disabled")+'>Voir le panier</button>'+
-      '</div></div></div>';
+        '<div style="margin-top:14px"><label class="text-xs muted bold">REPÈRES (optionnel)</label>'+
+          '<textarea class="input" style="margin-top:6px" rows="2" data-input="info-address" placeholder="Ex. Face pharmacie, portail noir...">'+esc(v.info.address)+'</textarea>'+
+        '</div>'+
+        '<button id="address-next-btn" class="btn btn-accent btn-block" style="padding:14px;margin-top:16px" data-action="client-to-cart" '+(valid?"":"disabled")+'>Voir le panier</button>'+
+      '</div></div>';
   }
   if(v.screen==="cart"){
     const items=menu.filter(m=>v.cart[m._docId]>0);
-    const total=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
-    const frais=v.mode==="livraison"?v.deliveryFee:0;
+    const subtotal=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
+    let frais=0, distKm=0;
+    if(v.mode==="livraison" && v.clientLat && v.clientLng){
+      const c=calcDeliveryFee(v.clientLat,v.clientLng);
+      frais=c.fee; distKm=c.km;
+    }
     const wait=items.length?(s.waitMode==="sum"?items.reduce((a,d)=>a+d.time,0):Math.max(...items.map(d=>d.time))):0;
     return '<div class="app">'+topbar({title:"Panier",homeAction:"client-home",backAction:"client-back"})+
       '<div class="content content-narrow" style="flex:1">'+
@@ -562,8 +619,9 @@ function screenClient(){
       '</div>'+
       (items.length>0?'<div style="padding:16px;background:white;border-top:2px solid var(--jaune);position:sticky;bottom:0">'+
         '<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Temps estimé</span><span class="bold" style="color:var(--rouge)">~'+wait+' min</span></div>'+
-        (frais>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Frais livraison ('+v.deliveryDistanceKm+' km)</span><span class="mono">'+money(frais)+'</span></div>':"")+
-        '<div class="flex between" style="font-size:18px;font-weight:bold;margin-bottom:14px"><span>Total</span><span class="mono">'+money(total+frais)+'</span></div>'+
+        '<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Sous-total</span><span class="mono">'+money(subtotal)+'</span></div>'+
+        (frais>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Livraison ('+distKm+' km)</span><span class="mono">'+money(frais)+'</span></div>':"")+
+        '<div class="flex between" style="font-size:18px;font-weight:bold;margin-bottom:14px;padding-top:8px;border-top:1px solid var(--sable)"><span>Total</span><span class="mono">'+money(subtotal+frais)+'</span></div>'+
         '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-submit">Envoyer</button>'+
       '</div>':"")+
     '</div>';
@@ -587,8 +645,9 @@ function screenClient(){
         '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-remove-refused">Continuer sans ce plat</button></div></div>';
   }
   if(v.screen==="payment"&&order){
-    const total=orderGrandTotal(order);
-    const frais=getDeliveryFee(order);
+    const subtotal=orderTotal(order);
+    const frais=deliveryFeeFor(order);
+    const total=subtotal+frais;
     return '<div class="app">'+topbar({title:"Paiement",homeAction:"client-home"})+
       '<div class="content content-narrow"><p class="section-sub">Choisissez votre paiement.</p>'+
         '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">'+
@@ -597,9 +656,11 @@ function screenClient(){
           '<button class="card card-row" data-action="client-pay" data-method="cash" style="text-align:left;cursor:pointer;border:2px solid var(--sable)">'+
             '<div><p class="card-title">💵 Cash</p><p class="card-sub">'+(order.type==="livraison"?"Au livreur":"À la serveuse")+'</p></div></button>'+
         '</div>'+
-        (frais>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Frais livraison ('+order.deliveryDistanceKm+' km)</span><span class="mono">'+money(frais)+'</span></div>':"")+
-        '<div class="card" style="display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--jaune)">'+
-          '<span class="bold">Total</span><span class="mono" style="font-size:22px;font-weight:bold">'+money(total)+'</span></div>'+
+        '<div class="card" style="padding:14px">'+
+          '<div class="flex between text-sm muted" style="margin-bottom:4px"><span>Sous-total</span><span class="mono">'+money(subtotal)+'</span></div>'+
+          (frais>0?'<div class="flex between text-sm muted" style="margin-bottom:4px"><span>Livraison ('+order.distanceKm+' km)</span><span class="mono">'+money(frais)+'</span></div>':"")+
+          '<div class="flex between bold" style="border-top:1px solid var(--sable);padding-top:8px;margin-top:8px;font-size:18px"><span>Total</span><span class="mono">'+money(total)+'</span></div>'+
+        '</div>'+
         '<button class="btn btn-ghost btn-block" style="margin-top:16px" data-action="client-edit-order">✏️ Modifier la commande</button>'+
       '</div></div>';
   }
@@ -630,7 +691,7 @@ function screenClient(){
     const circ=2*Math.PI*86, dash=circ*(1-progress);
     return '<div class="app">'+topbar({title:"Suivi",homeAction:"client-home"})+
       '<div style="background:var(--noir);color:white;flex:1;padding:24px 20px 40px;display:flex;flex-direction:column;align-items:center">'+
-        '<p class="login-sub">'+(order.type==="livraison"?"Livraison — "+order.deliveryDistanceKm+" km":"Table "+(order.tableNumber||""))+'</p>'+
+        '<p class="login-sub">'+(order.type==="livraison"?"Livraison ("+order.distanceKm+" km)":"Table "+(order.tableNumber||""))+'</p>'+
         '<h1 class="serif" style="text-align:center;font-size:20px;margin:8px 0 20px;color:white">'+(served?"Terminée":ready?"Prête !":"En cours")+'</h1>'+
         '<div class="progress-circle"><svg><circle cx="90" cy="90" r="86" stroke="#2a2a2a" stroke-width="10" fill="none"/><circle cx="90" cy="90" r="86" stroke="'+(ready?"#2d7a3e":"#ffc107")+'" stroke-width="10" fill="none" stroke-dasharray="'+circ+'" stroke-dashoffset="'+dash+'" stroke-linecap="round"/></svg>'+
           '<div class="center">'+(ready?'<div style="font-size:48px">✅</div>':'<span class="mono" style="font-size:26px;font-weight:bold;color:white">'+mm+':'+ss+'</span>')+'</div></div>'+
@@ -648,8 +709,7 @@ function screenClient(){
       '<div class="content content-narrow" style="text-align:center;padding-top:60px">'+
         '<div style="font-size:64px;margin-bottom:20px">🚫</div>'+
         '<h2 class="section-title" style="font-size:24px">Commande annulée</h2>'+
-        '<p class="muted" style="margin-bottom:24px">Le gérant a annulé votre commande.</p>'+
-        '<button class="btn btn-accent" style="padding:14px 32px" data-action="client-home">Retour</button></div></div>';
+        '<button class="btn btn-accent" style="padding:14px 32px;margin-top:20px" data-action="client-home">Retour</button></div></div>';
   }
   if(v.screen==="done"){
     return '<div class="app">'+topbar({title:"Terminé",homeAction:"client-home"})+
@@ -661,7 +721,6 @@ function screenClient(){
   return "";
 }
 
-// ==================== SERVEUSE ====================
 function screenServeuse(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
   const today=nowDate();
@@ -670,7 +729,6 @@ function screenServeuse(){
   const myTables=DATA.tables.filter(t=>tableIds.includes(t._docId));
   const myActiveOrders=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.status==="payee"&&!o.servedAt);
   const cashOrders=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.paymentMethod==="cash"&&o.status==="payee"&&!o.servedAt);
-  const paidOrders=DATA.orders.filter(o=>(o.type==="sur_place"&&o.serveuseId===(me&&me._docId))||(o.type==="livraison"&&o.livreurId===(me&&me._docId)),).filter(o=>o.paidConfirmedAt && !o.servedAt);
   const v=srvS; let content="";
   if(v.tab==="tables"){
     content='<h2 class="section-title">Mes tables du jour</h2><p class="section-sub">Affectées par le gérant</p>'+
@@ -710,7 +768,7 @@ function screenServeuse(){
         cashOrders.map(o=>{
           const issue=o.cashIssue==="non_recu";
           return '<div class="card" style="border-left:4px solid '+(issue?"var(--rouge)":"var(--jaune)")+'">'+
-            '<div class="card-row" style="margin-bottom:12px"><span class="bold">Table '+(o.tableNumber||"—")+'</span><span class="mono bold">'+money(orderTotal(o))+'</span></div>'+
+            '<div class="card-row" style="margin-bottom:12px"><span class="bold">Table '+(o.tableNumber||"—")+'</span><span class="mono bold">'+money(orderGrandTotal(o))+'</span></div>'+
             (issue?'<p class="text-sm" style="color:var(--rouge);margin-bottom:8px">⚠️ Signalé : paiement non reçu.</p>':"")+
             '<button class="btn btn-success btn-block" style="margin-bottom:8px" data-action="srv-confirm-cash" data-id="'+o._docId+'">💰 Argent reçu — Confirmer</button>'+
             (!issue?'<button class="btn btn-danger btn-block" data-action="srv-cash-issue" data-id="'+o._docId+'">❌ Non reçu — Signaler</button>':"")+
@@ -723,45 +781,23 @@ function screenServeuse(){
           const ready=!!o.readyAt; const timer=orderTimerInfo(o);
           const border=o.cashIssue?"var(--rouge)":(ready?"var(--vert)":(timer.urgent||timer.overdue?"var(--rouge)":"var(--jaune)"));
           return '<div class="card" style="margin-bottom:10px;border-left:4px solid '+border+'">'+
-            '<div class="flex between center" style="margin-bottom:8px"><div><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+money(orderTotal(o))+'</p></div>'+
+            '<div class="flex between center" style="margin-bottom:8px"><div><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+money(orderGrandTotal(o))+'</p></div>'+
               '<div style="text-align:right">'+statusBadge(o)+
               '<p class="mono bold '+(timer.urgent||timer.overdue?"timer urgent":"timer ok")+'" style="margin-top:4px;font-size:14px">'+timer.text+'</p></div></div>'+
             '<ul style="margin:0 0 10px 0;padding-left:20px;font-size:13px;color:#555">'+o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+'</ul>'+
             (ready&&!o.cashIssue?'<button class="btn btn-success btn-block" data-action="srv-served" data-id="'+o._docId+'">✓ J\'ai servi</button>':'<p class="text-xs muted" style="text-align:center">'+(o.cashIssue?"En attente paiement client":"Attente cuisine…")+'</p>')+
           '</div>';
         }).join(""));
-  } else if(v.tab==="factures"){
-    // NOUVEAU : factures pour la serveuse
-    content='<h2 class="section-title">Factures</h2><p class="section-sub">Commandes payées — demandez l\'impression au gérant</p>'+
-      (paidOrders.length===0?'<p class="empty">Aucune facture disponible</p>':
-        paidOrders.map(o=>{
-          const req=o.invoiceRequested;
-          return '<div class="card" style="margin-bottom:10px;border-left:4px solid '+(req?"var(--jaune)":"var(--vert)")+'">'+
-            '<div class="flex between center" style="margin-bottom:6px">'+
-              '<div><p class="card-title">'+(o.type==="livraison"?"Livraison":"Table "+(o.tableNumber||"—"))+'</p>'+
-              '<p class="card-sub">'+(o.invoiceNumber||"Facture en cours")+' · '+money(orderGrandTotal(o))+'</p></div>'+
-              (o.invoicePrinted?'<span class="badge badge-vert">Imprimée ✓</span>':
-                req?'<span class="badge badge-orange">⏳ Demandée</span>':
-                '<span class="badge badge-neutre">Disponible</span>')+
-            '</div>'+
-            (o.clientInfo?.name?'<p class="text-xs muted">Client : '+esc(o.clientInfo.name)+'</p>':"")+
-            (o.type==="livraison"?'<p class="text-xs muted">Frais livr. : '+money(getDeliveryFee(o))+' ('+o.deliveryDistanceKm+' km)</p>':"")+
-            (!req?'<button class="btn btn-accent btn-block" style="margin-top:8px" data-action="srv-request-invoice" data-id="'+o._docId+'">🧾 Demander l\'impression au gérant</button>':
-              '<p class="text-xs" style="color:var(--jaune-fonce);text-align:center;margin-top:8px">En attente d\'impression par le gérant…</p>')+
-          '</div>';
-        }).join(""));
   }
   const suiviBadge=myActiveOrders.filter(o=>o.readyAt).length;
-  const facturesBadge=paidOrders.filter(o=>!o.invoiceRequested).length;
   return '<div class="app" style="max-width:520px;margin:0 auto">'+
     topbar({role:"Serveuse",title:SESSION.name,homeAction:"srv-home"})+
     '<div class="content">'+content+'</div>'+
-    '<div class="bottom-nav" style="grid-template-columns:repeat(5,1fr)">'+
-      [{key:"tables",em:"🗂️",label:"Tables"},{key:"order",em:"🛍️",label:"Commander"},{key:"cash",em:"💰",label:"Encaisser",badge:cashOrders.length},{key:"suivi",em:"📋",label:"Suivi",badge:suiviBadge},{key:"factures",em:"🧾",label:"Factures",badge:facturesBadge}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="srv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+
+    '<div class="bottom-nav cols-4">'+
+      [{key:"tables",em:"🗂️",label:"Tables"},{key:"order",em:"🛍️",label:"Commander"},{key:"cash",em:"💰",label:"Encaisser",badge:cashOrders.length},{key:"suivi",em:"📋",label:"Suivi",badge:suiviBadge}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="srv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+
     '</div></div>';
 }
 
-// ==================== GÉRANT ====================
 function screenGerant(){
   const v=gerS;
   const pending=DATA.orders.filter(o=>o.status==="att_validation");
@@ -771,7 +807,6 @@ function screenGerant(){
   const livreurs=DATA.staff.filter(s=>s.role==="livreur");
   const calls=DATA.orders.filter(o=>o.escalated && !o.servedAt);
   const cashIssues=DATA.orders.filter(o=>o.cashIssue==="non_recu" && !o.servedAt);
-  const invoiceRequests=DATA.orders.filter(o=>o.invoiceRequested && !o.invoicePrinted);
   let content="";
 
   if(v.tab==="validation"){
@@ -791,7 +826,7 @@ function screenGerant(){
           const label=o.type==="livraison"?"Livraison — "+(o.clientInfo?.name||""):"Table "+(o.tableNumber||"—");
           return '<div class="card" style="margin-bottom:12px">'+
             '<div class="card-row" style="margin-bottom:10px"><div style="min-width:0"><p class="card-title">'+esc(label)+'</p>'+
-            '<p class="card-sub">'+timeAgo(o.createdAt)+'</p></div>'+
+            '<p class="card-sub">'+timeAgo(o.createdAt)+(o.distanceKm?' · '+o.distanceKm+' km':"")+'</p></div>'+
             '<span class="badge '+(o.type==="livraison"?"badge-orange":"badge-neutre")+'">'+(o.type==="livraison"?"Livraison":"Place")+'</span></div>'+
             o.items.map((it,idx)=>{
               const motifs=["Rupture de stock","Ingrédient manquant","Cuisine surchargée"];
@@ -811,13 +846,12 @@ function screenGerant(){
         }).join(""))+
       '</div>'+
       '<div><h2 class="section-title" style="font-size:17px">⏳ En attente paiement ('+awaitingPay.length+')</h2>'+
-      '<p class="text-xs muted" style="margin-bottom:10px">Si le client ne paye pas, supprimez la commande.</p>'+
       (awaitingPay.length===0?'<p class="empty">Aucune</p>':
         awaitingPay.map(o=>'<div class="card" style="margin-bottom:10px">'+
           '<p class="card-title">'+(o.type==="livraison"?"Livr. — "+(o.clientInfo?.name||""):"Table "+(o.tableNumber||"—"))+'</p>'+
-          '<p class="card-sub">'+money(orderGrandTotal(o))+(o.deliveryDistanceKm?' · '+o.deliveryDistanceKm+' km':"")+' · '+timeAgo(o.createdAt)+'</p>'+
+          '<p class="card-sub">'+money(orderGrandTotal(o))+(o.distanceKm?' · '+o.distanceKm+' km':"")+' · '+timeAgo(o.createdAt)+'</p>'+
           '<div class="flex gap-2" style="margin-top:8px">'+
-            '<button class="btn btn-danger btn-sm" style="flex:1" data-action="ger-delete" data-id="'+o._docId+'">🗑️ Supprimer cette commande</button>'+
+            '<button class="btn btn-danger btn-sm" style="flex:1" data-action="ger-delete" data-id="'+o._docId+'">🗑️ Supprimer</button>'+
           '</div>'+
         '</div>').join(""))+
       '</div></div>';
@@ -828,12 +862,14 @@ function screenGerant(){
         live.map(o=>{
           const timer=orderTimerInfo(o);
           const border=o.cashIssue?"var(--rouge)":(timer.overdue?"var(--rouge)":timer.urgent?"var(--jaune-fonce)":"var(--vert)");
+          const paid = (o.paymentMethod === "cash" && o.cashConfirmed) || o.paymentMethod === "momo";
           return '<div class="card" style="border-left:4px solid '+border+'">'+
             '<div class="flex between center"><div><p class="card-title">Table '+(o.tableNumber||"—")+'</p>'+
-            '<p class="card-sub">'+money(orderTotal(o))+' · '+(o.paymentMethod||"")+'</p></div>'+
+            '<p class="card-sub">'+money(orderGrandTotal(o))+' · '+(o.paymentMethod||"")+'</p></div>'+
             '<div style="text-align:right">'+statusBadge(o)+
             '<p class="mono bold '+(timer.overdue||timer.urgent?"timer urgent":"timer ok")+'" style="margin-top:6px">'+timer.text+'</p></div></div>'+
             (o.escalated?'<p class="text-xs" style="color:var(--rouge);margin-top:8px;font-weight:600">⚠️ Client a appelé '+o.callCount+' fois</p>':"")+
+            (paid?'<button class="btn btn-primary btn-sm btn-block" style="margin-top:10px" data-action="ger-print-receipt" data-id="'+o._docId+'">🧾 Imprimer la facture</button>':"")+
           '</div>';
         }).join("")+'</div>');
   } else if(v.tab==="livraisons"){
@@ -841,33 +877,26 @@ function screenGerant(){
       (delivering.length===0?'<p class="empty">Aucune livraison</p>':
         delivering.map(o=>{
           const assigned=livreurs.find(l=>l._docId===o.livreurId);
+          const paid = (o.paymentMethod === "cash" && o.cashConfirmed) || o.paymentMethod === "momo";
+          const mapsUrl = o.clientLat && o.clientLng ? "https://www.google.com/maps/search/?api=1&query="+o.clientLat+","+o.clientLng : "https://www.google.com/maps/search/"+encodeURIComponent(o.clientInfo?.address||"");
           return '<div class="card" style="margin-bottom:12px">'+
             '<p class="card-title">'+esc(o.clientInfo?.name||"Client")+'</p>'+
-            '<p class="card-sub">📍 '+esc(o.clientInfo?.address||"")+'</p>'+
-            '<p class="text-xs muted" style="margin-top:4px">📞 '+esc(o.clientInfo?.phone||"")+' · '+money(orderGrandTotal(o))+' · '+o.deliveryDistanceKm+' km</p>'+
-            '<a href="tel:'+(o.clientInfo?.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-sm" style="margin-top:6px;text-decoration:none">📞 Appeler</a>'+
+            '<p class="card-sub">📍 '+(o.distanceKm?o.distanceKm+" km du restaurant":"")+'</p>'+
+            (o.clientInfo?.address?'<p class="text-xs muted" style="margin-top:2px">Repère: '+esc(o.clientInfo.address)+'</p>':"")+
+            '<p class="text-xs muted" style="margin-top:4px">📞 '+esc(o.clientInfo?.phone||"")+' · '+money(orderGrandTotal(o))+'</p>'+
+            '<div class="flex gap-2" style="margin-top:6px">'+
+              '<a href="tel:'+(o.clientInfo?.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-sm" style="text-decoration:none">📞 Appeler</a>'+
+              (o.clientLat?'<a href="'+mapsUrl+'" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none">🗺️ Position client</a>':"")+
+            '</div>'+
             '<div style="margin-top:10px"><label class="text-xs muted bold">ASSIGNER</label>'+
             '<select class="input" style="margin-top:4px" data-action="ger-assign-livreur" data-id="'+o._docId+'">'+
               '<option value="">— Non assignée —</option>'+
               livreurs.map(l=>'<option value="'+l._docId+'" '+(o.livreurId===l._docId?"selected":"")+'>'+esc(l.name)+'</option>').join("")+
             '</select></div>'+
             (assigned?'<p class="text-sm" style="margin-top:8px;color:var(--vert)"><strong>'+esc(assigned.name)+'</strong></p>':"")+
+            (paid?'<button class="btn btn-primary btn-sm btn-block" style="margin-top:10px" data-action="ger-print-receipt" data-id="'+o._docId+'">🧾 Imprimer la facture</button>':"")+
           '</div>';
         }).join(""));
-  } else if(v.tab==="factures"){
-    // Gérant : impressions factures demandées
-    const toPrint=DATA.orders.filter(o=>o.invoiceRequested && !o.invoicePrinted);
-    const printed=DATA.orders.filter(o=>o.invoicePrinted).slice(0,10);
-    content='<h2 class="section-title">🧾 Factures à imprimer ('+toPrint.length+')</h2>'+
-      (toPrint.length===0?'<p class="empty">Aucune demande d\'impression</p>':
-        toPrint.map(o=>'<div class="card" style="margin-bottom:10px;border-left:4px solid var(--jaune)">'+
-          '<p class="card-title">'+(o.type==="livraison"?"Livraison":"Table "+(o.tableNumber||"—"))+' — '+(o.invoiceNumber||"—")+'</p>'+
-          '<p class="card-sub">'+money(orderGrandTotal(o))+' · demandé par '+esc(o.invoiceRequestedBy||"serveuse")+' · '+timeAgo(o.invoiceRequestedAt)+'</p>'+
-          '<button class="btn btn-accent btn-block" style="margin-top:8px" data-action="ger-print-invoice" data-id="'+o._docId+'">🖨️ Imprimer la facture 80 mm</button>'+
-        '</div>').join(""))+
-      (printed.length>0?'<h2 class="section-title" style="font-size:15px;margin-top:20px">Dernières imprimées</h2>'+
-        '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Facture</th><th>Total</th></tr></thead><tbody>'+
-        printed.map(o=>'<tr><td>'+fmtDate(o.date)+'</td><td class="mono">'+esc(o.invoiceNumber||"—")+'</td><td class="mono">'+money(orderGrandTotal(o))+'</td></tr>').join("")+'</tbody></table></div>':"");
   } else if(v.tab==="affectation"){
     const today=nowDate();
     const day=DATA.affectation[today]||{};
@@ -883,6 +912,7 @@ function screenGerant(){
     const todayCA=served.filter(o=>o.date===today).reduce((s,o)=>s+orderGrandTotal(o),0);
     const cash=served.filter(o=>o.paymentMethod==="cash").reduce((s,o)=>s+orderGrandTotal(o),0);
     const momo=served.filter(o=>o.paymentMethod==="momo").reduce((s,o)=>s+orderGrandTotal(o),0);
+    const deliveryRev=served.reduce((s,o)=>s+deliveryFeeFor(o),0);
     const panier=served.length?Math.round(totalCA/served.length):0;
     const dishStats={};
     served.forEach(o=>o.items.filter(i=>i.statut!=="Refusé").forEach(i=>{if(!dishStats[i.name])dishStats[i.name]={qty:0,ca:0};dishStats[i.name].qty+=i.qty;dishStats[i.name].ca+=i.qty*i.price;}));
@@ -897,6 +927,7 @@ function screenGerant(){
         '<div class="stat-card"><p class="stat-label">Panier moyen</p><p class="stat-value">'+money(panier)+'</p></div>'+
         '<div class="stat-card"><p class="stat-label">Cash</p><p class="stat-value">'+money(cash)+'</p></div>'+
         '<div class="stat-card"><p class="stat-label">MoMo</p><p class="stat-value">'+money(momo)+'</p></div>'+
+        '<div class="stat-card"><p class="stat-label">Frais livraison</p><p class="stat-value">'+money(deliveryRev)+'</p></div>'+
         '<div class="stat-card"><p class="stat-label">Stock alerte</p><p class="stat-value">'+alertStock.length+'</p></div>'+
       '</div>'+
       '<div style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">'+
@@ -906,15 +937,13 @@ function screenGerant(){
   }
   const livBadge=delivering.filter(o=>!o.livreurId).length;
   const callBadge=calls.length + cashIssues.length;
-  const factBadge=invoiceRequests.length;
   return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+
     '<div class="tabs-scroll">'+
-      [{k:"validation",l:"Validation"+(callBadge?' ⚠️'+callBadge:"")},{k:"salle",l:"Salle"},{k:"livraisons",l:"🛵 Livraisons"+(livBadge?" ("+livBadge+")":"")},{k:"factures",l:"🧾 Factures"+(factBadge?" ("+factBadge+")":"")},{k:"affectation",l:"Tables"},{k:"bilan",l:"Bilan"}].map(t=>'<button class="tab '+(v.tab===t.k?"active":"")+'" data-action="ger-tab" data-tab="'+t.k+'">'+t.l+'</button>').join("")+
+      [{k:"validation",l:"Validation"+(callBadge?' ⚠️'+callBadge:"")},{k:"salle",l:"Salle"},{k:"livraisons",l:"🛵 Livraisons"+(livBadge?" ("+livBadge+")":"")},{k:"affectation",l:"Tables"},{k:"bilan",l:"Bilan"}].map(t=>'<button class="tab '+(v.tab===t.k?"active":"")+'" data-action="ger-tab" data-tab="'+t.k+'">'+t.l+'</button>').join("")+
     '</div>'+
     '<div class="content">'+content+'</div></div>';
 }
 
-// ==================== CUISINE ====================
 function screenCuisine(){
   const active=DATA.orders.filter(o=>o.status==="payee"&&!o.readyAt);
   const ready=DATA.orders.filter(o=>o.readyAt&&o.status==="payee");
@@ -939,7 +968,6 @@ function screenCuisine(){
     '</div></div>';
 }
 
-// ==================== LIVREUR ====================
 function screenLivreur(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");
   const available=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.livreurId);
@@ -950,30 +978,34 @@ function screenLivreur(){
     content='<h2 class="section-title">Disponibles</h2><p class="section-sub">'+available.length+' dispo</p>'+
       (available.length===0?'<p class="empty">Aucune livraison disponible</p>':
         available.map(o=>'<div class="card" style="margin-bottom:12px">'+
-          '<p class="bold">📍 '+esc(o.clientInfo?.address||"")+'</p>'+
+          '<p class="bold">📍 '+(o.distanceKm?o.distanceKm+" km":"Position")+'</p>'+
           '<p class="text-xs muted">'+esc(o.clientInfo?.name||"")+' · '+esc(o.clientInfo?.phone||"")+'</p>'+
-          '<p class="text-xs muted">Distance : '+o.deliveryDistanceKm+' km</p>'+
           '<div class="flex between center" style="margin-top:10px"><span class="mono bold">'+money(orderGrandTotal(o))+'</span>'+
           '<button class="btn btn-accent btn-sm" data-action="liv-take" data-id="'+o._docId+'">Je prends</button></div></div>').join(""));
   } else if(v.tab==="current"){
     content='<h2 class="section-title">Mes livraisons</h2>'+
       (mine.length===0?'<p class="empty">Aucune livraison en cours</p>':
-        mine.map(o=>'<div class="card" style="border:2px solid var(--jaune);margin-bottom:14px">'+
-          '<p class="bold">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-sm" style="margin:4px 0 12px">'+esc(o.clientInfo?.name||"")+'</p>'+
-          '<div class="grid-2" style="margin-bottom:12px">'+
-            '<a href="tel:'+(o.clientInfo?.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="text-decoration:none">📞 Appeler</a>'+
-            '<a href="https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(o.clientInfo?.address||"")+'" target="_blank" class="btn btn-ghost" style="text-decoration:none">🧭 Itinéraire</a>'+
-          '</div>'+
-          '<div style="background:#faf8f2;padding:10px;border-radius:8px;margin-bottom:12px">'+
-            '<ul style="margin:0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul>'+
-            '<p class="mono bold" style="margin-top:6px">'+money(orderGrandTotal(o))+'</p></div>'+
-          ((!o.deliveryStatus||o.deliveryStatus==="prise")?'<button class="btn btn-primary btn-block" data-action="liv-enroute" data-id="'+o._docId+'">🧭 En route</button>':"")+
-          (o.deliveryStatus==="en_route"?'<button class="btn btn-success btn-block" data-action="liv-done" data-id="'+o._docId+'">✅ Livrée</button>':"")+
-        '</div>').join(""));
+        mine.map(o=>{
+          const mapsUrl = o.clientLat && o.clientLng ? "https://www.google.com/maps/dir/?api=1&destination="+o.clientLat+","+o.clientLng : "https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(o.clientInfo?.address||"");
+          return '<div class="card" style="border:2px solid var(--jaune);margin-bottom:14px">'+
+            '<p class="bold">📍 '+(o.distanceKm?o.distanceKm+" km du restaurant":"Position")+'</p>'+
+            '<p class="text-sm" style="margin:4px 0 8px">'+esc(o.clientInfo?.name||"")+'</p>'+
+            (o.clientInfo?.address?'<p class="text-xs muted" style="margin-bottom:12px">Repère : '+esc(o.clientInfo.address)+'</p>':"")+
+            '<div class="grid-2" style="margin-bottom:12px">'+
+              '<a href="tel:'+(o.clientInfo?.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="text-decoration:none">📞 Appeler</a>'+
+              '<a href="'+mapsUrl+'" target="_blank" class="btn btn-ghost" style="text-decoration:none">🧭 Itinéraire</a>'+
+            '</div>'+
+            '<div style="background:#faf8f2;padding:10px;border-radius:8px;margin-bottom:12px">'+
+              '<ul style="margin:0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul>'+
+              '<p class="mono bold" style="margin-top:6px">'+money(orderGrandTotal(o))+'</p></div>'+
+            ((!o.deliveryStatus||o.deliveryStatus==="prise")?'<button class="btn btn-primary btn-block" data-action="liv-enroute" data-id="'+o._docId+'">🧭 En route</button>':"")+
+            (o.deliveryStatus==="en_route"?'<button class="btn btn-success btn-block" data-action="liv-done" data-id="'+o._docId+'">✅ Livrée</button>':"")+
+          '</div>';
+        }).join(""));
   } else if(v.tab==="history"){
     content='<h2 class="section-title">Historique du jour</h2><p class="section-sub">'+done.length+' livrée(s)</p>'+
       (done.length===0?'<p class="empty">Aucune livraison terminée</p>':
-        done.map(o=>'<div class="card card-row" style="margin-bottom:8px"><div style="min-width:0"><p class="card-title">'+esc(o.clientInfo?.address||"")+'</p><p class="card-sub">'+(o.servedAt?new Date(o.servedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"")+'</p></div><span class="mono bold">'+money(orderGrandTotal(o))+'</span></div>').join(""));
+        done.map(o=>'<div class="card card-row" style="margin-bottom:8px"><div style="min-width:0"><p class="card-title">'+(o.distanceKm?o.distanceKm+" km":"—")+'</p><p class="card-sub">'+(o.servedAt?new Date(o.servedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"")+'</p></div><span class="mono bold">'+money(orderGrandTotal(o))+'</span></div>').join(""));
   }
   return '<div class="app" style="max-width:520px;margin:0 auto">'+
     topbar({role:"Livreur",title:SESSION.name,homeAction:"liv-home"})+
@@ -981,7 +1013,6 @@ function screenLivreur(){
     '<div class="bottom-nav cols-3">'+[{key:"available",em:"📦",label:"Dispos",badge:available.length},{key:"current",em:"🧭",label:"En cours",badge:mine.length},{key:"history",em:"📋",label:"Historique"}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="liv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+'</div></div>';
 }
 
-// ==================== ADMIN ====================
 function screenAdmin(){
   const v=admS;
   const sections=[{key:"menu",em:"🍽️",label:"Menu"},{key:"staff",em:"👥",label:"Personnel"},{key:"tables",em:"📱",label:"Tables & QR"},{key:"stock",em:"📦",label:"Stock"},{key:"history",em:"📊",label:"Historique"},{key:"settings",em:"⚙️",label:"Paramètres"}];
@@ -1009,6 +1040,7 @@ function screenAdmin(){
           '<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-dish" data-id="'+d._docId+'">🗑️</button></td></tr>').join("")+
         '</tbody></table></div></div>';
     });
+    if(DATA.menu.length===0) content+='<p class="empty">Aucun plat.</p>';
   } else if(v.section==="staff"){
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2>'+
       '<div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">'+
@@ -1027,6 +1059,7 @@ function screenAdmin(){
         '<button class="btn btn-accent btn-sm" data-action="admin-print-all-qr">🖨️ Imprimer tous QR</button>'+
         '<button class="btn btn-success btn-sm" data-action="admin-print-unique-qr">🎯 QR unique</button>'+
       '</div></div>'+
+      '<p class="text-sm muted" style="margin-bottom:14px">Chaque table a son QR code.</p>'+
       '<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">'+
       DATA.tables.map(t=>{
         const url=SITE_URL+"?table="+t.number;
@@ -1042,7 +1075,8 @@ function screenAdmin(){
       '<button class="btn btn-primary btn-sm" data-action="admin-toggle-new-stock">'+(v.showNewStock?"✕ Annuler":"+ Nouvel ingrédient")+'</button></div>';
     if(v.showNewStock){
       const ns=v.newStockItem;
-      content+='<div class="card" style="margin-bottom:16px;border-left:4px solid var(--jaune)"><p class="bold" style="margin-bottom:10px">Ajouter un ingrédient</p>'+
+      content+='<div class="card" style="margin-bottom:16px;border-left:4px solid var(--jaune)">'+
+        '<p class="bold" style="margin-bottom:10px">Ajouter un ingrédient</p>'+
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">'+
           '<input class="input" placeholder="Nom" data-input="new-stock-name" value="'+esc(ns.name)+'">'+
           '<input class="input" placeholder="Unité" data-input="new-stock-unit" value="'+esc(ns.unit)+'">'+
@@ -1055,7 +1089,8 @@ function screenAdmin(){
       DATA.stock.map(s=>{const qty=stockQty(s._docId);const low=qty<=s.threshold;return '<tr>'+
         '<td><strong>'+esc(s.name)+'</strong></td><td class="mono">'+qty+' '+esc(s.unit)+'</td><td class="muted">'+s.threshold+' '+esc(s.unit)+'</td>'+
         '<td>'+(low?'<span class="badge badge-rouge">⚠</span>':'<span class="badge badge-vert">OK</span>')+'</td>'+
-        '<td style="text-align:right"><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-stock" data-id="'+s._docId+'">🗑️</button></td></tr>';}).join("")+'</tbody></table></div>'+
+        '<td style="text-align:right"><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-stock" data-id="'+s._docId+'">🗑️</button></td>'+
+      '</tr>';}).join("")+'</tbody></table></div>'+
       '<h3 class="bold" style="margin-bottom:10px;font-size:15px">Mouvement rapide</h3>'+
       '<div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">'+
         '<select class="input" data-input="stock-id">'+DATA.stock.map(s=>'<option value="'+s._docId+'" '+(v.stockForm.stockId===s._docId?"selected":"")+'>'+esc(s.name)+'</option>').join("")+'</select>'+
@@ -1073,7 +1108,7 @@ function screenAdmin(){
       if(v.histFilter.type==="Livraison"&&o.type!=="livraison")return false;
       if(v.histFilter.payment==="Cash"&&o.paymentMethod!=="cash")return false;
       if(v.histFilter.payment==="Mobile Money"&&o.paymentMethod!=="momo")return false;
-      if(v.histFilter.query){const hay=(o.items.map(i=>i.name).join(" ")+" "+(o.tableNumber||"")+" "+(o.clientInfo?.name||"")+" "+(o.clientInfo?.address||"")+" "+(o.serveuseName||"")+" "+(o.livreurName||"")+" "+(o.invoiceNumber||"")).toLowerCase();if(!hay.includes(v.histFilter.query.toLowerCase()))return false;}
+      if(v.histFilter.query){const hay=(o.items.map(i=>i.name).join(" ")+" "+(o.tableNumber||"")+" "+(o.clientInfo?.name||"")+" "+(o.clientInfo?.address||"")+" "+(o.serveuseName||"")+" "+(o.livreurName||"")).toLowerCase();if(!hay.includes(v.histFilter.query.toLowerCase()))return false;}
       return true;
     });
     const total=filtered.reduce((s,o)=>s+orderGrandTotal(o),0);
@@ -1083,15 +1118,18 @@ function screenAdmin(){
         '<input class="input" style="flex:1;min-width:150px" placeholder="Rechercher..." data-input="hist-query" value="'+esc(v.histFilter.query)+'">'+
         '<select class="input" style="width:auto" data-input="hist-type">'+["Tous","Sur place","Livraison"].map(o=>'<option '+(v.histFilter.type===o?"selected":"")+'>'+o+'</option>').join("")+'</select>'+
         '<select class="input" style="width:auto" data-input="hist-payment">'+["Tous","Cash","Mobile Money"].map(o=>'<option '+(v.histFilter.payment===o?"selected":"")+'>'+o+'</option>').join("")+'</select></div>'+
-      '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Facture</th><th>Type</th><th>Client/Serveuse</th><th>Prix</th></tr></thead><tbody>'+
+      '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Table/Adr.</th><th>Serveuse/Client</th><th>Plats</th><th>Prix</th><th>Pai.</th><th></th></tr></thead><tbody>'+
       filtered.slice(0,150).map(o=>'<tr>'+
         '<td><strong>'+fmtDate(o.date)+'</strong><br><span class="text-xs muted">'+new Date(o.createdAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})+'</span></td>'+
-        '<td class="mono" style="font-size:11px">'+esc(o.invoiceNumber||"—")+'</td>'+
         '<td><span class="badge '+(o.type==="livraison"?"badge-orange":"badge-vert")+'">'+(o.type==="livraison"?"Livr.":"Place")+'</span></td>'+
-        '<td>'+(o.clientInfo?.name?esc(o.clientInfo.name):(o.serveuseName?esc(o.serveuseName):"—"))+
-          (o.deliveryDistanceKm?'<br><span class="text-xs muted">'+o.deliveryDistanceKm+' km</span>':"")+'</td>'+
-        '<td class="mono bold">'+money(orderGrandTotal(o))+'</td></tr>').join("")+
-      (filtered.length===0?'<tr><td colspan="5" class="empty">Aucune vente</td></tr>':"")+'</tbody></table></div>';
+        '<td>'+(o.type==="livraison"?esc(o.distanceKm?o.distanceKm+" km":"—"):"T."+(o.tableNumber||"—"))+'</td>'+
+        '<td>'+(o.type==="livraison"?(o.livreurName?esc(o.livreurName):"—"):(o.serveuseName?esc(o.serveuseName):"—"))+
+          (o.clientInfo?.name?'<br><span class="text-xs muted">'+esc(o.clientInfo.name)+'</span>':"")+'</td>'+
+        '<td class="muted">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>i.qty+'× '+esc(i.name)).join(", ")+'</td>'+
+        '<td class="mono bold">'+money(orderGrandTotal(o))+'</td>'+
+        '<td>'+(o.paymentMethod==="cash"?"Cash":o.paymentMethod==="momo"?"MoMo":"—")+'</td>'+
+        '<td><button class="btn btn-ghost btn-sm" data-action="ger-print-receipt" data-id="'+o._docId+'">🧾</button></td></tr>').join("")+
+      (filtered.length===0?'<tr><td colspan="8" class="empty">Aucune vente</td></tr>':"")+'</tbody></table></div>';
   } else if(v.section==="settings"){
     if(!v.settingsForm)v.settingsForm={...DATA.settings};
     const f=v.settingsForm;
@@ -1099,9 +1137,19 @@ function screenAdmin(){
       '<div class="card" style="max-width:520px">'+
         '<div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div>'+
         '<div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div>'+
-        '<div style="margin-bottom:14px"><label class="text-xs muted bold">PRIX PAR KM (F CFA)</label><input class="input" type="number" style="margin-top:6px" data-input="set-prix-km" value="'+(f.prixParKm||PRIX_PAR_KM)+'"></div>'+
-        '<div style="margin-bottom:16px"><label class="text-xs muted bold">TEMPS ATTENTE</label><select class="input" style="margin-top:6px" data-input="set-wait"><option value="max" '+(f.waitMode==="max"?"selected":"")+'>Plat le plus long</option><option value="sum" '+(f.waitMode==="sum"?"selected":"")+'>Somme</option></select></div>'+
-        '<p class="text-xs muted">Distance restaurant ↔ client calculée automatiquement via GPS.<br>Coordonnées restaurant : '+RESTO_LAT+', '+RESTO_LON+'</p>'+
+        '<div style="margin-bottom:14px"><label class="text-xs muted bold">TEMPS ATTENTE</label><select class="input" style="margin-top:6px" data-input="set-wait"><option value="max" '+(f.waitMode==="max"?"selected":"")+'>Plat le plus long</option><option value="sum" '+(f.waitMode==="sum"?"selected":"")+'>Somme</option></select></div>'+
+        '<h3 class="bold" style="margin:20px 0 10px">📍 Livraison GPS</h3>'+
+        '<p class="text-xs muted" style="margin-bottom:10px">Coordonnées du restaurant et tarif kilométrique.</p>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+
+          '<div><label class="text-xs muted bold">LATITUDE</label><input class="input" style="margin-top:4px" data-input="set-lat" value="'+(f.restaurantLat||RESTAURANT_LAT)+'"></div>'+
+          '<div><label class="text-xs muted bold">LONGITUDE</label><input class="input" style="margin-top:4px" data-input="set-lng" value="'+(f.restaurantLng||RESTAURANT_LNG)+'"></div>'+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">'+
+          '<div><label class="text-xs muted bold">F/KM</label><input class="input" type="number" style="margin-top:4px" data-input="set-fee-km" value="'+(f.feePerKm||DEFAULT_FEE_PER_KM)+'"></div>'+
+          '<div><label class="text-xs muted bold">MIN F</label><input class="input" type="number" style="margin-top:4px" data-input="set-min-fee" value="'+(f.minFee||DEFAULT_MIN_FEE)+'"></div>'+
+          '<div><label class="text-xs muted bold">MAX KM</label><input class="input" type="number" style="margin-top:4px" data-input="set-max-km" value="'+(f.maxKm||DEFAULT_MAX_KM)+'"></div>'+
+        '</div>'+
+        '<button class="btn btn-accent btn-block" data-action="admin-save-settings">Enregistrer</button>'+
       '</div>';
   }
   return '<div class="app">'+topbar({role:"Admin D&S",title:SESSION.name,homeAction:"admin-home"})+
@@ -1109,65 +1157,6 @@ function screenAdmin(){
     '<div class="content">'+content+'</div></div>';
 }
 
-// ==================== FACTURE 80mm ====================
-function buildReceiptHtml(o){
-  const items=o.items.filter(i=>i.statut!=="Refusé");
-  const subtotal=orderTotal(o);
-  const frais=getDeliveryFee(o);
-  const total=subtotal+frais;
-  const d=new Date(o.createdAt);
-  const dateStr=d.toLocaleDateString("fr-FR")+" "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
-  const invNum=o.invoiceNumber||("DS-"+o._docId.slice(-6).toUpperCase());
-  let html='<div class="receipt-paper">';
-  html+='<h2>Restaurant D&S</h2>';
-  html+='<p class="r-sub">RESTAURANT DÊGUÈ D&S</p>';
-  html+='<p class="r-center">📍 Cotonou, Bénin</p>';
-  html+='<p class="r-center">📞 '+(DATA.settings.phone||"")+'</p>';
-  html+='<div class="r-line"></div>';
-  html+='<div class="r-row"><span>Facture :</span><span><b>'+esc(invNum)+'</b></span></div>';
-  html+='<div class="r-row"><span>Date :</span><span>'+dateStr+'</span></div>';
-  html+='<div class="r-row"><span>Type :</span><span>'+(o.type==="livraison"?"Livraison":"Sur place")+'</span></div>';
-  if(o.type==="sur_place"){
-    html+='<div class="r-row"><span>Table :</span><span>'+(o.tableNumber||"—")+'</span></div>';
-    if(o.serveuseName) html+='<div class="r-row"><span>Serveuse :</span><span>'+esc(o.serveuseName)+'</span></div>';
-  } else {
-    if(o.clientInfo?.name) html+='<div class="r-row"><span>Client :</span><span>'+esc(o.clientInfo.name)+'</span></div>';
-    if(o.clientInfo?.phone) html+='<div class="r-row"><span>Tél :</span><span>'+esc(o.clientInfo.phone)+'</span></div>';
-    if(o.clientInfo?.address) html+='<div class="r-row"><span>Adresse :</span><span style="text-align:right;max-width:50%;font-size:10px">'+esc(o.clientInfo.address)+'</span></div>';
-    if(o.deliveryDistanceKm) html+='<div class="r-row"><span>Distance :</span><span>'+o.deliveryDistanceKm+' km</span></div>';
-    if(o.livreurName) html+='<div class="r-row"><span>Livreur :</span><span>'+esc(o.livreurName)+'</span></div>';
-  }
-  html+='<div class="r-line"></div>';
-  html+='<div class="r-row"><span><b>ARTICLE</b></span><span><b>PRIX</b></span></div>';
-  html+='<div class="r-line"></div>';
-  items.forEach(it=>{
-    html+='<div class="r-row"><span>'+it.qty+'x '+esc(it.name)+'</span><span>'+money(it.price*it.qty)+'</span></div>';
-  });
-  html+='<div class="r-line"></div>';
-  html+='<div class="r-row"><span>Sous-total</span><span>'+money(subtotal)+'</span></div>';
-  if(frais>0) html+='<div class="r-row"><span>Livraison ('+o.deliveryDistanceKm+' km)</span><span>'+money(frais)+'</span></div>';
-  html+='<div class="r-total"><span>TOTAL</span><span>'+money(total)+'</span></div>';
-  html+='<div class="r-line"></div>';
-  html+='<div class="r-row"><span>Paiement</span><span>'+(o.paymentMethod==="cash"?"Cash":o.paymentMethod==="momo"?"Mobile Money":"—")+'</span></div>';
-  if(o.paymentRef) html+='<div class="r-row"><span>Réf.</span><span style="font-size:10px">'+esc(o.paymentRef)+'</span></div>';
-  html+='<div class="r-line"></div>';
-  html+='<p class="r-center" style="margin-top:8px"><b>MERCI DE VOTRE VISITE !</b></p>';
-  html+='<p class="r-center" style="font-size:9px">Conservez ce reçu pour toute réclamation</p>';
-  html+='<p class="r-center" style="font-size:9px">Restaurant D&S © '+new Date().getFullYear()+'</p>';
-  html+='</div>';
-  return html;
-}
-function printReceipt(orderId){
-  const o=DATA.orders.find(x=>x._docId===orderId);
-  if(!o){toast("Commande introuvable");return;}
-  const area=document.getElementById("receipt-print-area");
-  area.innerHTML=buildReceiptHtml(o);
-  // Marquer comme imprimée
-  A.markInvoicePrinted(orderId);
-  setTimeout(()=>{window.print();},300);
-}
-
-// ==================== RENDER ====================
 function render(){
   const root=document.getElementById("root");
   if(!SESSION){root.innerHTML=screenLogin();return;}
@@ -1181,6 +1170,10 @@ function render(){
   else if(SESSION.role==="admin")html=screenAdmin();
   root.innerHTML=html;
   restoreInput(saved);
+  // Init carte si on est sur l'écran d'adresse client
+  if(SESSION.role==="client" && clientS.screen==="address"){
+    setTimeout(()=>{ initAddressMap(); updateAddressFeeBox(); }, 50);
+  }
 }
 
 function pinAdd(d){if(loginPin.length>=4)return;loginPin+=d;loginError="";
@@ -1191,22 +1184,82 @@ function printQrCodes(type){
   const printArea=document.createElement("div");
   printArea.id="qr-print-area";
   if(type==="unique"){
+    const url=SITE_URL;
     printArea.innerHTML='<div class="qr-card" style="max-width:400px;margin:0 auto"><p class="qr-resto">Restaurant D&S</p>'+
-      '<img src="'+qrUrl(SITE_URL,500)+'" alt="QR">'+
-      '<p style="font-size:15px;margin-top:12px">Commandez directement depuis votre téléphone</p></div>';
+      '<img src="'+qrUrl(url,500)+'" alt="QR">'+
+      '<p style="font-size:15px;margin-top:12px">Commandez directement depuis votre téléphone</p>'+
+      '<p class="qr-hint">Scannez ce code</p></div>';
   } else {
     printArea.innerHTML=DATA.tables.map(t=>{
       const url=SITE_URL+"?table="+t.number;
       return '<div class="qr-card"><p class="qr-resto">Restaurant D&S</p>'+
         '<img src="'+qrUrl(url,400)+'" alt="QR Table '+t.number+'">'+
-        '<p class="qr-table-num">Table '+t.number+'</p></div>';
+        '<p class="qr-table-num">Table '+t.number+'</p>'+
+        '<p class="qr-hint">Scannez pour voir le menu</p></div>';
     }).join("");
   }
   document.body.appendChild(printArea);
-  setTimeout(()=>{window.print();setTimeout(()=>printArea.remove(),500);},300);
+  document.body.classList.add("print-qr");
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{ printArea.remove(); document.body.classList.remove("print-qr"); }, 500);
+  }, 300);
 }
 
-// ==================== HANDLERS ====================
+// ========== FACTURE / REÇU 80mm ==========
+function printReceipt(order) {
+  if (!order) return;
+  const date = new Date(order.paidAt || order.createdAt);
+  const items = order.items.filter(i => i.statut !== "Refusé");
+  const subtotal = orderTotal(order);
+  const delivery = deliveryFeeFor(order);
+  const total = subtotal + delivery;
+  const receiptNo = order.receiptNo || ("R" + order._docId.slice(-6).toUpperCase());
+  const s = DATA.settings;
+  const line = '<div style="border-top:1px dashed #000;margin:6px 0"></div>';
+  const html =
+    '<div style="text-align:center">'+
+      '<div style="font-size:15pt;font-weight:bold">RESTAURANT D&S</div>'+
+      '<div style="font-size:9pt">'+(s.restaurantName||"Restaurant D&S")+'</div>'+
+      '<div style="font-size:9pt">Tél: '+(s.phone||"")+'</div>'+
+      '<div style="font-size:9pt">Cotonou, Bénin</div>'+
+    '</div>'+
+    line+
+    '<div style="font-size:10pt;display:flex;justify-content:space-between"><span>Reçu N°</span><span><b>'+esc(receiptNo)+'</b></span></div>'+
+    '<div style="font-size:9pt">Date: '+date.toLocaleDateString("fr-FR")+' '+date.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})+'</div>'+
+    (order.type==="sur_place"?'<div style="font-size:9pt">Table: <b>'+(order.tableNumber||"—")+'</b></div>':'<div style="font-size:9pt">Livraison ('+(order.distanceKm||"?")+' km)</div>')+
+    (order.serveuseName?'<div style="font-size:9pt">Serveuse: '+esc(order.serveuseName)+'</div>':"")+
+    (order.livreurName?'<div style="font-size:9pt">Livreur: '+esc(order.livreurName)+'</div>':"")+
+    (order.clientInfo?.name?'<div style="font-size:9pt">Client: '+esc(order.clientInfo.name)+'</div>':"")+
+    (order.clientInfo?.phone?'<div style="font-size:9pt">Tél: '+esc(order.clientInfo.phone)+'</div>':"")+
+    line+
+    '<table style="width:100%;font-size:10pt;border-collapse:collapse">'+
+      items.map(i => '<tr>'+
+        '<td style="padding:2px 0;vertical-align:top">'+i.qty+'× '+esc(i.name)+'</td>'+
+        '<td style="text-align:right;padding:2px 0;white-space:nowrap">'+money(i.qty*i.price)+'</td>'+
+      '</tr>').join("")+
+    '</table>'+
+    line+
+    '<table style="width:100%;font-size:10pt">'+
+      '<tr><td>Sous-total</td><td style="text-align:right">'+money(subtotal)+'</td></tr>'+
+      (delivery>0?'<tr><td>Livraison</td><td style="text-align:right">'+money(delivery)+'</td></tr>':"")+
+      '<tr style="font-size:12pt;font-weight:bold"><td style="padding-top:6px">TOTAL</td><td style="text-align:right;padding-top:6px">'+money(total)+'</td></tr>'+
+    '</table>'+
+    line+
+    '<div style="font-size:10pt;text-align:center">Paiement: <b>'+(order.paymentMethod==="cash"?"Espèces":order.paymentMethod==="momo"?"Mobile Money":"—")+'</b></div>'+
+    '<div style="font-size:9pt;text-align:center;margin-top:10px">Merci et à bientôt !</div>'+
+    '<div style="font-size:8pt;text-align:center;margin-top:6px">*** '+esc(receiptNo)+' ***</div>';
+  const area = document.createElement("div");
+  area.id = "receipt-print-area";
+  area.innerHTML = html;
+  document.body.appendChild(area);
+  document.body.classList.add("print-receipt");
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{ area.remove(); document.body.classList.remove("print-receipt"); }, 500);
+  }, 300);
+}
+
 document.addEventListener("click",async function(e){
   const el=e.target.closest("[data-action]"); if(!el) return;
   const action=el.dataset.action;
@@ -1222,17 +1275,19 @@ document.addEventListener("click",async function(e){
 
   if(action==="logout"){resetClient();
     srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
-    gerS={tab:"validation",invoiceOrderId:null};
+    gerS={tab:"validation"};
     admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false};
-    livS={tab:"available"};A.logout();return;}
+    livS={tab:"available"};
+    if(addressMap){addressMap.remove();addressMap=null;}
+    A.logout();return;}
 
   // CLIENT
   if(action==="client-mode"){v.mode=el.dataset.mode;v.screen="menu";render();return;}
-  if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;v.clientLat=null;v.clientLon=null;v.deliveryDistanceKm=null;v.deliveryFee=0;render();return;}
+  if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;v.clientLat=null;v.clientLng=null;v.info={name:"",phone:"",address:""};if(addressMap){addressMap.remove();addressMap=null;}render();return;}
   if(action==="client-back"){
     if(v.screen==="menu")v.screen="landing";
     else if(v.screen==="table")v.screen="menu";
-    else if(v.screen==="address")v.screen="menu";
+    else if(v.screen==="address"){if(addressMap){addressMap.remove();addressMap=null;}v.screen="menu";}
     else if(v.screen==="cart")v.screen=v.mode==="sur_place"?"table":"address";
     render();return;}
   if(action==="client-cat"){v.cat=el.dataset.cat;render();return;}
@@ -1240,26 +1295,12 @@ document.addEventListener("click",async function(e){
   if(action==="client-remove"){if(v.cart[id]>1)v.cart[id]--;else delete v.cart[id];render();return;}
   if(action==="client-cart"){v.screen=v.mode==="sur_place"?"table":"address";render();return;}
   if(action==="client-table"){v.tableId=id;v.screen="cart";render();return;}
-  if(action==="client-to-cart"){v.screen="cart";render();return;}
+  if(action==="client-locate"){locateMe();return;}
+  if(action==="client-to-cart"){
+    if(v.mode==="livraison"&&(!v.clientLat||!v.clientLng)){toast("Touchez la carte pour votre position");return;}
+    if(addressMap){addressMap.remove();addressMap=null;}
+    v.screen="cart";render();return;}
   if(action==="client-cancel-wait"){v.screen="menu";v.orderId=null;localStorage.removeItem("ds_client_order");render();return;}
-  if(action==="client-calc-distance"){
-    const addr=v.info.address.trim();
-    if(addr.length<5){toast("Saisissez votre adresse");return;}
-    v.calculatingDistance=true;render();
-    try{
-      const geo=await geocodeAddress(addr);
-      if(!geo){v.calculatingDistance=false;toast("Adresse introuvable. Précisez le quartier.");render();return;}
-      v.clientLat=geo.lat;v.clientLon=geo.lon;
-      const result=await calculateDeliveryFee(geo.lat,geo.lon);
-      v.calculatingDistance=false;
-      if(!result){toast("Impossible de calculer la distance");render();return;}
-      v.deliveryDistanceKm=result.km;
-      v.deliveryFee=result.fee;
-      toast("Distance : "+result.km+" km → "+money(result.fee));
-      render();
-    }catch(err){v.calculatingDistance=false;toast("Erreur réseau — réessayez");render();}
-    return;
-  }
   if(action==="client-submit"){
     const items=DATA.menu.filter(m=>v.cart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:v.cart[d._docId],time:d.time}));
     const orderData={type:v.mode==="sur_place"?"sur_place":"livraison",items};
@@ -1271,10 +1312,10 @@ document.addEventListener("click",async function(e){
       orderData.tableId=v.tableId;orderData.tableNumber=t?t.number:null;
       orderData.serveuseId=srvId;orderData.serveuseName=srv?srv.name:null;
     }else{
-      orderData.clientInfo={name:v.info.name,phone:v.info.phone.replace(/\s/g,""),address:v.info.address};
-      orderData.deliveryDistanceKm=v.deliveryDistanceKm;
-      orderData.deliveryFee=v.deliveryFee;
-      orderData.clientLat=v.clientLat;orderData.clientLon=v.clientLon;
+      const calc=calcDeliveryFee(v.clientLat,v.clientLng);
+      orderData.clientInfo={name:v.info.name,phone:v.info.phone.replace(/\s/g,""),address:v.info.address||""};
+      orderData.clientLat=v.clientLat;orderData.clientLng=v.clientLng;
+      orderData.distanceKm=calc.km;orderData.deliveryFee=calc.fee;
     }
     v.orderId=await A.addOrder(orderData);
     localStorage.setItem("ds_client_order", v.orderId);
@@ -1323,10 +1364,9 @@ document.addEventListener("click",async function(e){
     const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
     await A.addOrder({type:"sur_place",tableId:srvS.orderTable,tableNumber:t?t.number:null,serveuseId:me?me._docId:null,serveuseName:SESSION.name,items});
     srvS.orderCart={};srvS.orderTable=null;srvS.orderStep="table";toast("Commande envoyée");render();return;}
-  if(action==="srv-confirm-cash"){await A.confirmCash(id,true);toast("Cash confirmé — facture prête");render();return;}
+  if(action==="srv-confirm-cash"){await A.confirmCash(id,true);toast("Cash confirmé — facture disponible");render();return;}
   if(action==="srv-cash-issue"){if(!confirm("Signaler paiement NON reçu ?"))return;await A.confirmCash(id,false);toast("Signalé au gérant + cuisine");render();return;}
   if(action==="srv-served"){await A.markServed(id);toast("Servie !");render();return;}
-  if(action==="srv-request-invoice"){await A.requestInvoice(id, SESSION.name);toast("Demande envoyée au gérant");render();return;}
 
   // GÉRANT
   if(action==="ger-home"){gerS.tab="validation";render();return;}
@@ -1336,13 +1376,16 @@ document.addEventListener("click",async function(e){
   if(action==="ger-motif"){await A.setItemMotif(id,idx,el.dataset.motif);return;}
   if(action==="ger-validate"){await A.validateOrder(id);toast("Validée");return;}
   if(action==="ger-delete"){
-    if(!confirm("⚠️ SUPPRIMER définitivement cette commande ?\n\nCette action est irréversible."))return;
+    if(!confirm("⚠️ SUPPRIMER définitivement cette commande ?"))return;
     await A.deleteOrder(id);toast("Commande supprimée");return;}
   if(action==="ger-resolve-cash"){await A.resolveCashIssue(id);toast("Signal résolu");return;}
+  if(action==="ger-print-receipt"){
+    const order=DATA.orders.find(o=>o._docId===id);
+    if(!order){toast("Commande introuvable");return;}
+    printReceipt(order);return;}
   if(action==="ger-affect"){const today=nowDate();const day=DATA.affectation[today]||{};
     const cur=day[el.dataset.table]===el.dataset.serveuse;
     await A.setAffectation(today,el.dataset.table,cur?null:el.dataset.serveuse);return;}
-  if(action==="ger-print-invoice"){printReceipt(id);toast("Impression lancée — facture 80mm");return;}
 
   // CUISINE
   if(action==="cui-home"){render();return;}
@@ -1394,14 +1437,28 @@ document.addEventListener("click",async function(e){
     await A.addStockMove({...admS.stockForm});
     admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};
     toast("Enregistré");return;}
-  if(action==="admin-save-settings"){await A.updateSettings(admS.settingsForm);admS.settingsForm=null;toast("Enregistré");return;}
+  if(action==="admin-save-settings"){
+    const f=admS.settingsForm;
+    await A.updateSettings({
+      restaurantName: f.restaurantName,
+      phone: f.phone,
+      waitMode: f.waitMode,
+      restaurantLat: parseFloat(f.restaurantLat)||RESTAURANT_LAT,
+      restaurantLng: parseFloat(f.restaurantLng)||RESTAURANT_LNG,
+      feePerKm: parseInt(f.feePerKm)||DEFAULT_FEE_PER_KM,
+      minFee: parseInt(f.minFee)||DEFAULT_MIN_FEE,
+      maxKm: parseInt(f.maxKm)||DEFAULT_MAX_KM
+    });
+    admS.settingsForm=null;toast("Enregistré");return;}
   if(action==="admin-export-csv"){
     const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));
-    const csv=["Date,Facture,Type,Adresse,Serveuse/Livreur,Client,Plats,Sous-total,Frais livr.,Total,Paiement"].concat(paid.map(o=>{
+    const csv=["Date,Heure,Type,Distance,Zone/Table,Serveuse/Livreur,Client,Plats,Sous-total,Livraison,Total,Paiement"].concat(paid.map(o=>{
       const d=new Date(o.createdAt);
       const items=o.items.filter(i=>i.statut!=="Refusé").map(i=>i.qty+"x "+i.name).join("; ");
+      const loc=o.type==="livraison"?(o.distanceKm?o.distanceKm+" km":"Table "+(o.tableNumber||"")):"Table "+(o.tableNumber||"");
       const staff=o.type==="livraison"?(o.livreurName||""):(o.serveuseName||"");
-      return [o.date,d.toLocaleTimeString("fr-FR"),o.invoiceNumber||"",o.type,o.clientInfo?.address||"",staff,o.clientInfo?.name||"",'"'+items+'"',orderTotal(o),getDeliveryFee(o),orderGrandTotal(o),o.paymentMethod||""].join(",");
+      const cli=o.clientInfo?.name||"";
+      return [o.date,d.toLocaleTimeString("fr-FR"),o.type,o.distanceKm||"",loc,staff,cli,'"'+items+'"',orderTotal(o),deliveryFeeFor(o),orderGrandTotal(o),o.paymentMethod||""].join(",");
     })).join("\n");
     const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);
@@ -1424,7 +1481,7 @@ document.addEventListener("input",function(e){
   const v=clientS;
   if(key==="info-name")v.info.name=el.value;
   if(key==="info-phone")v.info.phone=el.value.replace(/[^\d]/g,"").slice(0,10);
-  if(key==="info-address"){v.info.address=el.value;v.deliveryDistanceKm=null;v.deliveryFee=0;}
+  if(key==="info-address")v.info.address=el.value;
   if(key==="new-staff-name")admS.newStaff.name=el.value;
   if(key==="new-staff-pin"){admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);render();}
   if(key==="new-stock-name")admS.newStockItem.name=el.value;
@@ -1435,9 +1492,15 @@ document.addEventListener("input",function(e){
   if(key==="stock-qty")admS.stockForm.qty=parseFloat(el.value)||0;
   if(key==="stock-motif")admS.stockForm.motif=el.value;
   if(key==="hist-query"){admS.histFilter.query=el.value;render();}
-  if(key==="set-name"&&admS.settingsForm)admS.settingsForm.restaurantName=el.value;
-  if(key==="set-phone"&&admS.settingsForm)admS.settingsForm.phone=el.value;
-  if(key==="set-prix-km"&&admS.settingsForm)admS.settingsForm.prixParKm=parseInt(el.value)||110;
+  if(admS.settingsForm){
+    if(key==="set-name")admS.settingsForm.restaurantName=el.value;
+    if(key==="set-phone")admS.settingsForm.phone=el.value;
+    if(key==="set-lat")admS.settingsForm.restaurantLat=parseFloat(el.value)||RESTAURANT_LAT;
+    if(key==="set-lng")admS.settingsForm.restaurantLng=parseFloat(el.value)||RESTAURANT_LNG;
+    if(key==="set-fee-km")admS.settingsForm.feePerKm=parseInt(el.value)||DEFAULT_FEE_PER_KM;
+    if(key==="set-min-fee")admS.settingsForm.minFee=parseInt(el.value)||DEFAULT_MIN_FEE;
+    if(key==="set-max-km")admS.settingsForm.maxKm=parseInt(el.value)||DEFAULT_MAX_KM;
+  }
 });
 
 document.addEventListener("keydown",function(e){
@@ -1449,6 +1512,8 @@ document.addEventListener("keydown",function(e){
 
 setInterval(function(){
   if(!SESSION)return;
+  // Ne pas re-render si on est sur la carte (pour ne pas perdre le zoom)
+  if(SESSION.role==="client" && clientS.screen==="address" && addressMap) return;
   if(SESSION.role==="cuisine"||SESSION.role==="serveuse"||SESSION.role==="gerant"){render();}
   if(SESSION.role==="client"&&clientS.screen==="tracking"&&clientS.timerRemaining>0){clientS.timerRemaining--;render();}
 },1000);
@@ -1477,7 +1542,7 @@ if("Notification" in window && Notification.permission==="default"){setTimeout((
   setTimeout(()=>clearInterval(checkInterval), 15000);
 })();
 
-// Lire ?table=N
+// Lire ?table=N depuis URL
 (function checkUrlTable(){
   const params=new URLSearchParams(window.location.search);
   const t=params.get("table");
