@@ -30,7 +30,7 @@ input,select,textarea{font-family:inherit;font-size:16px}
 .role-btn .em{font-size:22px;margin-bottom:6px}
 .role-btn .lab{font-weight:600;margin:0;font-size:14px}
 .role-btn .desc{font-size:11px;color:#888;margin:2px 0 0}
-.pin-wrap{width:100%;max-width:300px}
+.pin-wrap{width:100%;max-width:340px}
 .pin-display{display:flex;justify-content:center;gap:12px;margin:20px 0}
 .pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid #444}
 .pin-dot.filled{background:var(--jaune);border-color:var(--jaune)}
@@ -150,16 +150,18 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 .chart-bar .val{font-size:10px;font-weight:bold;font-family:monospace}
 .chart-container{display:flex;align-items:flex-end;gap:4px;height:200px;padding:16px;background:white;border:1px solid var(--sable);border-radius:12px;overflow-x:auto}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px}
-.modal-card{background:white;border-radius:16px;max-width:400px;width:100%;padding:24px;text-align:center;border:3px solid var(--jaune)}
+.modal-card{background:white;border-radius:16px;max-width:420px;width:100%;padding:24px;text-align:center;border:3px solid var(--jaune)}
 .modal-card h2{font-family:Georgia,serif;font-size:22px;margin:0 0 12px}
 .modal-card p{color:var(--gris);font-size:14px;margin-bottom:12px}
 .pin-modal-input{text-align:center;font-size:28px;letter-spacing:0.8em;font-family:monospace;padding:12px 12px 12px 20px;width:220px;margin:12px auto;display:block;border:2px solid var(--sable);border-radius:12px;background:var(--creme);color:#000}
 .pin-modal-input:focus{outline:none;border-color:var(--jaune)}
+.recovery-code{font-family:monospace;font-size:24px;font-weight:bold;color:var(--noir);background:var(--creme);border:2px dashed var(--jaune);border-radius:12px;padding:16px;margin:16px 0;letter-spacing:0.1em;text-align:center}
 .log-row{display:flex;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #f0ede4;font-size:12px;gap:10px;align-items:flex-start}
 .log-row:last-child{border-bottom:none}
 .log-row .when{color:var(--gris);font-family:monospace;font-size:10px;margin-top:2px}
 .log-ok{color:var(--vert);font-weight:600}
 .log-fail{color:var(--rouge);font-weight:600}
+.btn-disabled-look{opacity:0.5;pointer-events:auto}
 @media print{@page{size:80mm auto;margin:0}body *{visibility:hidden}#qr-print-area,#qr-print-area *{visibility:visible}#qr-print-area{position:absolute;left:0;top:0;width:100%;padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:20px}#invoice-print,#invoice-print *{visibility:visible}#invoice-print{position:absolute;left:0;top:0;width:80mm;padding:2mm 3mm;font-family:'Courier New',monospace;font-size:11px;color:#000;background:#fff}#invoice-print .inv-line{border-top:1px dashed #000;margin:4px 0}}
 #invoice-print{display:none;font-family:'Courier New',monospace}
 </style>
@@ -175,7 +177,6 @@ const firebaseConfig = { apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0", auth
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 
-// Valeurs par défaut (utilisées si absent de settings)
 const DEFAULT_RESTO = { lat: 6.454877410013232, lon: 2.279816313097269 };
 const DEFAULT_PRIX_KM = 110;
 const SITE_URL = "https://restaurant-ds.github.io/restaurant-ds/";
@@ -186,7 +187,6 @@ if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().t
 let SESSION = null;
 let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{}, zones:[], resetLogs:[] };
 
-// Lecture des coordonnées depuis settings (fallback sur valeurs par défaut)
 function restoCoords(){
   return {
     lat: (DATA.settings.restoLat != null) ? Number(DATA.settings.restoLat) : DEFAULT_RESTO.lat,
@@ -195,6 +195,12 @@ function restoCoords(){
 }
 function prixParKm(){
   return DATA.settings.prixKm != null ? Number(DATA.settings.prixKm) : DEFAULT_PRIX_KM;
+}
+
+function genRecoveryCode(){
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const blk = () => { let s=""; for(let i=0;i<4;i++) s+=chars[Math.floor(Math.random()*chars.length)]; return s; };
+  return "DS-"+blk()+"-"+blk();
 }
 
 const SEED = {
@@ -214,9 +220,9 @@ const SEED = {
     { id:"s1", name:"Aïcha", role:"serveuse", pin:"4821" },
     { id:"s2", name:"Fatou", role:"serveuse", pin:"3390" },
     { id:"s3", name:"Moussa", role:"cuisine", pin:"1234" },
-    { id:"s4", name:"Ibrahim", role:"gerant", pin:"0000", email:"ibrahim@restaurant-ds.com", password:"Ibrahim2024!" },
+    { id:"s4", name:"Ibrahim", role:"gerant", pin:"0000", email:"ibrahim@restaurant-ds.com", password:"Ibrahim2024!", recoveryCode:"", recoveryCodeCreatedAt:0 },
     { id:"s5", name:"Salif", role:"livreur", pin:"5678" },
-    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999", email:"admin@restaurant-ds.com", password:"AdminD&S2024!" }
+    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999", email:"admin@restaurant-ds.com", password:"AdminD&S2024!", recoveryCode:"", recoveryCodeCreatedAt:0 }
   ],
   tables: Array.from({length:25},(_,i)=>({ id:"t"+(i+1), number:i+1, token:Math.random().toString(36).slice(2,8) })),
   stock: [
@@ -241,10 +247,8 @@ async function seedIfEmpty() {
   await batch.commit();
 }
 
-// Migration : ajoute restoLat/restoLon/prixKm aux settings et email/password aux gérants/admins existants
 async function migrateIfNeeded(){
   try{
-    // Settings
     const sRef = doc(db, "settings", "main");
     const sSnap = await getDoc(sRef);
     if(sSnap.exists()){
@@ -253,25 +257,20 @@ async function migrateIfNeeded(){
       if(s.restoLat == null) up.restoLat = DEFAULT_RESTO.lat;
       if(s.restoLon == null) up.restoLon = DEFAULT_RESTO.lon;
       if(s.prixKm == null) up.prixKm = DEFAULT_PRIX_KM;
-      if(Object.keys(up).length > 0){
-        await updateDoc(sRef, up);
-      }
+      if(Object.keys(up).length > 0) await updateDoc(sRef, up);
     }
-    // Staff : gérant/admin sans email
     const staffSnap = await getDocs(collection(db, "staff"));
     const batch = writeBatch(db);
     let needs = false;
     staffSnap.forEach(d => {
       const s = d.data();
-      if((s.role==="gerant" || s.role==="admin") && !s.email){
-        let defaults;
-        if(s.role==="admin"){
-          defaults = { email:"admin@restaurant-ds.com", password:"AdminD&S2024!" };
-        } else {
-          defaults = { email:"ibrahim@restaurant-ds.com", password:"Ibrahim2024!" };
-        }
-        batch.update(d.ref, defaults);
-        needs = true;
+      if((s.role==="gerant" || s.role==="admin")){
+        const patch = {};
+        if(!s.email) patch.email = s.role==="admin"?"admin@restaurant-ds.com":"ibrahim@restaurant-ds.com";
+        if(!s.password) patch.password = s.role==="admin"?"AdminD&S2024!":"Ibrahim2024!";
+        if(s.recoveryCode === undefined) patch.recoveryCode = "";
+        if(s.recoveryCodeCreatedAt === undefined) patch.recoveryCodeCreatedAt = 0;
+        if(Object.keys(patch).length > 0){ batch.update(d.ref, patch); needs = true; }
       }
     });
     if(needs) await batch.commit();
@@ -368,7 +367,7 @@ function subscribeAll(onUpdate) {
 
 const A = {
   login(role,name){ SESSION={role,name,userId:DEVICE_ID,since:Date.now()}; render(); },
-  logout(){ SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; render(); },
+  logout(){ SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; render(); },
   async addOrder(order){
     const newOrder={ createdAt:Date.now(), date:nowDate(), status:"att_validation",
       type:order.type||"sur_place", tableId:order.tableId||null, tableNumber:order.tableNumber||null,
@@ -424,6 +423,7 @@ const A = {
   async updateDish(id,patch){ await updateDoc(doc(db,"menu",id),patch); },
   async removeDish(id){ await deleteDoc(doc(db,"menu",id)); },
   async addStaff(s){ await addDoc(collection(db,"staff"),s); },
+  async updateStaff(id,patch){ await updateDoc(doc(db,"staff",id),patch); },
   async removeStaff(id){ await deleteDoc(doc(db,"staff",id)); },
   async resetPin(id){ const pin=String(Math.floor(1000+Math.random()*9000)); await updateDoc(doc(db,"staff",id),{pin}); return pin; },
   async addTable(){ const n=DATA.tables.reduce((m,t)=>Math.max(m,t.number),0)+1; await addDoc(collection(db,"tables"),{number:n,token:Math.random().toString(36).slice(2,8)}); },
@@ -509,15 +509,24 @@ const A = {
     DATA.resetLogs.forEach(l=>batch.delete(doc(db,"resetLogs",l._docId)));
     await batch.commit();
   },
-  // AUTH logs
   async logAuth(role, email, result){
     await addDoc(collection(db,"resetLogs"),{
       createdAt: Date.now(),
       adminName: email || "?",
-      action: "Connexion " + (role==="admin"?"Admin":"Gérant"),
+      action: "Connexion " + (role==="admin"?"Admin":role==="gerant"?"Gérant":"?"),
       result: result,
       pinTried: ""
     });
+  },
+  async generateRecoveryCode(staffId){
+    const code = genRecoveryCode();
+    await updateDoc(doc(db,"staff",staffId), { recoveryCode: code, recoveryCodeCreatedAt: Date.now() });
+    return code;
+  },
+  async resetPasswordWithRecovery(staffId, newPassword){
+    const code = genRecoveryCode();
+    await updateDoc(doc(db,"staff",staffId), { password: newPassword, recoveryCode: code, recoveryCodeCreatedAt: Date.now() });
+    return code;
   }
 };
 
@@ -537,11 +546,11 @@ function statusBadge(o){
   return '<span class="badge badge-rouge">À valider</span>';
 }
 
-let loginRole=null, loginPin="", loginEmail="", loginPassword="", loginError="";
+let loginRole=null, loginPin="", loginEmail="", loginPassword="", loginError="", loginRecovery=null;
 let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
 let gerS={tab:"validation"};
-let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:""};
+let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null};
 let livS={tab:"available"};
 let pendingReset=null;
 let mapInstance=null, mapMarker=null;
@@ -568,6 +577,10 @@ function screenLogin(){
     return '<div class="login"><div class="login-logo">D&S</div><p class="login-sub">Bienvenue au</p><h1 class="serif">Restaurant <span>D&S</span></h1><div class="role-grid">'+
       ROLES.map(r=>'<button class="role-btn" data-action="pick-role" data-role="'+r.key+'"><div class="em">'+r.em+'</div><p class="lab">'+r.label+'</p><p class="desc">'+r.desc+'</p></button>').join("")+'</div></div>';
   }
+  // RECOVERY MODE
+  if(loginRecovery){
+    return screenRecovery();
+  }
   // Gérant/Admin : identifiants
   if(loginRole==="gerant" || loginRole==="admin"){
     const labels={gerant:"Gérant",admin:"Administrateur"};
@@ -580,9 +593,10 @@ function screenLogin(){
           '<div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label>'+
             '<input class="auth-input" type="email" inputmode="email" data-input="login-email" value="'+esc(loginEmail)+'" placeholder="votre@email.com" autocomplete="username" autocapitalize="none"></div>'+
           '<div><label class="text-xs" style="color:#aaa;font-weight:600">MOT DE PASSE</label>'+
-            '<input class="auth-input" type="password" data-input="login-password" value="'+esc(loginPassword)+'" placeholder="••••••••" autocomplete="current-password" id="login-pwd-input"></div>'+
+            '<input class="auth-input" type="password" data-input="login-password" value="'+esc(loginPassword)+'" placeholder="••••••••" autocomplete="current-password"></div>'+
           (loginError?'<p class="pin-error" style="margin:0">'+esc(loginError)+'</p>':"")+
           '<button class="btn btn-accent btn-block" style="padding:14px;font-size:15px;margin-top:6px" data-action="login-submit">Se connecter</button>'+
+          '<button class="btn btn-ghost btn-block" style="padding:10px;font-size:13px" data-action="login-forgot-pwd">🔑 Mot de passe oublié ?</button>'+
           '<button class="pin-back" data-action="back-role" style="margin-top:4px">← Changer de rôle</button>'+
           '<p class="pin-hint">Démo : '+demo[loginRole]+'</p>'+
         '</div>'+
@@ -598,6 +612,63 @@ function screenLogin(){
     '<p style="color:#aaa;font-size:13px;text-align:center;margin:0">Entrez votre code PIN</p><div class="pin-display">'+dots+'</div><div class="pin-pad">'+keypad+
     '<button class="pin-key blank" disabled></button><button class="pin-key" data-action="pin-digit" data-digit="0">0</button><button class="pin-key del" data-action="pin-del">⌫</button></div>'+
     (loginError?'<p class="pin-error">'+esc(loginError)+'</p>':"")+'<button class="pin-back" data-action="back-role">← Changer de rôle</button><p class="pin-hint">'+hint+'</p></div></div>';
+}
+
+function screenRecovery(){
+  const r = loginRecovery;
+  if(!r) return "";
+  const roleLabel = loginRole==="admin"?"Administrateur":"Gérant";
+  if(r.stage==="form"){
+    return '<div class="login"><div class="login-logo">🔑</div>'+
+      '<h1 class="serif">Mot de passe oublié</h1>'+
+      '<div class="pin-wrap">'+
+        '<p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Compte '+roleLabel+'</p>'+
+        '<div style="display:flex;flex-direction:column;gap:14px">'+
+          '<div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label>'+
+            '<input class="auth-input" type="email" inputmode="email" data-input="rec-email" value="'+esc(r.email||"")+'" placeholder="votre@email.com" autocapitalize="none"></div>'+
+          '<div><label class="text-xs" style="color:#aaa;font-weight:600">CODE DE RÉCUPÉRATION</label>'+
+            '<input class="auth-input" type="text" data-input="rec-code" value="'+esc(r.code||"")+'" placeholder="DS-XXXX-XXXX" autocomplete="off" autocapitalize="characters" style="font-family:monospace;letter-spacing:0.1em"></div>'+
+          '<p class="text-xs" style="color:#888;text-align:center;line-height:1.5">Le code vous a été fourni par l\'administrateur<br>au moment de la création du compte.</p>'+
+          (r.error?'<p class="pin-error" style="margin:0">'+esc(r.error)+'</p>':"")+
+          '<button class="btn btn-accent btn-block" style="padding:14px;font-size:15px" data-action="rec-verify">Vérifier</button>'+
+          '<button class="pin-back" data-action="rec-cancel" style="margin-top:4px">← Retour à la connexion</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
+  if(r.stage==="newPwd"){
+    return '<div class="login"><div class="login-logo">🔐</div>'+
+      '<h1 class="serif">Nouveau mot de passe</h1>'+
+      '<div class="pin-wrap">'+
+        '<p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Compte : <strong style="color:var(--jaune)">'+esc(r.matchedName||"")+'</strong></p>'+
+        '<div style="display:flex;flex-direction:column;gap:14px">'+
+          '<div><label class="text-xs" style="color:#aaa;font-weight:600">NOUVEAU MOT DE PASSE (6 caractères min.)</label>'+
+            '<input class="auth-input" type="password" data-input="rec-newpwd" value="'+esc(r.newPwd||"")+'" placeholder="••••••••" autocomplete="new-password"></div>'+
+          '<div><label class="text-xs" style="color:#aaa;font-weight:600">CONFIRMER</label>'+
+            '<input class="auth-input" type="password" data-input="rec-newpwd2" value="'+esc(r.newPwd2||"")+'" placeholder="••••••••" autocomplete="new-password"></div>'+
+          (r.error?'<p class="pin-error" style="margin:0">'+esc(r.error)+'</p>':"")+
+          '<button class="btn btn-accent btn-block" style="padding:14px;font-size:15px" data-action="rec-save">Enregistrer le nouveau mot de passe</button>'+
+          '<button class="pin-back" data-action="rec-cancel" style="margin-top:4px">← Annuler</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
+  if(r.stage==="success"){
+    return '<div class="login"><div class="login-logo">✅</div>'+
+      '<h1 class="serif">Mot de passe modifié</h1>'+
+      '<div class="pin-wrap">'+
+        '<p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 16px">Votre nouveau mot de passe est actif.</p>'+
+        '<div class="card" style="background:#1a1a1a;border:2px solid var(--rouge);color:white;padding:16px;text-align:center;border-radius:12px;margin-bottom:16px">'+
+          '<p style="color:var(--rouge);font-weight:700;margin-bottom:8px;font-size:13px">⚠️ NOUVEAU CODE DE RÉCUPÉRATION</p>'+
+          '<p style="font-size:12px;color:#aaa;margin-bottom:10px">Notez-le maintenant, il ne sera plus affiché.</p>'+
+          '<div class="recovery-code" style="background:var(--noir);color:var(--jaune);border-color:var(--jaune)">'+esc(r.generatedCode||"")+'</div>'+
+        '</div>'+
+        '<p style="color:#c7b89a;font-size:12px;text-align:center;margin-bottom:16px">Conservez ce code en lieu sûr (papier, coffre). Il vous servira à nouveau en cas d\'oubli.</p>'+
+        '<button class="btn btn-accent btn-block" style="padding:14px;font-size:15px" data-action="rec-done">J\'ai noté — Retour à la connexion</button>'+
+      '</div>'+
+    '</div>';
+  }
+  return "";
 }
 
 function screenClient(){
@@ -648,6 +719,7 @@ function screenClient(){
     const phoneOk=validPhoneBJ(v.info.phone);
     const nameOk=v.info.name && v.info.name.trim().length>1;
     const locOk=v.deliveryLat!=null && v.deliveryLon!=null;
+    const allOk = nameOk && phoneOk && locOk;
     const fee=v.deliveryKm!=null?Math.round(v.deliveryKm*prixParKm()):0;
     return '<div class="app">'+topbar({title:"Adresse livraison",homeAction:"client-home",backAction:"client-back"})+
       '<div class="content content-narrow"><div style="display:flex;flex-direction:column;gap:14px">'+
@@ -658,14 +730,11 @@ function screenClient(){
           '<p class="text-xs muted" style="margin:4px 0 8px">Touchez la carte ou utilisez le GPS.</p>'+
           '<button class="btn btn-accent btn-block" style="margin-bottom:8px" data-action="client-use-gps">📍 Utiliser ma position</button>'+
           '<div id="map"></div>'+
-          (v.deliveryLat!=null?('<div class="map-info" style="margin-top:12px"><div class="flex between center"><div><div class="text-xs" style="color:#aaa">Distance route</div>'+
-            '<div class="dist">'+(v.deliveryKm!=null?v.deliveryKm.toFixed(2)+" km":"Calcul…")+'</div></div>'+
-            '<div style="text-align:right"><div class="text-xs" style="color:#aaa">Frais livraison</div><div class="dist">'+(fee?money(fee):"—")+'</div></div></div>'+
-            '<div class="text-xs" style="color:#aaa;margin-top:6px">'+(v.deliveryKm!=null?(v.deliveryKm*prixParKm()).toFixed(0)+" F à "+prixParKm()+" F/km":"")+'</div></div>')
-            :'<div class="card" style="text-align:center;color:var(--gris);font-size:13px;margin-top:12px">Aucune position sélectionnée</div>')+
+          '<div id="distance-panel">'+renderDistancePanel()+'</div>'+
         '</div>'+
         '<div><label class="text-xs muted bold">REPÈRES (optionnel)</label><textarea class="input" style="margin-top:6px" rows="2" data-input="info-address" placeholder="Rue, porte, repère...">'+esc(v.info.address)+'</textarea></div>'+
-        '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-delivery-next" '+((nameOk&&phoneOk&&locOk)?"":"disabled")+'>Voir le panier</button>'+
+        '<button class="btn btn-accent btn-block '+(allOk?"":"btn-disabled-look")+'" style="padding:14px;opacity:'+(allOk?"1":"0.5")+'" data-action="client-delivery-next">Voir le panier</button>'+
+        (allOk?'':'<p class="text-xs muted" style="text-align:center">Remplissez nom, téléphone et position pour continuer</p>')+
       '</div></div></div>';
   }
   if(v.screen==="cart"){
@@ -683,7 +752,7 @@ function screenClient(){
         '<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Temps estimé</span><span class="bold" style="color:var(--rouge)">~'+wait+' min</span></div>'+
         (fee>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Livraison ('+v.deliveryKm.toFixed(2)+' km)</span><span class="mono">'+money(fee)+'</span></div>':"")+
         '<div class="flex between" style="font-size:18px;font-weight:bold;margin-bottom:14px"><span>Total</span><span class="mono">'+money(total+fee)+'</span></div>'+
-        '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-submit">Envoyer</button>'+
+        '<button class="btn btn-accent btn-block" style="padding:14px" data-action="client-submit">Envoyer la commande</button>'+
       '</div>':"")+'</div>';
   }
   if(v.screen==="waiting"){
@@ -750,9 +819,24 @@ function screenClient(){
   return "";
 }
 
+function renderDistancePanel(){
+  if(clientS.deliveryLat==null) return '<div class="card" style="text-align:center;color:var(--gris);font-size:13px;margin-top:12px">Aucune position sélectionnée</div>';
+  const fee = clientS.deliveryKm!=null?Math.round(clientS.deliveryKm*prixParKm()):0;
+  return '<div class="map-info" style="margin-top:12px"><div class="flex between center"><div><div class="text-xs" style="color:#aaa">Distance route</div>'+
+    '<div class="dist">'+(clientS.deliveryKm!=null?clientS.deliveryKm.toFixed(2)+" km":"Calcul…")+'</div></div>'+
+    '<div style="text-align:right"><div class="text-xs" style="color:#aaa">Frais livraison</div><div class="dist">'+(fee?money(fee):"—")+'</div></div></div>'+
+    '<div class="text-xs" style="color:#aaa;margin-top:6px">'+(clientS.deliveryKm!=null?(clientS.deliveryKm*prixParKm()).toFixed(0)+" F à "+prixParKm()+" F/km":"")+'</div></div>';
+}
+
+function updateDistancePanel(){
+  const p=document.getElementById("distance-panel");
+  if(p) p.innerHTML = renderDistancePanel();
+}
+
 function initLeafletMap(){
   const mapEl=document.getElementById("map");
-  if(!mapEl||mapInstance) return;
+  if(!mapEl) return;
+  if(mapInstance) destroyMap();
   const rc = restoCoords();
   mapInstance=L.map("map").setView([rc.lat,rc.lon],13);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OSM"}).addTo(mapInstance);
@@ -774,13 +858,15 @@ function initLeafletMap(){
 }
 function setClientPosition(lat,lon){
   clientS.deliveryLat=lat; clientS.deliveryLon=lon; clientS.deliveryKm=null;
-  render();
+  updateDistancePanel();
   calcRoadDistanceKm(lat,lon).then(r=>{
     clientS.deliveryKm=r.km;
+    updateDistancePanel();
+    // Re-render to update button state (allOk)
     render();
-  }).catch(e=>{ toast("Erreur calcul distance : "+e.message); });
+  }).catch(e=>{ toast("Erreur calcul distance"); });
 }
-function destroyMap(){ if(mapInstance){ mapInstance.remove(); mapInstance=null; mapMarker=null; } }
+function destroyMap(){ if(mapInstance){ try{mapInstance.remove();}catch(e){} mapInstance=null; mapMarker=null; } }
 
 function screenServeuse(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
@@ -1065,18 +1151,24 @@ function screenAdmin(){
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2><div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">'+
       '<input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'">'+
       '<select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select>'+
-      '<input class="input mono" placeholder="PIN (serveuse/cuisine/livreur)" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'">'+
+      '<input class="input mono" placeholder="PIN (serveuse etc.)" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'">'+
       '<input class="input" placeholder="Email (gérant/admin)" type="email" data-input="new-staff-email" value="'+esc(v.newStaff.email||"")+'">'+
       '<input class="input" placeholder="Mot de passe (gérant/admin)" type="text" data-input="new-staff-pwd" value="'+esc(v.newStaff.password||"")+'">'+
       '<button class="btn btn-primary" data-action="admin-add-staff">Ajouter</button></div>'+
-      '<p class="text-xs muted" style="margin-top:8px">Remplissez PIN pour serveuse/cuisine/livreur, email+mot de passe pour gérant/admin.</p></div>'+
+      '<p class="text-xs muted" style="margin-top:8px">PIN pour serveuse/cuisine/livreur · Email+mot de passe pour gérant/admin.</p></div>'+
       '<div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>{
-        const creds = (p.role==="gerant"||p.role==="admin")
+        const isAdminOrGerant = p.role==="gerant"||p.role==="admin";
+        const creds = isAdminOrGerant
           ? '📧 '+esc(p.email||"—")+'<br>🔑 '+esc(p.password||"—")
           : 'PIN '+esc(p.pin||"—");
         return '<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+'</p><p class="mono text-xs" style="color:var(--jaune-fonce);margin-top:6px">'+creds+'</p>'+
-        '<div class="flex gap-2" style="margin-top:12px">'+(p.role==="gerant"||p.role==="admin"?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Réinit MDP</button>':'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+
-        '<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>';
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+
+        (isAdminOrGerant
+          ?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Réinit MDP</button>'+
+           '<button class="btn btn-ghost btn-sm" data-action="admin-gen-recovery" data-id="'+p._docId+'" data-name="'+esc(p.name)+'">🔑 Code récup.</button>'
+          :'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+
+        '<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button>'+
+        '</div></div>';
       }).join("")+'</div>';
   } else if(v.section==="tables"){
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Tables & QR</h2>'+
@@ -1098,7 +1190,7 @@ function screenAdmin(){
         '<input class="input" placeholder="Unité" data-input="new-stock-unit" value="'+esc(ns.unit)+'">'+
         '<input class="input" type="number" placeholder="Qté init." data-input="new-stock-initial" value="'+(ns.initial||"")+'">'+
         '<input class="input" type="number" placeholder="Seuil" data-input="new-stock-threshold" value="'+(ns.threshold||"")+'">'+
-        '<button class="btn btn-accent" data-action="admin-create-stock" '+((!ns.name||!ns.unit)?"disabled":"")+'>Créer</button></div></div>';
+        '<button class="btn btn-accent" data-action="admin-create-stock">Créer</button></div></div>';
     }
     content+='<div class="table-wrap" style="margin-bottom:16px"><table><thead><tr><th>Ingrédient</th><th>Qté</th><th>Seuil</th><th>État</th><th></th></tr></thead><tbody>'+
       DATA.stock.map(s=>{const qty=stockQty(s._docId);const low=qty<=s.threshold;return '<tr><td><strong>'+esc(s.name)+'</strong></td><td class="mono">'+qty+' '+esc(s.unit)+'</td><td class="muted">'+s.threshold+' '+esc(s.unit)+'</td>'+
@@ -1188,7 +1280,7 @@ function screenAdmin(){
       '</div>'+
       '<div class="card" style="max-width:600px;margin-bottom:16px">'+
         '<h3 class="bold" style="margin-bottom:14px;font-size:15px">📍 Localisation du restaurant</h3>'+
-        '<p class="text-xs muted" style="margin-bottom:12px">Ces coordonnées servent à calculer la distance de livraison (itinéraire le plus court via OSRM).</p>'+
+        '<p class="text-xs muted" style="margin-bottom:12px">Coordonnées utilisées pour calculer la distance de livraison (itinéraire le plus court via OSRM).</p>'+
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
           '<div><label class="text-xs muted bold">LATITUDE</label><input class="input" type="text" inputmode="decimal" style="margin-top:6px;font-family:monospace;font-size:13px" data-input="set-resto-lat" value="'+esc(String(f.restoLat!=null?f.restoLat:DEFAULT_RESTO.lat))+'"></div>'+
           '<div><label class="text-xs muted bold">LONGITUDE</label><input class="input" type="text" inputmode="decimal" style="margin-top:6px;font-family:monospace;font-size:13px" data-input="set-resto-lon" value="'+esc(String(f.restoLon!=null?f.restoLon:DEFAULT_RESTO.lon))+'"></div>'+
@@ -1261,7 +1353,6 @@ function screenAdmin(){
 function screenPinModal(){
   if(!pendingReset) return "";
   const labels = { today:"Effacer les ventes du jour", all:"Effacer TOUTES les ventes", active:"Effacer les commandes en cours", menu:"Réinitialiser le menu", stock:"Réinitialiser le stock", everything:"TOUT RÉINITIALISER", "clear-logs":"Vider le journal" };
-  // Nom aléatoire pour éviter le pré-remplissage navigateur
   const fieldName = "pwd-" + Math.random().toString(36).slice(2,10);
   return '<div class="modal-overlay"><div class="modal-card">'+
     '<div style="font-size:48px;margin-bottom:12px">🔐</div>'+
@@ -1279,11 +1370,24 @@ function screenPinModal(){
   '</div></div>';
 }
 
+function screenRecoveryCodeModal(){
+  if(!admS.recoveryModal) return "";
+  const r = admS.recoveryModal;
+  return '<div class="modal-overlay"><div class="modal-card">'+
+    '<div style="font-size:48px;margin-bottom:12px">🔑</div>'+
+    '<h2>Code de récupération</h2>'+
+    '<p style="font-size:13px;margin-bottom:8px">Compte : <strong>'+esc(r.name||"")+'</strong></p>'+
+    '<p style="font-size:13px;color:var(--rouge);font-weight:600;margin-bottom:10px">⚠️ Notez ce code MAINTENANT<br>Il ne sera plus affiché.</p>'+
+    '<div class="recovery-code">'+esc(r.code||"")+'</div>'+
+    '<p class="text-xs muted" style="margin-bottom:14px">Conservez ce code en lieu sûr (papier, coffre). Il permet de réinitialiser le mot de passe en cas d\'oubli.</p>'+
+    '<button class="btn btn-accent btn-block" style="padding:14px" data-action="recovery-modal-close">J\'ai noté — Fermer</button>'+
+  '</div></div>';
+}
+
 function render(){
   const root=document.getElementById("root");
-  if(!SESSION || !(SESSION.role==="client" && clientS.screen==="deliveryInfo")){
-    if(mapInstance) destroyMap();
-  }
+  // Destroy map if not on deliveryInfo screen
+  if(mapInstance && (!SESSION || SESSION.role!=="client" || clientS.screen!=="deliveryInfo")) destroyMap();
   if(!SESSION){root.innerHTML=screenLogin();return;}
   const saved=preserveInput();
   let html="";
@@ -1294,12 +1398,12 @@ function render(){
   else if(SESSION.role==="livreur")html=screenLivreur();
   else if(SESSION.role==="admin")html=screenAdmin();
   if(SESSION.role==="admin" && pendingReset) html+=screenPinModal();
+  if(SESSION.role==="admin" && admS.recoveryModal) html+=screenRecoveryCodeModal();
   root.innerHTML=html;
   restoreInput(saved);
   if(SESSION.role==="client" && clientS.screen==="deliveryInfo"){
-    setTimeout(initLeafletMap, 100);
+    setTimeout(initLeafletMap, 80);
   }
-  // Force clear the PIN input after render (sécurité : jamais pré-rempli)
   if(pendingReset){
     setTimeout(()=>{ const el=document.getElementById("reset-pin-input"); if(el){ el.value=""; el.focus(); } }, 60);
   }
@@ -1376,15 +1480,14 @@ document.addEventListener("click",async function(e){
   const v=clientS;
 
   if(action==="pick-role"){
-    loginRole=el.dataset.role;loginPin="";loginEmail="";loginPassword="";loginError="";
+    loginRole=el.dataset.role;loginPin="";loginEmail="";loginPassword="";loginError="";loginRecovery=null;
     if(loginRole==="client"){A.login("client","Client");}else{render();}
     return;
   }
-  if(action==="back-role"){loginRole=null;loginPin="";loginEmail="";loginPassword="";loginError="";render();return;}
+  if(action==="back-role"){loginRole=null;loginPin="";loginEmail="";loginPassword="";loginError="";loginRecovery=null;render();return;}
   if(action==="pin-digit"){pinAdd(el.dataset.digit);return;}
   if(action==="pin-del"){pinDel();return;}
 
-  // LOGIN SUBMIT (gérant/admin avec email+mdp)
   if(action==="login-submit"){
     const email=loginEmail.trim().toLowerCase();
     const pwd=loginPassword;
@@ -1393,22 +1496,77 @@ document.addEventListener("click",async function(e){
     if(user){
       A.login(loginRole,user.name);
       loginRole=null; loginEmail=""; loginPassword=""; loginError="";
-      // trace de connexion réussie
       A.logAuth(user.role, user.email, "✅ Connexion réussie");
     } else {
       loginError="Identifiants incorrects";
       loginPassword="";
-      // trace tentative échouée
       A.logAuth(loginRole, email, "❌ Échec connexion");
       render();
     }
     return;
   }
 
-  if(action==="logout"){resetClient();destroyMap();pendingReset=null;
+  if(action==="login-forgot-pwd"){
+    loginRecovery = { stage:"form", email:"", code:"", error:"" };
+    render();
+    return;
+  }
+  if(action==="rec-cancel"){
+    loginRecovery = null;
+    render();
+    return;
+  }
+  if(action==="rec-done"){
+    loginRecovery = null;
+    loginEmail=""; loginPassword=""; loginError="";
+    render();
+    return;
+  }
+  if(action==="rec-verify"){
+    if(!loginRecovery) return;
+    const email=(loginRecovery.email||"").trim().toLowerCase();
+    const code=(loginRecovery.code||"").trim().toUpperCase();
+    if(!email||!code){ loginRecovery.error="Remplissez les deux champs"; render(); return; }
+    const user=DATA.staff.find(s=>s.role===loginRole && s.email && s.email.toLowerCase()===email && s.recoveryCode && s.recoveryCode.toUpperCase()===code);
+    if(user){
+      loginRecovery.stage="newPwd";
+      loginRecovery.matchedId=user._docId;
+      loginRecovery.matchedName=user.name;
+      loginRecovery.newPwd="";
+      loginRecovery.newPwd2="";
+      loginRecovery.error="";
+    } else {
+      loginRecovery.error="Email ou code invalide";
+      A.logAuth(loginRole, email, "❌ Récupération — code invalide");
+    }
+    render();
+    return;
+  }
+  if(action==="rec-save"){
+    if(!loginRecovery) return;
+    const p1=loginRecovery.newPwd||"";
+    const p2=loginRecovery.newPwd2||"";
+    if(p1.length<6){ loginRecovery.error="Minimum 6 caractères"; render(); return; }
+    if(p1!==p2){ loginRecovery.error="Les deux mots de passe ne correspondent pas"; render(); return; }
+    try{
+      const newCode=await A.resetPasswordWithRecovery(loginRecovery.matchedId, p1);
+      loginRecovery.stage="success";
+      loginRecovery.generatedCode=newCode;
+      loginRecovery.newPwd=""; loginRecovery.newPwd2="";
+      loginRecovery.error="";
+      A.logAuth(loginRole, loginRecovery.email, "✅ Mot de passe réinitialisé");
+      render();
+    }catch(err){
+      loginRecovery.error="Erreur : "+err.message;
+      render();
+    }
+    return;
+  }
+
+  if(action==="logout"){resetClient();destroyMap();pendingReset=null;admS.recoveryModal=null;
     srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats"};
     gerS={tab:"validation"};livS={tab:"available"};
-    admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:""};
+    admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null};
     A.logout();return;}
 
   // === RESET MODAL ===
@@ -1418,7 +1576,6 @@ document.addEventListener("click",async function(e){
     const admin=DATA.staff.find(s=>s.role==="admin");
     if(!admin){ pendingReset.error="Aucun admin configuré"; render(); return; }
     if(!pendingReset.pin || pendingReset.pin.length<4){ pendingReset.error="Mot de passe trop court"; render(); return; }
-    // Accepte le password OU le pin legacy
     const okPwd = admin.password && admin.password === pendingReset.pin;
     const okPin = !admin.password && admin.pin === pendingReset.pin;
     if(!(okPwd || okPin)){
@@ -1451,19 +1608,27 @@ document.addEventListener("click",async function(e){
     return;
   }
 
+  // === RECOVERY CODE MODAL ===
+  if(action==="recovery-modal-close"){ admS.recoveryModal=null; render(); return; }
+
   if(action==="client-mode"){v.mode=el.dataset.mode;v.screen="menu";render();return;}
   if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;destroyMap();render();return;}
   if(action==="client-back"){
     if(v.screen==="menu")v.screen="landing";
     else if(v.screen==="table")v.screen="menu";
     else if(v.screen==="deliveryInfo")v.screen="menu";
-    else if(v.screen==="cart")v.screen=v.mode==="sur_place"?"table":"menu";
+    else if(v.screen==="cart")v.screen=v.mode==="sur_place"?"table":"deliveryInfo";
     if(v.screen!=="deliveryInfo") destroyMap();
     render();return;}
   if(action==="client-cat"){v.cat=el.dataset.cat;render();return;}
   if(action==="client-add"){v.cart[id]=(v.cart[id]||0)+1;render();return;}
   if(action==="client-remove"){if(v.cart[id]>1)v.cart[id]--;else delete v.cart[id];render();return;}
-  if(action==="client-cart"){v.screen=v.mode==="sur_place"?"table":"menu";render();return;}
+  if(action==="client-cart"){
+    // Pour livraison : si pas de position, aller à deliveryInfo, sinon cart
+    if(v.mode==="sur_place") v.screen="table";
+    else v.screen = (v.deliveryLat!=null && v.deliveryLon!=null) ? "cart" : "deliveryInfo";
+    render();return;
+  }
   if(action==="client-table"){v.tableId=id;v.screen="cart";render();return;}
   if(action==="client-use-gps"){
     if(!navigator.geolocation){toast("Géolocalisation indisponible");return;}
@@ -1473,12 +1638,17 @@ document.addEventListener("click",async function(e){
       err=>toast("Position indisponible — touchez la carte"),
       {enableHighAccuracy:true,timeout:10000});return;}
   if(action==="client-delivery-next"){
-    if(v.deliveryLat==null||v.deliveryLon==null){toast("Choisissez votre position");return;}
-    if(!validPhoneBJ(v.info.phone)){toast("Numéro invalide");return;}
-    v.screen="menu";destroyMap();render();return;}
+    const nameOk=v.info.name && v.info.name.trim().length>1;
+    const phoneOk=validPhoneBJ(v.info.phone);
+    const locOk=v.deliveryLat!=null && v.deliveryLon!=null;
+    if(!nameOk){toast("Saisissez votre nom");return;}
+    if(!phoneOk){toast("Numéro invalide (01 + 8 chiffres)");return;}
+    if(!locOk){toast("Choisissez votre position sur la carte");return;}
+    v.screen="cart";destroyMap();render();return;}
   if(action==="client-cancel-wait"){v.screen="menu";v.orderId=null;localStorage.removeItem("ds_client_order");render();return;}
   if(action==="client-submit"){
     const items=DATA.menu.filter(m=>v.cart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:v.cart[d._docId],time:d.time}));
+    if(!items.length){toast("Panier vide");return;}
     const orderData={type:v.mode==="sur_place"?"sur_place":"livraison",items};
     if(v.mode==="sur_place"){
       const t=DATA.tables.find(x=>x._docId===v.tableId);
@@ -1488,13 +1658,18 @@ document.addEventListener("click",async function(e){
       orderData.tableId=v.tableId;orderData.tableNumber=t?t.number:null;
       orderData.serveuseId=srvId;orderData.serveuseName=srv?srv.name:null;
     }else{
+      if(!validPhoneBJ(v.info.phone)){toast("Numéro invalide");return;}
+      if(v.deliveryLat==null){toast("Position manquante");return;}
       orderData.clientInfo={name:v.info.name,phone:v.info.phone.replace(/\s/g,""),address:v.info.address||""};
       orderData.deliveryLat=v.deliveryLat;orderData.deliveryLon=v.deliveryLon;
       orderData.deliveryKm=v.deliveryKm;orderData.deliveryAddrText=v.info.address||"";
     }
-    v.orderId=await A.addOrder(orderData);
-    localStorage.setItem("ds_client_order",v.orderId);
-    v.screen="waiting";render();return;}
+    try{
+      v.orderId=await A.addOrder(orderData);
+      localStorage.setItem("ds_client_order",v.orderId);
+      v.screen="waiting";render();
+    }catch(err){ toast("Erreur : "+err.message); }
+    return;}
   if(action==="client-remove-refused"){
     const o=DATA.orders.find(o=>o._docId===v.orderId);
     if(o){const ni=o.items.filter((it,i)=>i!==v.refusedIdx);await A.updateOrder(o._docId,{items:ni});}
@@ -1529,11 +1704,12 @@ document.addEventListener("click",async function(e){
   if(action==="srv-remove"){if(srvS.orderCart[id]>1)srvS.orderCart[id]--;else delete srvS.orderCart[id];render();return;}
   if(action==="srv-send"){
     const items=DATA.menu.filter(m=>srvS.orderCart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:srvS.orderCart[d._docId],time:d.time}));
+    if(!items.length){toast("Panier vide");return;}
     const t=DATA.tables.find(x=>x._docId===srvS.orderTable);
     const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
     await A.addOrder({type:"sur_place",tableId:srvS.orderTable,tableNumber:t?t.number:null,serveuseId:me?me._docId:null,serveuseName:SESSION.name,items});
     srvS.orderCart={};srvS.orderTable=null;srvS.orderStep="table";toast("Commande envoyée");render();return;}
-  if(action==="srv-confirm-cash"){await A.confirmCash(id,true);toast("Cash confirmé — facture prête");render();return;}
+  if(action==="srv-confirm-cash"){await A.confirmCash(id,true);toast("Cash confirmé");render();return;}
   if(action==="srv-cash-issue"){if(!confirm("Signaler paiement NON reçu ?"))return;await A.confirmCash(id,false);toast("Signalé");render();return;}
   if(action==="srv-served"){await A.markServed(id);toast("Servie !");render();return;}
 
@@ -1565,11 +1741,7 @@ document.addEventListener("click",async function(e){
 
   if(action==="admin-home"){admS.section="menu";admS.editingDish=null;render();return;}
   if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;admS.showNewStock=false;
-    if(el.dataset.section==="bilan"){
-      const today=nowDate();
-      if(!admS.bilanFrom) admS.bilanFrom=today;
-      if(!admS.bilanTo) admS.bilanTo=today;
-    }
+    if(el.dataset.section==="bilan"){const today=nowDate();if(!admS.bilanFrom) admS.bilanFrom=today;if(!admS.bilanTo) admS.bilanTo=today;}
     if(el.dataset.section==="settings"){ admS.settingsForm={...DATA.settings}; }
     render();return;}
   if(action==="admin-add-dish"){await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:""});return;}
@@ -1589,19 +1761,27 @@ document.addEventListener("click",async function(e){
     const s={...admS.newStaff};
     if((s.role==="gerant"||s.role==="admin")){
       if(!s.email || !s.password){ toast("Email + mot de passe requis"); return; }
+      s.recoveryCode=""; s.recoveryCodeCreatedAt=0;
     } else {
       if(!s.pin || s.pin.length<4){ toast("PIN 4 chiffres requis"); return; }
-      s.email=""; s.password="";
+      s.email=""; s.password=""; s.recoveryCode=""; s.recoveryCodeCreatedAt=0;
     }
+    if(!s.name){ toast("Nom requis"); return; }
     await A.addStaff(s);
     admS.newStaff={name:"",role:"serveuse",pin:"",email:"",password:""};
+    toast("Compte ajouté");
     render();return;}
   if(action==="admin-reset-pin"){const pin=await A.resetPin(id);toast("PIN: "+pin);return;}
   if(action==="admin-reset-creds"){
-    const newPwd=prompt("Nouveau mot de passe :");
+    const newPwd=prompt("Nouveau mot de passe (6 caractères min.) :");
     if(!newPwd||newPwd.length<6){ toast("Min 6 caractères"); return; }
     await A.updateStaff(id,{password:newPwd});
     toast("Mot de passe mis à jour");return;}
+  if(action==="admin-gen-recovery"){
+    const name=el.dataset.name||"";
+    const code=await A.generateRecoveryCode(id);
+    admS.recoveryModal={name, code};
+    render();return;}
   if(action==="admin-del-staff"){if(confirm("Supprimer ?"))await A.removeStaff(id);return;}
   if(action==="admin-add-table"){await A.addTable();return;}
   if(action==="admin-del-table"){if(confirm("Supprimer ?"))await A.removeTable(id);return;}
@@ -1610,14 +1790,14 @@ document.addEventListener("click",async function(e){
   if(action==="admin-toggle-new-stock"){admS.showNewStock=!admS.showNewStock;render();return;}
   if(action==="admin-create-stock"){
     const ns=admS.newStockItem;
-    if(!ns.name||!ns.unit){toast("Nom et unité requis");return;}
+    if(!ns.name||!ns.name.trim()){toast("Nom requis");return;}
+    if(!ns.unit||!ns.unit.trim()){toast("Unité requise");return;}
     await A.addStockItem({name:ns.name,unit:ns.unit,initial:ns.initial||0,threshold:ns.threshold||0});
     admS.newStockItem={name:"",unit:"kg",initial:0,threshold:0};admS.showNewStock=false;toast("Créé ✓");return;}
   if(action==="admin-del-stock"){if(confirm("Supprimer ?"))await A.removeStockItem(id);return;}
   if(action==="admin-add-move"){if(!admS.stockForm.stockId||!admS.stockForm.qty)return;
     await A.addStockMove({...admS.stockForm});admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};toast("Enregistré");return;}
   if(action==="admin-save-settings"){
-    // Valider les coordonnées
     const f = admS.settingsForm;
     const lat = parseFloat(f.restoLat);
     const lon = parseFloat(f.restoLon);
@@ -1667,7 +1847,7 @@ document.addEventListener("change",async function(e){
   const el=e.target;const key=el.dataset.input;const action=el.dataset.action;
   if(action==="ger-assign-livreur"){await A.assignLivreur(el.dataset.id,el.value||null);toast(el.value?"Assigné":"Retiré");return;}
   if(!key)return;
-  if(key==="new-staff-role")admS.newStaff.role=el.value;
+  if(key==="new-staff-role"){admS.newStaff.role=el.value;render();}
   if(key==="stock-type")admS.stockForm.type=el.value;
   if(key==="hist-type"){admS.histFilter.type=el.value;render();}
   if(key==="hist-payment"){admS.histFilter.payment=el.value;render();}
@@ -1675,27 +1855,27 @@ document.addEventListener("change",async function(e){
 });
 
 document.addEventListener("input",function(e){
-  // === PIN MODAL ===
+  // PIN modal
   if(e.target.id==="reset-pin-input"){
-    if(pendingReset){
-      const val=e.target.value;
-      pendingReset.pin=val;
-      pendingReset.error="";
-    }
+    if(pendingReset){ pendingReset.pin=e.target.value; pendingReset.error=""; }
     return;
   }
-  // === LOGIN EMAIL/PASSWORD (no re-render) ===
+  // Login / Recovery fields
   const el=e.target;const key=el.dataset.input;
   if(key==="login-email"){ loginEmail=el.value; return; }
   if(key==="login-password"){ loginPassword=el.value; return; }
-  // === Reste ===
+  if(key==="rec-email" && loginRecovery){ loginRecovery.email=el.value; loginRecovery.error=""; return; }
+  if(key==="rec-code" && loginRecovery){ loginRecovery.code=el.value.toUpperCase(); loginRecovery.error=""; return; }
+  if(key==="rec-newpwd" && loginRecovery){ loginRecovery.newPwd=el.value; loginRecovery.error=""; return; }
+  if(key==="rec-newpwd2" && loginRecovery){ loginRecovery.newPwd2=el.value; loginRecovery.error=""; return; }
+  // Reste
   if(!key)return;
   const v=clientS;
   if(key==="info-name")v.info.name=el.value;
   if(key==="info-phone")v.info.phone=el.value.replace(/[^\d]/g,"").slice(0,10);
   if(key==="info-address")v.info.address=el.value;
   if(key==="new-staff-name")admS.newStaff.name=el.value;
-  if(key==="new-staff-pin"){admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);render();}
+  if(key==="new-staff-pin")admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);
   if(key==="new-staff-email")admS.newStaff.email=el.value;
   if(key==="new-staff-pwd")admS.newStaff.password=el.value;
   if(key==="new-stock-name")admS.newStockItem.name=el.value;
@@ -1723,12 +1903,18 @@ document.addEventListener("keydown",function(e){
   }
   if(SESSION)return;
   if(!loginRole)return;
-  // Ne s'applique qu'aux rôles avec PIN
   if(loginRole==="gerant" || loginRole==="admin"){
-    // Entrée sur password = submit
-    if(e.key==="Enter" && document.activeElement && document.activeElement.dataset.input==="login-password"){
-      e.preventDefault();
-      document.querySelector('[data-action="login-submit"]')?.click();
+    if(e.key==="Enter"){
+      if(loginRecovery){
+        if(loginRecovery.stage==="form" && document.activeElement && document.activeElement.dataset.input==="rec-code"){
+          e.preventDefault(); document.querySelector('[data-action="rec-verify"]')?.click();
+        } else if(loginRecovery.stage==="newPwd" && document.activeElement && document.activeElement.dataset.input==="rec-newpwd2"){
+          e.preventDefault(); document.querySelector('[data-action="rec-save"]')?.click();
+        }
+      } else if(document.activeElement && document.activeElement.dataset.input==="login-password"){
+        e.preventDefault();
+        document.querySelector('[data-action="login-submit"]')?.click();
+      }
     }
     return;
   }
@@ -1738,7 +1924,7 @@ document.addEventListener("keydown",function(e){
 
 setInterval(function(){
   if(!SESSION)return;
-  if(pendingReset) return;
+  if(pendingReset||admS.recoveryModal) return;
   if(SESSION.role==="cuisine"||SESSION.role==="serveuse"||SESSION.role==="gerant"){render();}
   if(SESSION.role==="client"&&clientS.screen==="tracking"&&clientS.timerRemaining>0){clientS.timerRemaining--;render();}
 },1000);
