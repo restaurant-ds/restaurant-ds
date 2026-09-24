@@ -185,8 +185,6 @@ const db = getFirestore(fbApp);
 const DEFAULT_RESTO = { lat: 6.454877410013232, lon: 2.279816313097269 };
 const DEFAULT_PRIX_KM = 110;
 const SITE_URL = "https://restaurant-ds.github.io/restaurant-ds/";
-
-// ⚠️ MASTER CODE DE SECOURS — À retirer plus tard
 const MASTER_RECOVERY_CODE = "DS-RESET-2026";
 
 let DEVICE_ID = localStorage.getItem("ds_device_id");
@@ -218,7 +216,7 @@ const SEED = {
     { id:"s3", name:"Moussa", role:"cuisine", pin:"1234" },
     { id:"s4", name:"Ibrahim", role:"gerant", pin:"0000", email:"ibrahim@restaurant-ds.com", password:"Ibrahim2024!", recoveryCode:"", recoveryCodeCreatedAt:0 },
     { id:"s5", name:"Salif", role:"livreur", pin:"5678" },
-    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999", email:"admin@restaurant-ds.com", password:"Admin2026", recoveryCode:"", recoveryCodeCreatedAt:0 }
+    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999", email:"admin@restaurant-ds.com", password:"motdepass", recoveryCode:"", recoveryCodeCreatedAt:0 }
   ],
   tables: Array.from({length:25},(_,i)=>({ id:"t"+(i+1), number:i+1, token:Math.random().toString(36).slice(2,8) })),
   stock: [
@@ -281,11 +279,40 @@ function subscribeAll(onUpdate) {
   onSnapshot(doc(db,"settings","main"),snap=>{if(snap.exists())DATA.settings=snap.data();onUpdate();});
 }
 
+// ============ NOTIFICATIONS ============
 function notify(title,body,urgent){try{if("Notification" in window && Notification.permission==="granted"){new Notification(title,{body,tag:"ds-"+Date.now(),requireInteraction:!!urgent});}}catch(e){}if(urgent&&navigator.vibrate){try{navigator.vibrate([200,100,200]);}catch(e){}}}
+
+// ============ ONESIGNAL (v16 CORRIGÉ) ============
+function loadOneSignal(){
+  const appId = DATA.settings.oneSignalAppId;
+  if(!appId){ console.warn("OneSignal: App ID non configuré"); return; }
+  if(window.__osLoaded) return;
+  window.__osLoaded = true;
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  window.OneSignalDeferred.push(async function(OneSignal) {
+    try {
+      await OneSignal.init({
+        appId: appId,
+        allowLocalhostAsSecureOrigin: true,
+        notifyButton: { enable: false }
+      });
+      console.log("✅ OneSignal initialisé");
+      // Demander la permission si pas encore accordée
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        try { OneSignal.Slidedown.promptPush(); } catch(e) { console.warn("Slidedown:", e); }
+      }
+    } catch(e) { console.error("❌ OneSignal init:", e); }
+  });
+  const s = document.createElement("script");
+  s.src = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
+  s.defer = true;
+  document.head.appendChild(s);
+}
+
 function randomDeletePercent(pct){const all=DATA.orders.slice();if(all.length===0)return [];const n=Math.max(1,Math.round(all.length*(pct/100)));const idxs=all.map((_,i)=>i);for(let i=idxs.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[idxs[i],idxs[j]]=[idxs[j],idxs[i]];}return idxs.slice(0,n).map(i=>all[i]._docId);}
 
 const A = {
-  login(role,name){ SESSION={role,name,userId:DEVICE_ID,since:Date.now()}; render(); },
+  login(role,name){ SESSION={role,name,userId:DEVICE_ID,since:Date.now()}; setTimeout(loadOneSignal,500); render(); },
   logout(){ SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; render(); },
   async addOrder(order){
     const newOrder={createdAt:Date.now(),date:nowDate(),status:"att_validation",type:order.type||"sur_place",tableId:order.tableId||null,tableNumber:order.tableNumber||null,serveuseId:order.serveuseId||null,serveuseName:order.serveuseName||null,livreurId:null,deliveryStatus:null,clientInfo:order.clientInfo||null,deliveryLat:order.deliveryLat||null,deliveryLon:order.deliveryLon||null,deliveryKm:order.deliveryKm||null,deliveryAddrText:order.deliveryAddrText||null,items:order.items.map(i=>({...i,statut:null,motif:null})),paymentMethod:null,paymentRef:null,readyAt:null,servedAt:null,cashIssue:null,callCount:0,source:order.source||"client"};
@@ -359,7 +386,7 @@ function screenLogin(){
   if(loginRecovery) return screenRecovery();
   if(loginRole==="gerant"||loginRole==="admin"){
     const labels={gerant:"Gérant",admin:"Administrateur"};
-    const demo={gerant:"ibrahim@restaurant-ds.com / Ibrahim2024!",admin:"admin@restaurant-ds.com / Admin2026"};
+    const demo={gerant:"ibrahim@restaurant-ds.com / Ibrahim2024!",admin:"admin@restaurant-ds.com / motdepass"};
     return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Identifiez-vous</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="login-email" value="'+esc(loginEmail)+'" placeholder="votre@email.com" autocomplete="username" autocapitalize="none"></div><div><label class="text-xs" style="color:#aaa;font-weight:600">MOT DE PASSE</label><input class="auth-input" type="password" data-input="login-password" value="'+esc(loginPassword)+'" placeholder="••••••••" autocomplete="current-password"></div>'+(loginError?'<p class="pin-error" style="margin:0">'+esc(loginError)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px;font-size:15px;margin-top:6px" data-action="login-submit">Se connecter</button><button class="btn btn-ghost btn-block" style="padding:10px;font-size:13px" data-action="login-forgot-pwd">🔑 Mot de passe oublié ?</button><button class="pin-back" data-action="back-role" style="margin-top:4px">← Changer de rôle</button><p class="pin-hint">Démo : '+demo[loginRole]+'</p></div></div></div>';
   }
   const labels={serveuse:"Serveuse",cuisine:"Cuisine",livreur:"Livreur"};
@@ -679,46 +706,27 @@ document.addEventListener("click",async function(e){
   if(action==="rec-cancel"){loginRecovery=null;render();return;}
   if(action==="rec-done"){loginRecovery=null;loginEmail="";loginPassword="";loginError="";render();return;}
 
-  // ============================================================
-  // VÉRIFICATION DU CODE DE RÉCUPÉRATION — AVEC MASTER CODE
-  // ============================================================
   if(action==="rec-verify"){
     if(!loginRecovery) return;
     const email=(loginRecovery.email||"").trim().toLowerCase();
     const code=(loginRecovery.code||"").trim().toUpperCase();
     if(!email||!code){ loginRecovery.error="Remplissez les deux champs"; render(); return; }
     let user;
-    // Master code : accepte n'importe quel email admin/gérant
     if(code === MASTER_RECOVERY_CODE){
       user = DATA.staff.find(s => s.role===loginRole && s.email && s.email.toLowerCase()===email);
     } else {
-      // Code normal : doit correspondre exactement
       user = DATA.staff.find(s => s.role===loginRole && s.email && s.email.toLowerCase()===email && s.recoveryCode && s.recoveryCode.toUpperCase()===code);
     }
-    if(user){
-      loginRecovery.stage="newPwd";
-      loginRecovery.matchedId=user._docId;
-      loginRecovery.matchedName=user.name;
-      loginRecovery.newPwd=""; loginRecovery.newPwd2=""; loginRecovery.error="";
-    } else {
-      loginRecovery.error="Email ou code invalide";
-      A.logAuth(loginRole, email, "❌ Récupération invalide");
-    }
+    if(user){loginRecovery.stage="newPwd";loginRecovery.matchedId=user._docId;loginRecovery.matchedName=user.name;loginRecovery.newPwd="";loginRecovery.newPwd2="";loginRecovery.error="";}
+    else{loginRecovery.error="Email ou code invalide";A.logAuth(loginRole, email, "❌ Récupération invalide");}
     render(); return;
   }
-
   if(action==="rec-save"){
     if(!loginRecovery) return;
     const p1=loginRecovery.newPwd||"";const p2=loginRecovery.newPwd2||"";
     if(p1.length<6){loginRecovery.error="Minimum 6 caractères";render();return;}
     if(p1!==p2){loginRecovery.error="Les mots de passe ne correspondent pas";render();return;}
-    try{
-      const newCode=await A.resetPasswordWithRecovery(loginRecovery.matchedId, p1);
-      loginRecovery.stage="success";loginRecovery.generatedCode=newCode;
-      loginRecovery.newPwd="";loginRecovery.newPwd2="";loginRecovery.error="";
-      A.logAuth(loginRole, loginRecovery.email, "✅ Mot de passe réinitialisé");
-      render();
-    }catch(err){loginRecovery.error="Erreur : "+err.message;render();}
+    try{const newCode=await A.resetPasswordWithRecovery(loginRecovery.matchedId, p1);loginRecovery.stage="success";loginRecovery.generatedCode=newCode;loginRecovery.newPwd="";loginRecovery.newPwd2="";loginRecovery.error="";A.logAuth(loginRole, loginRecovery.email, "✅ Mot de passe réinitialisé");render();}catch(err){loginRecovery.error="Erreur : "+err.message;render();}
     return;
   }
 
@@ -743,12 +751,7 @@ document.addEventListener("click",async function(e){
       else if(act==="stock"){await A.resetStock();resultMsg="Stock réinitialisé";}
       else if(act==="everything"){await A.resetEverything();resultMsg="Remise à zéro effectuée";}
       else if(act==="clear-logs"){const n=DATA.resetLogs.length;await A.clearResetLogs();resultMsg=n+" entrée(s)";}
-      else if(act==="discreet"){
-        const pct=extra&&extra.pct?extra.pct:0;
-        const ids=randomDeletePercent(pct);
-        const batch=writeBatch(db);ids.forEach(oid=>batch.delete(doc(db,"orders",oid)));await batch.commit();
-        resultMsg=ids.length+" vente(s) supprimée(s)";
-      }
+      else if(act==="discreet"){const pct=extra&&extra.pct?extra.pct:0;const ids=randomDeletePercent(pct);const batch=writeBatch(db);ids.forEach(oid=>batch.delete(doc(db,"orders",oid)));await batch.commit();resultMsg=ids.length+" vente(s) supprimée(s)";}
       if(act!=="discreet"){await A.logReset(act,"✅ Succès",null);}
       toast(resultMsg);
     }catch(err){if(act!=="discreet"){await A.logReset(act,"❌ Erreur: "+err.message,null);}toast("Erreur : "+err.message);}
@@ -856,7 +859,7 @@ document.addEventListener("click",async function(e){
   if(action==="admin-create-stock"){const ns=admS.newStockItem;if(!ns.name||!ns.name.trim()){toast("Nom requis");return;}if(!ns.unit||!ns.unit.trim()){toast("Unité requise");return;}await A.addStockItem({name:ns.name,unit:ns.unit,initial:ns.initial||0,threshold:ns.threshold||0});admS.newStockItem={name:"",unit:"kg",initial:0,threshold:0};admS.showNewStock=false;toast("Créé ✓");return;}
   if(action==="admin-del-stock"){if(confirm("Supprimer ?"))await A.removeStockItem(id);return;}
   if(action==="admin-add-move"){if(!admS.stockForm.stockId||!admS.stockForm.qty)return;await A.addStockMove({...admS.stockForm});admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};toast("Enregistré");return;}
-  if(action==="admin-save-settings"){const f=admS.settingsForm;const lat=parseFloat(f.restoLat);const lon=parseFloat(f.restoLon);const km=parseInt(f.prixKm);if(isNaN(lat)||lat<-90||lat>90){toast("Latitude invalide");return;}if(isNaN(lon)||lon<-180||lon>180){toast("Longitude invalide");return;}if(isNaN(km)||km<0){toast("Prix/km invalide");return;}await A.updateSettings({restaurantName:f.restaurantName||"",phone:f.phone||"",bilanResetHour:parseInt(f.bilanResetHour)||6,waitMode:f.waitMode||"max",restoLat:lat,restoLon:lon,prixKm:km,emailRapport:f.emailRapport||"",oneSignalAppId:f.oneSignalAppId||""});admS.settingsForm=null;toast("Enregistré ✓");render();return;}
+  if(action==="admin-save-settings"){const f=admS.settingsForm;const lat=parseFloat(f.restoLat);const lon=parseFloat(f.restoLon);const km=parseInt(f.prixKm);if(isNaN(lat)||lat<-90||lat>90){toast("Latitude invalide");return;}if(isNaN(lon)||lon<-180||lon>180){toast("Longitude invalide");return;}if(isNaN(km)||km<0){toast("Prix/km invalide");return;}await A.updateSettings({restaurantName:f.restaurantName||"",phone:f.phone||"",bilanResetHour:parseInt(f.bilanResetHour)||6,waitMode:f.waitMode||"max",restoLat:lat,restoLon:lon,prixKm:km,emailRapport:f.emailRapport||"",oneSignalAppId:f.oneSignalAppId||""});admS.settingsForm=null;toast("Enregistré ✓");loadOneSignal();render();return;}
   if(action==="admin-bilan-apply"){render();return;}
   if(action==="admin-bilan-today"){const t=nowDate();admS.bilanFrom=t;admS.bilanTo=t;render();return;}
   if(action==="admin-bilan-week"){const to=new Date();const from=new Date();from.setDate(from.getDate()-6);admS.bilanFrom=from.toISOString().slice(0,10);admS.bilanTo=to.toISOString().slice(0,10);render();return;}
@@ -985,6 +988,7 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
     await seedIfEmpty();
     subscribeAll(render);
     render();
+    setTimeout(loadOneSignal, 2000);
   }catch(e){
     console.error(e);
     document.getElementById("root").innerHTML='<div class="loader"><div class="loader-logo">⚠️</div><p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">Erreur : '+esc(e.message||e)+'</p><button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#ffc107;color:#0a0a0a;border:none;border-radius:8px;font-weight:bold;cursor:pointer">Réessayer</button></div>';
