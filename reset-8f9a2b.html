@@ -21,9 +21,9 @@ input{width:100%;padding:12px;border-radius:8px;border:1px solid #333;background
 </head>
 <body>
 <h1>🔧 Diagnostic Admin D&S</h1>
-<p style="color:#888">Cet outil liste les comptes et permet de réinitialiser le mot de passe admin.</p>
+<p style="color:#888">Cet outil liste les comptes et permet de réinitialiser le mot de passe admin.<br><strong>Pas besoin d'authentification</strong> — accès direct à Firestore.</p>
 
-<div id="status">⏳ Connexion à Firebase…</div>
+<div id="status">⏳ Connexion à Firestore…</div>
 
 <div id="controls" style="display:none">
   <div class="card">
@@ -38,12 +38,18 @@ input{width:100%;padding:12px;border-radius:8px;border:1px solid #333;background
     <button onclick="doReset()">🔄 Réinitialiser maintenant</button>
     <p class="hint">Après la réinitialisation, notez le mot de passe pour vous connecter.</p>
   </div>
+
+  <div class="card" style="border-left-color:#f87171">
+    <p style="color:#f87171;margin:0 0 8px;font-weight:600">3. Zone dangereuse (optionnel)</p>
+    <p style="font-size:13px;color:#aaa">Si le compte admin est cassé, cette option recrée un compte admin propre.</p>
+    <button onclick="doResetAll()" style="background:#f87171">⚠️ Recréer le compte admin par défaut</button>
+    <p class="hint">Mot de passe admin sera : admin123</p>
+  </div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, getDocs, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, getDocs, updateDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0",
@@ -56,7 +62,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app);
 
 const statusEl = document.getElementById("status");
 const controlsEl = document.getElementById("controls");
@@ -66,13 +71,15 @@ let adminId = null;
 
 async function load() {
   try {
+    statusEl.innerHTML = '⏳ Lecture de la base…';
     const snap = await getDocs(collection(db, "staff"));
     const staff = [];
     snap.forEach(d => staff.push({ id: d.id, ...d.data() }));
 
     if (staff.length === 0) {
       listEl.innerHTML = '<p class="err">Aucun compte dans la base.</p>';
-      statusEl.innerHTML = '<span class="err">❌ Base vide.</span>';
+      statusEl.innerHTML = '<span class="err">❌ Base vide — utilisez l\'option 3 ci-dessous.</span>';
+      controlsEl.style.display = "block";
       return;
     }
 
@@ -88,23 +95,25 @@ async function load() {
     const admin = staff.find(s => s.role === "admin");
     if (admin) {
       adminId = admin.id;
-      statusEl.innerHTML = '<span class="ok">✅ Connecté · ' + staff.length + ' comptes trouvés · Admin : ' + (admin.name || "?") + '</span>';
+      statusEl.innerHTML = '<span class="ok">✅ ' + staff.length + ' compte(s) · Admin : ' + (admin.name || "?") + ' · ID : ' + admin.id + '</span>';
       controlsEl.style.display = "block";
     } else {
       statusEl.innerHTML = '<span class="err">❌ Aucun compte avec role="admin" trouvé.</span>';
+      controlsEl.style.display = "block";
     }
   } catch (e) {
-    statusEl.innerHTML = '<span class="err">❌ Erreur : ' + e.message + '</span>';
+    statusEl.innerHTML = '<span class="err">❌ Erreur Firestore : ' + e.message + '</span>';
     listEl.innerHTML = '<p class="err">Détails : ' + e.message + '</p>';
+    controlsEl.style.display = "block";
   }
 }
 
 window.doReset = async function() {
-  if (!adminId) { alert("Admin introuvable"); return; }
+  if (!adminId) { alert("Admin introuvable — utilisez l'option 3"); return; }
   const newPwd = document.getElementById("new-pwd").value.trim();
   if (!newPwd || newPwd.length < 4) { alert("Mot de passe trop court (4 min.)"); return; }
   try {
-    statusEl.innerHTML = '⏳ Mise à jour…';
+    statusEl.innerHTML = '⏳ Mise à jour du mot de passe…';
     await updateDoc(doc(db, "staff", adminId), { password: newPwd });
     statusEl.innerHTML = '<span class="ok">✅ Mot de passe admin mis à jour : "' + newPwd + '"</span>';
     await load();
@@ -113,15 +122,28 @@ window.doReset = async function() {
   }
 };
 
-onAuthStateChanged(auth, async user => {
-  if (!user) {
-    try { await signInAnonymously(auth); }
-    catch (e) { statusEl.innerHTML = '<span class="err">Erreur auth : ' + e.message + '</span>'; }
-    return;
+window.doResetAll = async function() {
+  if (!confirm("Recréer un compte admin avec mot de passe 'admin123' ?")) return;
+  try {
+    statusEl.innerHTML = '⏳ Création du compte admin…';
+    await setDoc(doc(db, "staff", "s6"), {
+      name: "Admin D&S",
+      role: "admin",
+      pin: "9999",
+      email: "admin@restaurant-ds.com",
+      password: "admin123",
+      recoveryCode: "",
+      recoveryCodeCreatedAt: 0
+    }, { merge: true });
+    statusEl.innerHTML = '<span class="ok">✅ Compte admin recréé · email : admin@restaurant-ds.com · mot de passe : admin123</span>';
+    await load();
+  } catch (e) {
+    statusEl.innerHTML = '<span class="err">❌ Erreur : ' + e.message + '</span>';
   }
-  statusEl.innerHTML = '<span class="ok">✅ Authentifié · chargement des données…</span>';
-  await load();
-});
+};
+
+// Chargement immédiat — pas d'auth
+load();
 </script>
 </body>
 </html>
