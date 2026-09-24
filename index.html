@@ -294,10 +294,11 @@ function loadOneSignal(){
       await OneSignal.init({
         appId: appId,
         allowLocalhostAsSecureOrigin: true,
-        notifyButton: { enable: false }
+        notifyButton: { enable: false },
+        serviceWorkerParam: { scope: "/restaurant-ds/" },
+        serviceWorkerPath: "/restaurant-ds/OneSignalSDKWorker.js"
       });
       console.log("✅ OneSignal initialisé");
-      // Demander la permission si pas encore accordée
       if (typeof Notification !== "undefined" && Notification.permission === "default") {
         try { OneSignal.Slidedown.promptPush(); } catch(e) { console.warn("Slidedown:", e); }
       }
