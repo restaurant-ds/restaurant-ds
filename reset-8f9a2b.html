@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diagnostic Admin D&S</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#fff;padding:20px;max-width:600px;margin:0 auto;min-height:100vh}
+h1{color:#ffc107;font-family:Georgia,serif}
+button{background:#ffc107;color:#0a0a0a;border:none;padding:14px 24px;border-radius:8px;font-weight:bold;font-size:16px;cursor:pointer;margin-top:12px;width:100%}
+input{width:100%;padding:12px;border-radius:8px;border:1px solid #333;background:#1a1a1a;color:#fff;font-size:16px;margin-top:8px;font-family:monospace}
+.card{background:#1a1a1a;padding:16px;border-radius:12px;margin-top:16px;border-left:4px solid #ffc107}
+.staff{padding:10px;border-bottom:1px solid #333;font-family:monospace;font-size:13px;line-height:1.5}
+.staff:last-child{border-bottom:none}
+.ok{color:#4ade80;font-weight:600}
+.err{color:#f87171;font-weight:600}
+.warn{color:#ffc107}
+.hint{font-size:12px;color:#888;margin-top:8px}
+.tag{display:inline-block;background:#333;color:#ffc107;padding:2px 8px;border-radius:4px;font-size:11px;margin-right:4px}
+</style>
+</head>
+<body>
+<h1>🔧 Diagnostic Admin D&S</h1>
+<p style="color:#888">Cet outil liste les comptes et permet de réinitialiser le mot de passe admin.</p>
+
+<div id="status">⏳ Connexion à Firebase…</div>
+
+<div id="controls" style="display:none">
+  <div class="card">
+    <p style="color:#ffc107;margin:0 0 8px;font-weight:600">1. Comptes dans Firestore</p>
+    <div id="staff-list"></div>
+  </div>
+
+  <div class="card">
+    <p style="color:#ffc107;margin:0 0 8px;font-weight:600">2. Réinitialiser le mot de passe admin</p>
+    <p style="font-size:13px;color:#aaa">Choisissez un mot de passe simple, sans caractère spécial :</p>
+    <input type="text" id="new-pwd" value="admin123" placeholder="admin123" autocomplete="off">
+    <button onclick="doReset()">🔄 Réinitialiser maintenant</button>
+    <p class="hint">Après la réinitialisation, notez le mot de passe pour vous connecter.</p>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, getDocs, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0",
+  authDomain: "restaurant-ds-494a6.firebaseapp.com",
+  projectId: "restaurant-ds-494a6",
+  storageBucket: "restaurant-ds-494a6.firebasestorage.app",
+  messagingSenderId: "1026668587499",
+  appId: "1:1026668587499:web:7ed7b77fd623070007d1ae"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+const statusEl = document.getElementById("status");
+const controlsEl = document.getElementById("controls");
+const listEl = document.getElementById("staff-list");
+
+let adminId = null;
+
+async function load() {
+  try {
+    const snap = await getDocs(collection(db, "staff"));
+    const staff = [];
+    snap.forEach(d => staff.push({ id: d.id, ...d.data() }));
+
+    if (staff.length === 0) {
+      listEl.innerHTML = '<p class="err">Aucun compte dans la base.</p>';
+      statusEl.innerHTML = '<span class="err">❌ Base vide.</span>';
+      return;
+    }
+
+    listEl.innerHTML = staff.map(s =>
+      '<div class="staff">' +
+        '<span class="tag">' + (s.role || "?") + '</span> <strong>' + (s.name || "?") + '</strong><br>' +
+        '📧 ' + (s.email ? s.email : '<span class="warn">—</span>') + '<br>' +
+        '🔑 ' + (s.password ? '<span class="ok">"' + s.password + '"</span>' : '<span class="warn">—</span>') + '<br>' +
+        '🔢 PIN: ' + (s.pin || "—") +
+      '</div>'
+    ).join("");
+
+    const admin = staff.find(s => s.role === "admin");
+    if (admin) {
+      adminId = admin.id;
+      statusEl.innerHTML = '<span class="ok">✅ Connecté · ' + staff.length + ' comptes trouvés · Admin : ' + (admin.name || "?") + '</span>';
+      controlsEl.style.display = "block";
+    } else {
+      statusEl.innerHTML = '<span class="err">❌ Aucun compte avec role="admin" trouvé.</span>';
+    }
+  } catch (e) {
+    statusEl.innerHTML = '<span class="err">❌ Erreur : ' + e.message + '</span>';
+    listEl.innerHTML = '<p class="err">Détails : ' + e.message + '</p>';
+  }
+}
+
+window.doReset = async function() {
+  if (!adminId) { alert("Admin introuvable"); return; }
+  const newPwd = document.getElementById("new-pwd").value.trim();
+  if (!newPwd || newPwd.length < 4) { alert("Mot de passe trop court (4 min.)"); return; }
+  try {
+    statusEl.innerHTML = '⏳ Mise à jour…';
+    await updateDoc(doc(db, "staff", adminId), { password: newPwd });
+    statusEl.innerHTML = '<span class="ok">✅ Mot de passe admin mis à jour : "' + newPwd + '"</span>';
+    await load();
+  } catch (e) {
+    statusEl.innerHTML = '<span class="err">❌ Erreur : ' + e.message + '</span>';
+  }
+};
+
+onAuthStateChanged(auth, async user => {
+  if (!user) {
+    try { await signInAnonymously(auth); }
+    catch (e) { statusEl.innerHTML = '<span class="err">Erreur auth : ' + e.message + '</span>'; }
+    return;
+  }
+  statusEl.innerHTML = '<span class="ok">✅ Authentifié · chargement des données…</span>';
+  await load();
+});
+</script>
+</body>
+</html>
