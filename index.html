@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0a0a0a">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Restaurant D&S</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -186,6 +185,8 @@ const DEFAULT_RESTO = { lat: 6.454877410013232, lon: 2.279816313097269 };
 const DEFAULT_PRIX_KM = 110;
 const SITE_URL = "https://restaurant-ds.github.io/restaurant-ds/";
 const MASTER_RECOVERY_CODE = "DS-RESET-2026";
+const DEFAULT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxS4EBYEyB54lALhoM01XJs2riGMZM7eWHCXtX7h5yd36YOFqwVUTNIp85W8J-hdU9E2Q/exec";
+const DEFAULT_WEBHOOK_TOKEN = "DS-PUSH-2026";
 
 let DEVICE_ID = localStorage.getItem("ds_device_id");
 if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); localStorage.setItem("ds_device_id", DEVICE_ID); }
@@ -195,7 +196,34 @@ let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], 
 
 function restoCoords(){ return { lat: (DATA.settings.restoLat != null) ? Number(DATA.settings.restoLat) : DEFAULT_RESTO.lat, lon: (DATA.settings.restoLon != null) ? Number(DATA.settings.restoLon) : DEFAULT_RESTO.lon }; }
 function prixParKm(){ return DATA.settings.prixKm != null ? Number(DATA.settings.prixKm) : DEFAULT_PRIX_KM; }
+function webhookUrl(){ return DATA.settings.webhookUrl || DEFAULT_WEBHOOK_URL; }
+function webhookToken(){ return DATA.settings.webhookToken || DEFAULT_WEBHOOK_TOKEN; }
 function genRecoveryCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const blk=()=>{let s="";for(let i=0;i<4;i++)s+=chars[Math.floor(Math.random()*chars.length)];return s;}; return "DS-"+blk()+"-"+blk(); }
+
+// ============================================================
+// ENVOI DE NOTIFICATIONS PUSH (via Google Apps Script)
+// ============================================================
+async function sendPush(title, message, targetRole){
+  try{
+    const url = webhookUrl();
+    const token = webhookToken();
+    if(!url || !token){ console.warn("Push non configuré"); return false; }
+    const body = { token, title, message };
+    if(targetRole) body.targetRole = targetRole;
+    // Utiliser fetch avec mode no-cors ou text/plain pour éviter les problèmes CORS
+    const res = await fetch(url, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body)
+    });
+    console.log("Push envoyé :", title, "-", message);
+    return true;
+  } catch(e){
+    console.warn("Erreur push :", e);
+    return false;
+  }
+}
 
 const SEED = {
   menu: [
@@ -226,7 +254,12 @@ const SEED = {
     { id:"st4", name:"Huile", unit:"L", initial:40, threshold:8 },
     { id:"st5", name:"Légumes", unit:"kg", initial:20, threshold:5 }
   ],
-  settings: { restaurantName:"Restaurant D&S", phone:"27 20 00 00 00", timerMode:"auto", waitMode:"max", bilanResetHour:6, restoLat: DEFAULT_RESTO.lat, restoLon: DEFAULT_RESTO.lon, prixKm: DEFAULT_PRIX_KM, emailRapport:"", oneSignalAppId:"8fdaa67c-c57e-4794-b668-0373607cf39c" }
+  settings: {
+    restaurantName:"Restaurant D&S", phone:"27 20 00 00 00", timerMode:"auto", waitMode:"max", bilanResetHour:6,
+    restoLat: DEFAULT_RESTO.lat, restoLon: DEFAULT_RESTO.lon, prixKm: DEFAULT_PRIX_KM,
+    emailRapport:"", oneSignalAppId:"8fdaa67c-c57e-4794-b668-0373607cf39c",
+    webhookUrl: DEFAULT_WEBHOOK_URL, webhookToken: DEFAULT_WEBHOOK_TOKEN
+  }
 };
 
 async function seedIfEmpty() {
@@ -279,10 +312,10 @@ function subscribeAll(onUpdate) {
   onSnapshot(doc(db,"settings","main"),snap=>{if(snap.exists())DATA.settings=snap.data();onUpdate();});
 }
 
-// ============ NOTIFICATIONS ============
+// ============ NOTIFICATIONS LOCALES (navigateur) ============
 function notify(title,body,urgent){try{if("Notification" in window && Notification.permission==="granted"){new Notification(title,{body,tag:"ds-"+Date.now(),requireInteraction:!!urgent});}}catch(e){}if(urgent&&navigator.vibrate){try{navigator.vibrate([200,100,200]);}catch(e){}}}
 
-// ============ ONESIGNAL (v16 CORRIGÉ) ============
+// ============ ONESIGNAL ============
 function loadOneSignal(){
   const appId = DATA.settings.oneSignalAppId;
   if(!appId){ console.warn("OneSignal: App ID non configuré"); return; }
@@ -299,8 +332,14 @@ function loadOneSignal(){
         serviceWorkerPath: "/restaurant-ds/OneSignalSDKWorker.js"
       });
       console.log("✅ OneSignal initialisé");
+      // Tag role si session active
+      if (SESSION && SESSION.role) {
+        try {
+          await OneSignal.User.addTag("role", SESSION.role);
+        } catch(e){}
+      }
       if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        try { OneSignal.Slidedown.promptPush(); } catch(e) { console.warn("Slidedown:", e); }
+        try { OneSignal.Slidedown.promptPush(); } catch(e) {}
       }
     } catch(e) { console.error("❌ OneSignal init:", e); }
   });
@@ -313,26 +352,62 @@ function loadOneSignal(){
 function randomDeletePercent(pct){const all=DATA.orders.slice();if(all.length===0)return [];const n=Math.max(1,Math.round(all.length*(pct/100)));const idxs=all.map((_,i)=>i);for(let i=idxs.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[idxs[i],idxs[j]]=[idxs[j],idxs[i]];}return idxs.slice(0,n).map(i=>all[i]._docId);}
 
 const A = {
-  login(role,name){ SESSION={role,name,userId:DEVICE_ID,since:Date.now()}; setTimeout(loadOneSignal,500); render(); },
+  login(role,name){
+    SESSION={role,name,userId:DEVICE_ID,since:Date.now()};
+    setTimeout(loadOneSignal,500);
+    setTimeout(async ()=>{
+      if(window.OneSignal && window.OneSignal.User && window.OneSignal.User.addTag){
+        try{ await window.OneSignal.User.addTag("role", role); }catch(e){}
+      }
+    }, 3000);
+    render();
+  },
   logout(){ SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; render(); },
   async addOrder(order){
     const newOrder={createdAt:Date.now(),date:nowDate(),status:"att_validation",type:order.type||"sur_place",tableId:order.tableId||null,tableNumber:order.tableNumber||null,serveuseId:order.serveuseId||null,serveuseName:order.serveuseName||null,livreurId:null,deliveryStatus:null,clientInfo:order.clientInfo||null,deliveryLat:order.deliveryLat||null,deliveryLon:order.deliveryLon||null,deliveryKm:order.deliveryKm||null,deliveryAddrText:order.deliveryAddrText||null,items:order.items.map(i=>({...i,statut:null,motif:null})),paymentMethod:null,paymentRef:null,readyAt:null,servedAt:null,cashIssue:null,callCount:0,source:order.source||"client"};
-    const ref=await addDoc(collection(db,"orders"),newOrder); return ref.id;
+    const ref=await addDoc(collection(db,"orders"),newOrder);
+    // 🔔 Notification au gérant
+    const label = order.type==="livraison" ? "Livraison "+(order.clientInfo?.name||"") : "Table "+order.tableNumber;
+    sendPush("🍽️ Nouvelle commande", label+" — à valider", "gerant");
+    return ref.id;
   },
   async updateOrder(id,patch){ await updateDoc(doc(db,"orders",id),patch); },
   async deleteOrder(id){ await deleteDoc(doc(db,"orders",id)); },
   async setItemStatut(orderId,idx,statut,motif){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const items=o.items.map((it,i)=>i===idx?{...it,statut,motif:statut==="Refusé"?(motif||it.motif):null}:it);await updateDoc(doc(db,"orders",orderId),{items});},
   async setItemMotif(orderId,idx,motif){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const items=o.items.map((it,i)=>i===idx?{...it,motif}:it);await updateDoc(doc(db,"orders",orderId),{items});},
-  async validateOrder(id){const o=DATA.orders.find(x=>x._docId===id);if(!o)return;const nextStatus=o.type==="livraison"?"att_paiement":"att_collect";await updateDoc(doc(db,"orders",id),{status:nextStatus,validatedAt:Date.now()});},
+  async validateOrder(id){
+    const o=DATA.orders.find(x=>x._docId===id);if(!o)return;
+    const nextStatus=o.type==="livraison"?"att_paiement":"att_collect";
+    await updateDoc(doc(db,"orders",id),{status:nextStatus,validatedAt:Date.now()});
+    // 🔔 Notification à la serveuse si commande sur place
+    if(o.type==="sur_place" && o.serveuseId){
+      sendPush("💰 À encaisser", "Table "+(o.tableNumber||"")+" — "+money(orderTotal(o)), "serveuse");
+    }
+  },
   async markOrderPaid(id,method,ref){const o=DATA.orders.find(o=>o._docId===id);if(!o)return;const batch=writeBatch(db);for(const item of o.items){if(item.statut==="Refusé")continue;const dish=DATA.menu.find(d=>d._docId===item.id);if(!dish||!dish.recipe)continue;for(const ing of dish.recipe){batch.set(doc(collection(db,"stockMoves")),{stockId:ing.stockId,type:"Sortie",qty:ing.qty*item.qty,motif:"Cmd #"+id.slice(-6),date:nowDate(),_ts:Date.now()});}}batch.update(doc(db,"orders",id),{status:"payee",paymentMethod:method,paymentRef:ref||null,paidAt:Date.now(),cashIssue:null});await batch.commit();},
   async confirmCash(id,method,ref){await A.markOrderPaid(id,method,ref);},
-  async reportCashIssue(id){await updateDoc(doc(db,"orders",id),{cashIssue:"non_recu",cashIssueAt:Date.now()});},
+  async reportCashIssue(id){
+    const o=DATA.orders.find(x=>x._docId===id);
+    await updateDoc(doc(db,"orders",id),{cashIssue:"non_recu",cashIssueAt:Date.now()});
+    // 🔔 Notification au gérant
+    sendPush("⚠️ Paiement signalé non reçu", "Table "+(o?.tableNumber||"")+" — "+(o?.serveuseName||""), "gerant");
+  },
   async resolveCashIssue(id){await updateDoc(doc(db,"orders",id),{cashIssue:null,cashIssueResolvedAt:Date.now()});},
-  async markReady(id){await updateDoc(doc(db,"orders",id),{readyAt:Date.now()});},
+  async markReady(id){
+    await updateDoc(doc(db,"orders",id),{readyAt:Date.now()});
+    const o=DATA.orders.find(x=>x._docId===id);
+    // 🔔 Notification à la serveuse
+    sendPush("🍽️ Plat prêt", "Table "+(o?.tableNumber||"")+" — à récupérer", "serveuse");
+  },
   async markServed(id){await updateDoc(doc(db,"orders",id),{status:"servie",servedAt:Date.now()});},
   async markDelivered(id){await updateDoc(doc(db,"orders",id),{status:"livree",servedAt:Date.now()});},
   async markPrinted(id){await updateDoc(doc(db,"orders",id),{printedAt:Date.now()});},
-  async takeDelivery(id,livreurId,livreurName){await updateDoc(doc(db,"orders",id),{livreurId,livreurName,deliveryStatus:"prise"});},
+  async takeDelivery(id,livreurId,livreurName){
+    await updateDoc(doc(db,"orders",id),{livreurId,livreurName,deliveryStatus:"prise"});
+    const o=DATA.orders.find(x=>x._docId===id);
+    // 🔔 Notification au gérant
+    sendPush("🛵 Livraison prise", (livreurName||"Livreur")+" — "+(o?.clientInfo?.name||""), "gerant");
+  },
   async setDeliveryStatus(id,st){await updateDoc(doc(db,"orders",id),{deliveryStatus:st});},
   async assignLivreur(id,livreurId){const l=DATA.staff.find(x=>x._docId===livreurId);await updateDoc(doc(db,"orders",id),{livreurId:livreurId||null,livreurName:l?l.name:null,deliveryStatus:livreurId?"prise":null});},
   async addDish(d){await addDoc(collection(db,"menu"),d);},
@@ -349,7 +424,19 @@ const A = {
   async addStockItem(item){await addDoc(collection(db,"stock"),item);},
   async removeStockItem(id){await deleteDoc(doc(db,"stock",id));},
   async updateSettings(patch){await setDoc(doc(db,"settings","main"),{...DATA.settings,...patch},{merge:true});},
-  async callServeuse(orderId){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const nc=(o.callCount||0)+1;const p={callCount:nc,lastCall:Date.now()};if(nc>=3)p.escalated=true;await updateDoc(doc(db,"orders",orderId),p);},
+  async callServeuse(orderId){
+    const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;
+    const nc=(o.callCount||0)+1;
+    const p={callCount:nc,lastCall:Date.now()};
+    if(nc>=3)p.escalated=true;
+    await updateDoc(doc(db,"orders",orderId),p);
+    // 🔔 Notification serveuse
+    if(nc < 3){
+      sendPush("🔔 Client appelle", "Table "+(o.tableNumber||""), "serveuse");
+    } else {
+      sendPush("🚨 Client appelle (3e fois)", "Table "+(o.tableNumber||"")+" — INTERVENTION", "gerant");
+    }
+  },
   async resetTodayOrders(){const today=nowDate();const toDelete=DATA.orders.filter(o=>o.date===today);const batch=writeBatch(db);toDelete.forEach(o=>batch.delete(doc(db,"orders",o._docId)));await batch.commit();return toDelete.length;},
   async resetAllOrders(){const all=DATA.orders;const batch=writeBatch(db);all.forEach(o=>batch.delete(doc(db,"orders",o._docId)));await batch.commit();return all.length;},
   async resetActiveOrders(){const act=DATA.orders.filter(o=>o.status==="att_validation"||o.status==="att_collect"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt));const batch=writeBatch(db);act.forEach(o=>batch.delete(doc(db,"orders",o._docId)));await batch.commit();return act.length;},
@@ -616,12 +703,12 @@ function screenAdmin(){
   } else if(v.section==="settings"){
     if(!v.settingsForm)v.settingsForm={...DATA.settings};
     const f=v.settingsForm;
-    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Paramètres</h2><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🆔 Identité</h3><div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">HEURE RESET BILAN</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-bilan-hour" value="'+(f.bilanResetHour||6)+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">TEMPS ATTENTE</label><select class="input" style="margin-top:6px" data-input="set-wait"><option value="max" '+(f.waitMode==="max"?"selected":"")+'>Plat le plus long</option><option value="sum" '+(f.waitMode==="sum"?"selected":"")+'>Somme</option></select></div></div><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📍 Localisation restaurant</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">LATITUDE</label><input class="input" type="text" inputmode="decimal" style="margin-top:6px;font-family:monospace;font-size:13px" data-input="set-resto-lat" value="'+esc(String(f.restoLat!=null?f.restoLat:DEFAULT_RESTO.lat))+'"></div><div><label class="text-xs muted bold">LONGITUDE</label><input class="input" type="text" inputmode="decimal" style="margin-top:6px;font-family:monospace;font-size:13px" data-input="set-resto-lon" value="'+esc(String(f.restoLon!=null?f.restoLon:DEFAULT_RESTO.lon))+'"></div></div></div><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">💰 Tarif livraison</h3><div><label class="text-xs muted bold">PRIX PAR KM (F)</label><input class="input" type="number" min="0" style="margin-top:6px" data-input="set-km-price" value="'+(f.prixKm||DEFAULT_PRIX_KM)+'"></div></div><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📧 Email & Notifications</h3><div style="margin-bottom:14px"><label class="text-xs muted bold">EMAIL DE DESTINATION DES RAPPORTS</label><input class="input" type="email" style="margin-top:6px" data-input="set-email-rapport" value="'+esc(f.emailRapport||"")+'" placeholder="gerant@exemple.com"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">ONESIGNAL APP ID (push)</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:12px" data-input="set-onesignal" value="'+esc(f.oneSignalAppId||"")+'" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div></div><button class="btn btn-accent btn-block" style="max-width:600px" data-action="admin-save-settings">Enregistrer</button>';
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Paramètres</h2><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🆔 Identité</h3><div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">HEURE RESET BILAN</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-bilan-hour" value="'+(f.bilanResetHour||6)+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">TEMPS ATTENTE</label><select class="input" style="margin-top:6px" data-input="set-wait"><option value="max" '+(f.waitMode==="max"?"selected":"")+'>Plat le plus long</option><option value="sum" '+(f.waitMode==="sum"?"selected":"")+'>Somme</option></select></div></div><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📍 Localisation restaurant</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">LATITUDE</label><input class="input" type="text" inputmode="decimal" style="margin-top:6px;font-family:monospace;font-size:13px" data-input="set-resto-lat" value="'+esc(String(f.restoLat!=null?f.restoLat:DEFAULT_RESTO.lat))+'"></div><div><label class="text-xs muted bold">LONGITUDE</label><input class="input" type="text" inputmode="decimal" style="margin-top:6px;font-family:monospace;font-size:13px" data-input="set-resto-lon" value="'+esc(String(f.restoLon!=null?f.restoLon:DEFAULT_RESTO.lon))+'"></div></div></div><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">💰 Tarif livraison</h3><div><label class="text-xs muted bold">PRIX PAR KM (F)</label><input class="input" type="number" min="0" style="margin-top:6px" data-input="set-km-price" value="'+(f.prixKm||DEFAULT_PRIX_KM)+'"></div></div><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📧 Email & Notifications</h3><div style="margin-bottom:14px"><label class="text-xs muted bold">EMAIL DE DESTINATION DES RAPPORTS</label><input class="input" type="email" style="margin-top:6px" data-input="set-email-rapport" value="'+esc(f.emailRapport||"")+'" placeholder="gerant@exemple.com"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">ONESIGNAL APP ID</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:12px" data-input="set-onesignal" value="'+esc(f.oneSignalAppId||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">URL WEBHOOK (Google Apps Script)</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:11px" data-input="set-webhook-url" value="'+esc(f.webhookUrl||"")+'" placeholder="https://script.google.com/macros/s/xxx/exec"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">TOKEN SECRET WEBHOOK</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:12px" data-input="set-webhook-token" value="'+esc(f.webhookToken||"")+'" placeholder="DS-PUSH-2026"></div></div><button class="btn btn-accent btn-block" style="max-width:600px" data-action="admin-save-settings">Enregistrer</button>';
   } else if(v.section==="maintenance"){
     const totalOrders=DATA.orders.length;const todayOrders=DATA.orders.filter(o=>o.date===nowDate()).length;
     const activeOrders=DATA.orders.filter(o=>o.status==="att_validation"||o.status==="att_collect"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt)).length;
     const paidOrders=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status)).length;
-    content='<h2 class="section-title" style="font-size:19px;margin-bottom:4px">🧹 Maintenance</h2><p class="section-sub">Chaque action demande votre mot de passe admin.</p><div class="stats-grid" style="margin-bottom:20px"><div class="stat-card"><p class="stat-label">Total</p><p class="stat-value">'+totalOrders+'</p></div><div class="stat-card"><p class="stat-label">Aujourd\'hui</p><p class="stat-value">'+todayOrders+'</p></div><div class="stat-card"><p class="stat-label">En cours</p><p class="stat-value">'+activeOrders+'</p></div><div class="stat-card"><p class="stat-label">Payées</p><p class="stat-value">'+paidOrders+'</p></div></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">💾 Sauvegarde</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm" style="margin-bottom:10px">Téléchargez une copie complète de vos données.</p><button class="btn btn-primary btn-block" data-action="admin-backup-now">💾 Télécharger la sauvegarde (JSON)</button></div><h3 class="bold" style="margin-bottom:10px;font-size:15px;color:var(--rouge)">⚠️ Zone dangereuse</h3><div class="card" style="max-width:600px;border-left:4px solid var(--rouge);margin-bottom:20px"><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer les ventes du jour</p><button class="btn btn-danger btn-block" data-action="admin-reset-today">🔐 Effacer ('+todayOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer les commandes en cours</p><button class="btn btn-danger btn-block" data-action="admin-reset-active">🔐 Effacer ('+activeOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer TOUTES les ventes</p><button class="btn btn-danger btn-block" data-action="admin-reset-all">🔐 Effacer ('+totalOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Réinitialiser le menu</p><button class="btn btn-danger btn-block" data-action="admin-reset-menu">🔐 Reset menu</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Réinitialiser le stock</p><button class="btn btn-danger btn-block" data-action="admin-reset-stock">🔐 Reset stock</button></div><div><p class="bold" style="margin-bottom:4px">Remise à zéro complète</p><button class="btn btn-danger btn-block" data-action="admin-reset-everything">🔥 TOUT</button></div></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">📜 Journal ('+DATA.resetLogs.length+')</h3>'+(DATA.resetLogs.length===0?'<p class="empty">Aucune tentative</p>':'<div class="card" style="padding:0;margin-bottom:12px;max-height:400px;overflow-y:auto">'+DATA.resetLogs.slice(0,50).map(l=>{const ok=l.result&&l.result.indexOf("✅")===0;return '<div class="log-row"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12px">'+esc(l.action||"?")+'</div><div class="text-xs muted">'+esc(l.adminName||"?")+(l.pinTried?' · ••'+esc(l.pinTried):"")+'</div></div><div style="text-align:right;white-space:nowrap"><div class="'+(ok?"log-ok":"log-fail")+'" style="font-size:11px">'+esc(l.result||"?")+'</div><div class="when">'+fmtDateTime(l.createdAt)+'</div></div></div>';}).join("")+'</div><button class="btn btn-ghost" data-action="admin-clear-logs">🔐 Vider</button>')+'<div class="discreet-zone"><span class="text-xs">·</span> <input type="number" id="discreet-pct" min="1" max="100" placeholder="%"> <button data-action="admin-discreet-exec">exécuter</button></div>';
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:4px">🧹 Maintenance</h2><p class="section-sub">Chaque action demande votre mot de passe admin.</p><div class="stats-grid" style="margin-bottom:20px"><div class="stat-card"><p class="stat-label">Total</p><p class="stat-value">'+totalOrders+'</p></div><div class="stat-card"><p class="stat-label">Aujourd\'hui</p><p class="stat-value">'+todayOrders+'</p></div><div class="stat-card"><p class="stat-label">En cours</p><p class="stat-value">'+activeOrders+'</p></div><div class="stat-card"><p class="stat-label">Payées</p><p class="stat-value">'+paidOrders+'</p></div></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">🔔 Test notifications push</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm" style="margin-bottom:10px">Envoyer une notification test à tous les appareils abonnés.</p><button class="btn btn-accent btn-block" data-action="admin-test-push">🔔 Envoyer un push de test</button></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">💾 Sauvegarde</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm" style="margin-bottom:10px">Téléchargez une copie complète de vos données.</p><button class="btn btn-primary btn-block" data-action="admin-backup-now">💾 Télécharger la sauvegarde (JSON)</button></div><h3 class="bold" style="margin-bottom:10px;font-size:15px;color:var(--rouge)">⚠️ Zone dangereuse</h3><div class="card" style="max-width:600px;border-left:4px solid var(--rouge);margin-bottom:20px"><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer les ventes du jour</p><button class="btn btn-danger btn-block" data-action="admin-reset-today">🔐 Effacer ('+todayOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer les commandes en cours</p><button class="btn btn-danger btn-block" data-action="admin-reset-active">🔐 Effacer ('+activeOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer TOUTES les ventes</p><button class="btn btn-danger btn-block" data-action="admin-reset-all">🔐 Effacer ('+totalOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Réinitialiser le menu</p><button class="btn btn-danger btn-block" data-action="admin-reset-menu">🔐 Reset menu</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Réinitialiser le stock</p><button class="btn btn-danger btn-block" data-action="admin-reset-stock">🔐 Reset stock</button></div><div><p class="bold" style="margin-bottom:4px">Remise à zéro complète</p><button class="btn btn-danger btn-block" data-action="admin-reset-everything">🔥 TOUT</button></div></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">📜 Journal ('+DATA.resetLogs.length+')</h3>'+(DATA.resetLogs.length===0?'<p class="empty">Aucune tentative</p>':'<div class="card" style="padding:0;margin-bottom:12px;max-height:400px;overflow-y:auto">'+DATA.resetLogs.slice(0,50).map(l=>{const ok=l.result&&l.result.indexOf("✅")===0;return '<div class="log-row"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12px">'+esc(l.action||"?")+'</div><div class="text-xs muted">'+esc(l.adminName||"?")+(l.pinTried?' · ••'+esc(l.pinTried):"")+'</div></div><div style="text-align:right;white-space:nowrap"><div class="'+(ok?"log-ok":"log-fail")+'" style="font-size:11px">'+esc(l.result||"?")+'</div><div class="when">'+fmtDateTime(l.createdAt)+'</div></div></div>';}).join("")+'</div><button class="btn btn-ghost" data-action="admin-clear-logs">🔐 Vider</button>')+'<div class="discreet-zone"><span class="text-xs">·</span> <input type="number" id="discreet-pct" min="1" max="100" placeholder="%"> <button data-action="admin-discreet-exec">exécuter</button></div>';
   }
   return '<div class="app">'+topbar({role:"Admin D&S",title:SESSION.name,homeAction:"admin-home"})+'<div class="tabs-scroll">'+sections.map(s=>'<button class="tab '+(v.section===s.key?"active":"")+'" data-action="admin-section" data-section="'+s.key+'">'+s.em+' '+s.label+'</button>').join("")+'</div><div class="content">'+content+'</div></div>';
 }
@@ -706,7 +793,6 @@ document.addEventListener("click",async function(e){
   if(action==="login-forgot-pwd"){loginRecovery={stage:"form",email:"",code:"",error:""};render();return;}
   if(action==="rec-cancel"){loginRecovery=null;render();return;}
   if(action==="rec-done"){loginRecovery=null;loginEmail="";loginPassword="";loginError="";render();return;}
-
   if(action==="rec-verify"){
     if(!loginRecovery) return;
     const email=(loginRecovery.email||"").trim().toLowerCase();
@@ -761,7 +847,14 @@ document.addEventListener("click",async function(e){
   if(action==="recovery-modal-close"){admS.recoveryModal=null;render();return;}
   if(action==="admin-discreet-exec"){const inp=document.getElementById("discreet-pct");const pct=inp?parseInt(inp.value):0;if(!pct||pct<1||pct>100){toast("Valeur invalide");return;}pendingReset={action:"discreet",pin:"",error:"",extra:{pct}};render();return;}
 
-  // CLIENT
+  if(action==="admin-test-push"){
+    toast("Envoi du push…");
+    const ok = await sendPush("🔔 Test Restaurant D&S","Notification envoyée depuis l'admin ✅");
+    if(ok) toast("Push envoyé !");
+    else toast("Erreur envoi push");
+    return;
+  }
+
   if(action==="client-mode"){v.mode=el.dataset.mode;v.screen="menu";render();return;}
   if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;destroyMap();render();return;}
   if(action==="client-back"){
@@ -802,7 +895,6 @@ document.addEventListener("click",async function(e){
   if(action==="client-edit-save"){const o=DATA.orders.find(o=>o._docId===v.orderId);if(!o)return;const ni=Object.entries(v.editCart).map(([did,q])=>{const dish=DATA.menu.find(d=>d._docId===did);return dish?{id:did,name:dish.name,price:dish.price,qty:q,time:dish.time,statut:"Validé",motif:null}:null;}).filter(Boolean);await A.updateOrder(o._docId,{items:ni,editedAt:Date.now()});v.screen="payment";v.editingOrder=false;v.editCart={};toast("Commande mise à jour");render();return;}
   if(action==="client-call-serveuse"){const o=DATA.orders.find(o=>o._docId===v.orderId);if(!o)return;await A.callServeuse(o._docId);notify("🔔 Client","Table "+(o.tableNumber||"—"),true);toast("Serveuse notifiée");render();return;}
 
-  // SERVEUSE
   if(action==="srv-home"){srvS.tab="tables";srvS.orderStep="table";srvS.orderTable=null;srvS.orderCart={};srvS.collectMethod=null;srvS.collectRef="";srvS.collectOrderId=null;render();return;}
   if(action==="srv-tab"){srvS.tab=el.dataset.tab;srvS.collectMethod=null;srvS.collectRef="";srvS.collectOrderId=null;render();return;}
   if(action==="srv-pick-table"){srvS.orderTable=id;srvS.orderStep="menu";render();return;}
@@ -816,7 +908,6 @@ document.addEventListener("click",async function(e){
   if(action==="srv-collect-issue"){if(!confirm("Signaler paiement NON reçu ?"))return;await A.reportCashIssue(id);srvS.collectMethod=null;srvS.collectRef="";srvS.collectOrderId=null;toast("Signalé");render();return;}
   if(action==="srv-served"){await A.markServed(id);toast("Servie !");render();return;}
 
-  // GÉRANT
   if(action==="ger-home"){gerS.tab="validation";render();return;}
   if(action==="ger-tab"){gerS.tab=el.dataset.tab;render();return;}
   if(action==="ger-force-affect"){gerS.tab="affectation";render();return;}
@@ -829,18 +920,15 @@ document.addEventListener("click",async function(e){
   if(action==="ger-print-invoice"){printInvoice(id);return;}
   if(action==="ger-affect"){const today=nowDate();const day=DATA.affectation[today]||{};const cur=day[el.dataset.table]===el.dataset.serveuse;await A.setAffectation(today,el.dataset.table,cur?null:el.dataset.serveuse);return;}
 
-  // CUISINE
   if(action==="cui-home"){render();return;}
   if(action==="cui-ready"){await A.markReady(id);notify("🍽️ Plat prêt","Commande prête",true);toast("Prêt !");render();return;}
 
-  // LIVREUR
   if(action==="liv-home"){livS.tab="available";render();return;}
   if(action==="liv-tab"){livS.tab=el.dataset.tab;render();return;}
   if(action==="liv-take"){const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");if(me)await A.takeDelivery(id,me._docId,me.name);livS.tab="current";render();return;}
   if(action==="liv-enroute"){await A.setDeliveryStatus(id,"en_route");return;}
   if(action==="liv-done"){await A.markDelivered(id);render();return;}
 
-  // ADMIN
   if(action==="admin-home"){admS.section="menu";admS.editingDish=null;render();return;}
   if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;admS.showNewStock=false;if(el.dataset.section==="bilan"){const today=nowDate();if(!admS.bilanFrom)admS.bilanFrom=today;if(!admS.bilanTo)admS.bilanTo=today;}if(el.dataset.section==="settings"){admS.settingsForm={...DATA.settings};}render();return;}
   if(action==="admin-add-dish"){await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:""});return;}
@@ -860,7 +948,7 @@ document.addEventListener("click",async function(e){
   if(action==="admin-create-stock"){const ns=admS.newStockItem;if(!ns.name||!ns.name.trim()){toast("Nom requis");return;}if(!ns.unit||!ns.unit.trim()){toast("Unité requise");return;}await A.addStockItem({name:ns.name,unit:ns.unit,initial:ns.initial||0,threshold:ns.threshold||0});admS.newStockItem={name:"",unit:"kg",initial:0,threshold:0};admS.showNewStock=false;toast("Créé ✓");return;}
   if(action==="admin-del-stock"){if(confirm("Supprimer ?"))await A.removeStockItem(id);return;}
   if(action==="admin-add-move"){if(!admS.stockForm.stockId||!admS.stockForm.qty)return;await A.addStockMove({...admS.stockForm});admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};toast("Enregistré");return;}
-  if(action==="admin-save-settings"){const f=admS.settingsForm;const lat=parseFloat(f.restoLat);const lon=parseFloat(f.restoLon);const km=parseInt(f.prixKm);if(isNaN(lat)||lat<-90||lat>90){toast("Latitude invalide");return;}if(isNaN(lon)||lon<-180||lon>180){toast("Longitude invalide");return;}if(isNaN(km)||km<0){toast("Prix/km invalide");return;}await A.updateSettings({restaurantName:f.restaurantName||"",phone:f.phone||"",bilanResetHour:parseInt(f.bilanResetHour)||6,waitMode:f.waitMode||"max",restoLat:lat,restoLon:lon,prixKm:km,emailRapport:f.emailRapport||"",oneSignalAppId:f.oneSignalAppId||""});admS.settingsForm=null;toast("Enregistré ✓");loadOneSignal();render();return;}
+  if(action==="admin-save-settings"){const f=admS.settingsForm;const lat=parseFloat(f.restoLat);const lon=parseFloat(f.restoLon);const km=parseInt(f.prixKm);if(isNaN(lat)||lat<-90||lat>90){toast("Latitude invalide");return;}if(isNaN(lon)||lon<-180||lon>180){toast("Longitude invalide");return;}if(isNaN(km)||km<0){toast("Prix/km invalide");return;}await A.updateSettings({restaurantName:f.restaurantName||"",phone:f.phone||"",bilanResetHour:parseInt(f.bilanResetHour)||6,waitMode:f.waitMode||"max",restoLat:lat,restoLon:lon,prixKm:km,emailRapport:f.emailRapport||"",oneSignalAppId:f.oneSignalAppId||"",webhookUrl:f.webhookUrl||"",webhookToken:f.webhookToken||""});admS.settingsForm=null;toast("Enregistré ✓");loadOneSignal();render();return;}
   if(action==="admin-bilan-apply"){render();return;}
   if(action==="admin-bilan-today"){const t=nowDate();admS.bilanFrom=t;admS.bilanTo=t;render();return;}
   if(action==="admin-bilan-week"){const to=new Date();const from=new Date();from.setDate(from.getDate()-6);admS.bilanFrom=from.toISOString().slice(0,10);admS.bilanTo=to.toISOString().slice(0,10);render();return;}
@@ -922,6 +1010,8 @@ document.addEventListener("input",function(e){
   if(key==="set-km-price"&&admS.settingsForm)admS.settingsForm.prixKm=parseInt(el.value)||0;
   if(key==="set-email-rapport"&&admS.settingsForm)admS.settingsForm.emailRapport=el.value;
   if(key==="set-onesignal"&&admS.settingsForm)admS.settingsForm.oneSignalAppId=el.value;
+  if(key==="set-webhook-url"&&admS.settingsForm)admS.settingsForm.webhookUrl=el.value;
+  if(key==="set-webhook-token"&&admS.settingsForm)admS.settingsForm.webhookToken=el.value;
   if(key==="bilan-from")admS.bilanFrom=el.value;
   if(key==="bilan-to")admS.bilanTo=el.value;
 });
