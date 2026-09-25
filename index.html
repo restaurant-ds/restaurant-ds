@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Restaurant D&S</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -201,27 +202,24 @@ function webhookToken(){ return DATA.settings.webhookToken || DEFAULT_WEBHOOK_TO
 function genRecoveryCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const blk=()=>{let s="";for(let i=0;i<4;i++)s+=chars[Math.floor(Math.random()*chars.length)];return s;}; return "DS-"+blk()+"-"+blk(); }
 
 // ============================================================
-// ENVOI DE NOTIFICATIONS PUSH (via Google Apps Script)
+// NOTIFICATIONS PUSH (via Google Apps Script Webhook)
 // ============================================================
-async function sendPush(title, message, targetRole){
+function sendPush(title, message, targetRole){
+  console.log("📤 PUSH → [" + (targetRole || "TOUS") + "] " + title + " : " + message);
   try{
     const url = webhookUrl();
     const token = webhookToken();
-    if(!url || !token){ console.warn("Push non configuré"); return false; }
+    if(!url || !token){ console.warn("⚠️ Push non configuré"); return; }
     const body = { token, title, message };
     if(targetRole) body.targetRole = targetRole;
-    // Utiliser fetch avec mode no-cors ou text/plain pour éviter les problèmes CORS
-    const res = await fetch(url, {
+    fetch(url, {
       method: "POST",
       mode: "no-cors",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(body)
-    });
-    console.log("Push envoyé :", title, "-", message);
-    return true;
+    }).catch(e=>console.warn("Push fetch error:", e));
   } catch(e){
-    console.warn("Erreur push :", e);
-    return false;
+    console.warn("❌ Erreur push :", e);
   }
 }
 
@@ -312,7 +310,7 @@ function subscribeAll(onUpdate) {
   onSnapshot(doc(db,"settings","main"),snap=>{if(snap.exists())DATA.settings=snap.data();onUpdate();});
 }
 
-// ============ NOTIFICATIONS LOCALES (navigateur) ============
+// ============ NOTIFICATIONS LOCALES ============
 function notify(title,body,urgent){try{if("Notification" in window && Notification.permission==="granted"){new Notification(title,{body,tag:"ds-"+Date.now(),requireInteraction:!!urgent});}}catch(e){}if(urgent&&navigator.vibrate){try{navigator.vibrate([200,100,200]);}catch(e){}}}
 
 // ============ ONESIGNAL ============
@@ -332,11 +330,8 @@ function loadOneSignal(){
         serviceWorkerPath: "/restaurant-ds/OneSignalSDKWorker.js"
       });
       console.log("✅ OneSignal initialisé");
-      // Tag role si session active
       if (SESSION && SESSION.role) {
-        try {
-          await OneSignal.User.addTag("role", SESSION.role);
-        } catch(e){}
+        try { await OneSignal.User.addTag("role", SESSION.role); } catch(e){}
       }
       if (typeof Notification !== "undefined" && Notification.permission === "default") {
         try { OneSignal.Slidedown.promptPush(); } catch(e) {}
@@ -366,7 +361,7 @@ const A = {
   async addOrder(order){
     const newOrder={createdAt:Date.now(),date:nowDate(),status:"att_validation",type:order.type||"sur_place",tableId:order.tableId||null,tableNumber:order.tableNumber||null,serveuseId:order.serveuseId||null,serveuseName:order.serveuseName||null,livreurId:null,deliveryStatus:null,clientInfo:order.clientInfo||null,deliveryLat:order.deliveryLat||null,deliveryLon:order.deliveryLon||null,deliveryKm:order.deliveryKm||null,deliveryAddrText:order.deliveryAddrText||null,items:order.items.map(i=>({...i,statut:null,motif:null})),paymentMethod:null,paymentRef:null,readyAt:null,servedAt:null,cashIssue:null,callCount:0,source:order.source||"client"};
     const ref=await addDoc(collection(db,"orders"),newOrder);
-    // 🔔 Notification au gérant
+    // 🔔 Notif GÉRANT
     const label = order.type==="livraison" ? "Livraison "+(order.clientInfo?.name||"") : "Table "+order.tableNumber;
     sendPush("🍽️ Nouvelle commande", label+" — à valider", "gerant");
     return ref.id;
@@ -379,37 +374,74 @@ const A = {
     const o=DATA.orders.find(x=>x._docId===id);if(!o)return;
     const nextStatus=o.type==="livraison"?"att_paiement":"att_collect";
     await updateDoc(doc(db,"orders",id),{status:nextStatus,validatedAt:Date.now()});
-    // 🔔 Notification à la serveuse si commande sur place
-    if(o.type==="sur_place" && o.serveuseId){
+    // 🔔 Notif SERVEUSE (sur place) ou CLIENT (livraison)
+    if(o.type==="sur_place"){
       sendPush("💰 À encaisser", "Table "+(o.tableNumber||"")+" — "+money(orderTotal(o)), "serveuse");
+    } else {
+      sendPush("✅ Commande validée", "Livraison "+(o.clientInfo?.name||"")+" — paiement à faire");
     }
   },
-  async markOrderPaid(id,method,ref){const o=DATA.orders.find(o=>o._docId===id);if(!o)return;const batch=writeBatch(db);for(const item of o.items){if(item.statut==="Refusé")continue;const dish=DATA.menu.find(d=>d._docId===item.id);if(!dish||!dish.recipe)continue;for(const ing of dish.recipe){batch.set(doc(collection(db,"stockMoves")),{stockId:ing.stockId,type:"Sortie",qty:ing.qty*item.qty,motif:"Cmd #"+id.slice(-6),date:nowDate(),_ts:Date.now()});}}batch.update(doc(db,"orders",id),{status:"payee",paymentMethod:method,paymentRef:ref||null,paidAt:Date.now(),cashIssue:null});await batch.commit();},
+  async markOrderPaid(id,method,ref){
+    const o=DATA.orders.find(o=>o._docId===id);if(!o)return;
+    const batch=writeBatch(db);
+    for(const item of o.items){if(item.statut==="Refusé")continue;const dish=DATA.menu.find(d=>d._docId===item.id);if(!dish||!dish.recipe)continue;for(const ing of dish.recipe){batch.set(doc(collection(db,"stockMoves")),{stockId:ing.stockId,type:"Sortie",qty:ing.qty*item.qty,motif:"Cmd #"+id.slice(-6),date:nowDate(),_ts:Date.now()});}}
+    batch.update(doc(db,"orders",id),{status:"payee",paymentMethod:method,paymentRef:ref||null,paidAt:Date.now(),cashIssue:null});
+    await batch.commit();
+    // 🔔 Notif CUISINE + GÉRANT
+    const label = o.type==="livraison" ? "Livraison "+(o.clientInfo?.name||"") : "Table "+(o.tableNumber||"");
+    sendPush("👨‍🍳 Nouvelle préparation", label+" — "+(method==="cash"?"Cash":"MoMo")+" — "+money(orderTotal(o)), "cuisine");
+    sendPush("💰 Paiement reçu", label+" — "+money(orderTotal(o))+" ("+(method==="cash"?"Cash":"MoMo")+")");
+  },
   async confirmCash(id,method,ref){await A.markOrderPaid(id,method,ref);},
   async reportCashIssue(id){
     const o=DATA.orders.find(x=>x._docId===id);
     await updateDoc(doc(db,"orders",id),{cashIssue:"non_recu",cashIssueAt:Date.now()});
-    // 🔔 Notification au gérant
-    sendPush("⚠️ Paiement signalé non reçu", "Table "+(o?.tableNumber||"")+" — "+(o?.serveuseName||""), "gerant");
+    // 🔔 Notif GÉRANT + SERVEUSE
+    sendPush("⚠️ Paiement non reçu", "Table "+(o?.tableNumber||"")+" — "+(o?.serveuseName||""), "gerant");
   },
-  async resolveCashIssue(id){await updateDoc(doc(db,"orders",id),{cashIssue:null,cashIssueResolvedAt:Date.now()});},
-  async markReady(id){
-    await updateDoc(doc(db,"orders",id),{readyAt:Date.now()});
+  async resolveCashIssue(id){
     const o=DATA.orders.find(x=>x._docId===id);
-    // 🔔 Notification à la serveuse
-    sendPush("🍽️ Plat prêt", "Table "+(o?.tableNumber||"")+" — à récupérer", "serveuse");
+    await updateDoc(doc(db,"orders",id),{cashIssue:null,cashIssueResolvedAt:Date.now()});
+    // 🔔 Notif SERVEUSE
+    sendPush("✅ Paiement résolu", "Table "+(o?.tableNumber||"")+" — la serveuse peut encaisser", "serveuse");
   },
-  async markServed(id){await updateDoc(doc(db,"orders",id),{status:"servie",servedAt:Date.now()});},
-  async markDelivered(id){await updateDoc(doc(db,"orders",id),{status:"livree",servedAt:Date.now()});},
+  async markReady(id){
+    const o=DATA.orders.find(x=>x._docId===id);
+    await updateDoc(doc(db,"orders",id),{readyAt:Date.now()});
+    const label = o?.type==="livraison" ? "Livraison "+(o?.clientInfo?.name||"") : "Table "+(o?.tableNumber||"");
+    // 🔔 Notif SERVEUSE + GÉRANT + CLIENT
+    sendPush("🍽️ Plat prêt", label+" — à récupérer", "serveuse");
+    sendPush("🍽️ Commande prête", label);
+  },
+  async markServed(id){
+    const o=DATA.orders.find(x=>x._docId===id);
+    await updateDoc(doc(db,"orders",id),{status:"servie",servedAt:Date.now()});
+    const label = o?.type==="livraison" ? "Livraison "+(o?.clientInfo?.name||"") : "Table "+(o?.tableNumber||"");
+    // 🔔 Notif GÉRANT
+    sendPush("✅ Commande servie", label+" — "+(o?.serveuseName||o?.livreurName||""));
+  },
+  async markDelivered(id){
+    const o=DATA.orders.find(x=>x._docId===id);
+    await updateDoc(doc(db,"orders",id),{status:"livree",servedAt:Date.now()});
+    // 🔔 Notif GÉRANT
+    sendPush("🛵 Commande livrée", (o?.clientInfo?.name||"")+" — "+money(orderGrandTotal(o)));
+  },
   async markPrinted(id){await updateDoc(doc(db,"orders",id),{printedAt:Date.now()});},
   async takeDelivery(id,livreurId,livreurName){
     await updateDoc(doc(db,"orders",id),{livreurId,livreurName,deliveryStatus:"prise"});
     const o=DATA.orders.find(x=>x._docId===id);
-    // 🔔 Notification au gérant
+    // 🔔 Notif GÉRANT
     sendPush("🛵 Livraison prise", (livreurName||"Livreur")+" — "+(o?.clientInfo?.name||""), "gerant");
   },
   async setDeliveryStatus(id,st){await updateDoc(doc(db,"orders",id),{deliveryStatus:st});},
-  async assignLivreur(id,livreurId){const l=DATA.staff.find(x=>x._docId===livreurId);await updateDoc(doc(db,"orders",id),{livreurId:livreurId||null,livreurName:l?l.name:null,deliveryStatus:livreurId?"prise":null});},
+  async assignLivreur(id,livreurId){
+    const l=DATA.staff.find(x=>x._docId===livreurId);
+    await updateDoc(doc(db,"orders",id),{livreurId:livreurId||null,livreurName:l?l.name:null,deliveryStatus:livreurId?"prise":null});
+    if(livreurId){
+      const o=DATA.orders.find(x=>x._docId===id);
+      sendPush("🛵 Nouvelle livraison", (o?.clientInfo?.name||"")+" — "+(o?.clientInfo?.address||""), "livreur");
+    }
+  },
   async addDish(d){await addDoc(collection(db,"menu"),d);},
   async updateDish(id,patch){await updateDoc(doc(db,"menu",id),patch);},
   async removeDish(id){await deleteDoc(doc(db,"menu",id));},
@@ -430,11 +462,11 @@ const A = {
     const p={callCount:nc,lastCall:Date.now()};
     if(nc>=3)p.escalated=true;
     await updateDoc(doc(db,"orders",orderId),p);
-    // 🔔 Notification serveuse
+    // 🔔 Notif SERVEUSE (1-2x) ou GÉRANT (3x)
     if(nc < 3){
       sendPush("🔔 Client appelle", "Table "+(o.tableNumber||""), "serveuse");
     } else {
-      sendPush("🚨 Client appelle (3e fois)", "Table "+(o.tableNumber||"")+" — INTERVENTION", "gerant");
+      sendPush("🚨 Client appelle (3x)", "Table "+(o.tableNumber||"")+" — INTERVENTION", "gerant");
     }
   },
   async resetTodayOrders(){const today=nowDate();const toDelete=DATA.orders.filter(o=>o.date===today);const batch=writeBatch(db);toDelete.forEach(o=>batch.delete(doc(db,"orders",o._docId)));await batch.commit();return toDelete.length;},
@@ -499,7 +531,6 @@ function screenRecovery(){
   return "";
 }
 
-// ============ CLIENT ============
 function screenClient(){
   const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables;
   const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
@@ -569,7 +600,6 @@ function initLeafletMap(){const mapEl=document.getElementById("map");if(!mapEl)r
 function setClientPosition(lat,lon){clientS.deliveryLat=lat;clientS.deliveryLon=lon;clientS.deliveryKm=null;updateDistancePanel();calcRoadDistanceKm(lat,lon).then(r=>{clientS.deliveryKm=r.km;updateDistancePanel();render();}).catch(e=>toast("Erreur calcul distance"));}
 function destroyMap(){if(mapInstance){try{mapInstance.remove();}catch(e){}mapInstance=null;mapMarker=null;}}
 
-// ============ SERVEUSE ============
 function screenServeuse(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
   const today=nowDate();const day=DATA.affectation[today]||{};
@@ -593,7 +623,6 @@ function screenServeuse(){
   return '<div class="app" style="max-width:520px;margin:0 auto">'+topbar({role:"Serveuse",title:SESSION.name,homeAction:"srv-home"})+'<div class="content">'+content+'</div><div class="bottom-nav cols-4">'+[{key:"tables",em:"🗂️",label:"Tables"},{key:"order",em:"🛍️",label:"Commander"},{key:"collect",em:"💰",label:"Encaisser",badge:toCollect.filter(o=>!o.cashIssue).length},{key:"suivi",em:"📋",label:"Suivi",badge:suiviBadge}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="srv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+'</div></div>';
 }
 
-// ============ GÉRANT ============
 function screenGerant(){
   const v=gerS;const today=nowDate();const dayAffect=DATA.affectation[today]||{};const hasAffectation=Object.keys(dayAffect).length>0;
   if(!hasAffectation && v.tab!=="affectation"){return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content"><div class="modal-overlay" style="position:fixed"><div class="modal-card"><div style="font-size:48px;margin-bottom:12px">📋</div><h2>Attribution des tables</h2><p>Avant de commencer, vous devez attribuer les tables aux serveuses du jour.</p><button class="btn btn-accent btn-block" style="padding:14px" data-action="ger-force-affect">Commencer l\'attribution</button></div></div></div></div>';}
@@ -636,7 +665,6 @@ function screenGerant(){
   return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="tabs-scroll">'+[{k:"validation",l:"Validation"+(callBadge?' ⚠️'+callBadge:"")},{k:"salle",l:"Salle"},{k:"livraisons",l:"🛵 Livraisons"+(livBadge?" ("+livBadge+")":"")},{k:"invoices",l:"🧾 Factures"+(invBadge?" ("+invBadge+")":"")},{k:"affectation",l:"Tables"},{k:"bilan",l:"Bilan"}].map(t=>'<button class="tab '+(v.tab===t.k?"active":"")+'" data-action="ger-tab" data-tab="'+t.k+'">'+t.l+'</button>').join("")+'</div><div class="content">'+content+'</div></div>';
 }
 
-// ============ CUISINE ============
 function screenCuisine(){
   const active=DATA.orders.filter(o=>o.status==="payee"&&!o.readyAt);
   const ready=DATA.orders.filter(o=>o.readyAt&&o.status==="payee");
@@ -644,7 +672,6 @@ function screenCuisine(){
   return '<div class="app">'+topbar({role:"Cuisine",title:SESSION.name,homeAction:"cui-home"})+'<div class="content"><h2 class="section-title" style="font-size:17px">👨‍🍳 File ('+active.length+')</h2>'+(active.length===0?'<p class="empty">Aucune commande</p>':'<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+active.map(ticket).join("")+'</div>')+(ready.length>0?'<h2 class="section-title" style="font-size:17px;margin-top:24px">✅ Prêtes ('+ready.length+')</h2><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+ready.map(o=>'<div class="card" style="border:2px solid var(--vert)"><p class="bold">Table '+(o.tableNumber||"—")+'</p><ul style="margin:8px 0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul></div>').join("")+'</div>':"")+'</div></div>';
 }
 
-// ============ LIVREUR ============
 function screenLivreur(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");
   const available=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.livreurId);
@@ -657,7 +684,6 @@ function screenLivreur(){
   return '<div class="app" style="max-width:520px;margin:0 auto">'+topbar({role:"Livreur",title:SESSION.name,homeAction:"liv-home"})+'<div class="content">'+content+'</div><div class="bottom-nav cols-3">'+[{key:"available",em:"📦",label:"Dispos",badge:available.length},{key:"current",em:"🧭",label:"En cours",badge:mine.length},{key:"history",em:"📋",label:"Historique"}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="liv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+'</div></div>';
 }
 
-// ============ ADMIN ============
 function screenAdmin(){
   const v=admS;
   const sections=[{key:"menu",em:"🍽️",label:"Menu"},{key:"staff",em:"👥",label:"Personnel"},{key:"tables",em:"📱",label:"Tables & QR"},{key:"stock",em:"📦",label:"Stock"},{key:"bilan",em:"📊",label:"Bilan & Ventes"},{key:"history",em:"📋",label:"Historique"},{key:"settings",em:"⚙️",label:"Paramètres"},{key:"maintenance",em:"🧹",label:"Maintenance"}];
@@ -708,7 +734,13 @@ function screenAdmin(){
     const totalOrders=DATA.orders.length;const todayOrders=DATA.orders.filter(o=>o.date===nowDate()).length;
     const activeOrders=DATA.orders.filter(o=>o.status==="att_validation"||o.status==="att_collect"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt)).length;
     const paidOrders=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status)).length;
-    content='<h2 class="section-title" style="font-size:19px;margin-bottom:4px">🧹 Maintenance</h2><p class="section-sub">Chaque action demande votre mot de passe admin.</p><div class="stats-grid" style="margin-bottom:20px"><div class="stat-card"><p class="stat-label">Total</p><p class="stat-value">'+totalOrders+'</p></div><div class="stat-card"><p class="stat-label">Aujourd\'hui</p><p class="stat-value">'+todayOrders+'</p></div><div class="stat-card"><p class="stat-label">En cours</p><p class="stat-value">'+activeOrders+'</p></div><div class="stat-card"><p class="stat-label">Payées</p><p class="stat-value">'+paidOrders+'</p></div></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">🔔 Test notifications push</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm" style="margin-bottom:10px">Envoyer une notification test à tous les appareils abonnés.</p><button class="btn btn-accent btn-block" data-action="admin-test-push">🔔 Envoyer un push de test</button></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">💾 Sauvegarde</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm" style="margin-bottom:10px">Téléchargez une copie complète de vos données.</p><button class="btn btn-primary btn-block" data-action="admin-backup-now">💾 Télécharger la sauvegarde (JSON)</button></div><h3 class="bold" style="margin-bottom:10px;font-size:15px;color:var(--rouge)">⚠️ Zone dangereuse</h3><div class="card" style="max-width:600px;border-left:4px solid var(--rouge);margin-bottom:20px"><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer les ventes du jour</p><button class="btn btn-danger btn-block" data-action="admin-reset-today">🔐 Effacer ('+todayOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer les commandes en cours</p><button class="btn btn-danger btn-block" data-action="admin-reset-active">🔐 Effacer ('+activeOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer TOUTES les ventes</p><button class="btn btn-danger btn-block" data-action="admin-reset-all">🔐 Effacer ('+totalOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Réinitialiser le menu</p><button class="btn btn-danger btn-block" data-action="admin-reset-menu">🔐 Reset menu</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Réinitialiser le stock</p><button class="btn btn-danger btn-block" data-action="admin-reset-stock">🔐 Reset stock</button></div><div><p class="bold" style="margin-bottom:4px">Remise à zéro complète</p><button class="btn btn-danger btn-block" data-action="admin-reset-everything">🔥 TOUT</button></div></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">📜 Journal ('+DATA.resetLogs.length+')</h3>'+(DATA.resetLogs.length===0?'<p class="empty">Aucune tentative</p>':'<div class="card" style="padding:0;margin-bottom:12px;max-height:400px;overflow-y:auto">'+DATA.resetLogs.slice(0,50).map(l=>{const ok=l.result&&l.result.indexOf("✅")===0;return '<div class="log-row"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12px">'+esc(l.action||"?")+'</div><div class="text-xs muted">'+esc(l.adminName||"?")+(l.pinTried?' · ••'+esc(l.pinTried):"")+'</div></div><div style="text-align:right;white-space:nowrap"><div class="'+(ok?"log-ok":"log-fail")+'" style="font-size:11px">'+esc(l.result||"?")+'</div><div class="when">'+fmtDateTime(l.createdAt)+'</div></div></div>';}).join("")+'</div><button class="btn btn-ghost" data-action="admin-clear-logs">🔐 Vider</button>')+'<div class="discreet-zone"><span class="text-xs">·</span> <input type="number" id="discreet-pct" min="1" max="100" placeholder="%"> <button data-action="admin-discreet-exec">exécuter</button></div>';
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:4px">🧹 Maintenance</h2><p class="section-sub">Chaque action demande votre mot de passe admin.</p><div class="stats-grid" style="margin-bottom:20px"><div class="stat-card"><p class="stat-label">Total</p><p class="stat-value">'+totalOrders+'</p></div><div class="stat-card"><p class="stat-label">Aujourd\'hui</p><p class="stat-value">'+todayOrders+'</p></div><div class="stat-card"><p class="stat-label">En cours</p><p class="stat-value">'+activeOrders+'</p></div><div class="stat-card"><p class="stat-label">Payées</p><p class="stat-value">'+paidOrders+'</p></div></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">📱 Installer l\'application</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm" style="margin-bottom:10px">Installez Restaurant D&S sur cet appareil pour recevoir les notifications même fermé.</p><button class="btn btn-primary btn-block" id="pwa-install-btn" data-action="admin-install-pwa">📥 Installer l\'application</button><p class="text-xs muted" style="margin-top:8px" id="pwa-status">Si le bouton ne marche pas, utilisez le menu Chrome → Ajouter à l\'écran d\'accueil</p></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">🔔 Test notifications push</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm" style="margin-bottom:10px">Envoyer une notification test à tous les appareils abonnés.</p><button class="btn btn-accent btn-block" data-action="admin-test-push">🔔 Envoyer un push de test</button></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">💾 Sauvegarde</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm" style="margin-bottom:10px">Téléchargez une copie complète de vos données.</p><button class="btn btn-primary btn-block" data-action="admin-backup-now">💾 Télécharger la sauvegarde (JSON)</button></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px;color:var(--rouge)">⚠️ Zone dangereuse</h3><div class="card" style="max-width:600px;border-left:4px solid var(--rouge);margin-bottom:20px"><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer les ventes du jour</p><button class="btn btn-danger btn-block" data-action="admin-reset-today">🔐 Effacer ('+todayOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer les commandes en cours</p><button class="btn btn-danger btn-block" data-action="admin-reset-active">🔐 Effacer ('+activeOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Effacer TOUTES les ventes</p><button class="btn btn-danger btn-block" data-action="admin-reset-all">🔐 Effacer ('+totalOrders+')</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Réinitialiser le menu</p><button class="btn btn-danger btn-block" data-action="admin-reset-menu">🔐 Reset menu</button></div><div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--sable)"><p class="bold" style="margin-bottom:4px">Réinitialiser le stock</p><button class="btn btn-danger btn-block" data-action="admin-reset-stock">🔐 Reset stock</button></div><div><p class="bold" style="margin-bottom:4px">Remise à zéro complète</p><button class="btn btn-danger btn-block" data-action="admin-reset-everything">🔥 TOUT</button></div></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">📜 Journal ('+DATA.resetLogs.length+')</h3>'+(DATA.resetLogs.length===0?'<p class="empty">Aucune tentative</p>':'<div class="card" style="padding:0;margin-bottom:12px;max-height:400px;overflow-y:auto">'+DATA.resetLogs.slice(0,50).map(l=>{const ok=l.result&&l.result.indexOf("✅")===0;return '<div class="log-row"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:12px">'+esc(l.action||"?")+'</div><div class="text-xs muted">'+esc(l.adminName||"?")+(l.pinTried?' · ••'+esc(l.pinTried):"")+'</div></div><div style="text-align:right;white-space:nowrap"><div class="'+(ok?"log-ok":"log-fail")+'" style="font-size:11px">'+esc(l.result||"?")+'</div><div class="when">'+fmtDateTime(l.createdAt)+'</div></div></div>';}).join("")+'</div><button class="btn btn-ghost" data-action="admin-clear-logs">🔐 Vider</button>')+
+'<div class="discreet-zone"><span class="text-xs">·</span> <input type="number" id="discreet-pct" min="1" max="100" placeholder="%"> <button data-action="admin-discreet-exec">exécuter</button></div>';
   }
   return '<div class="app">'+topbar({role:"Admin D&S",title:SESSION.name,homeAction:"admin-home"})+'<div class="tabs-scroll">'+sections.map(s=>'<button class="tab '+(v.section===s.key?"active":"")+'" data-action="admin-section" data-section="'+s.key+'">'+s.em+' '+s.label+'</button>').join("")+'</div><div class="content">'+content+'</div></div>';
 }
@@ -743,6 +775,16 @@ function render(){
   root.innerHTML=html;
   restoreInput(saved);
   if(SESSION.role==="client" && clientS.screen==="deliveryInfo"){setTimeout(initLeafletMap,80);}
+  // Mettre à jour l'état du bouton PWA
+  setTimeout(()=>{
+    const btn = document.getElementById("pwa-install-btn");
+    const status = document.getElementById("pwa-status");
+    if(btn && window.__deferredPrompt){
+      btn.style.background = "var(--jaune)";
+      btn.style.color = "var(--noir)";
+      if(status) status.textContent = "✅ Prêt à installer";
+    }
+  }, 200);
   if(pendingReset){setTimeout(()=>{const el=document.getElementById("reset-pin-input");if(el){el.value="";el.focus();}},60);}
 }
 
@@ -849,9 +891,21 @@ document.addEventListener("click",async function(e){
 
   if(action==="admin-test-push"){
     toast("Envoi du push…");
-    const ok = await sendPush("🔔 Test Restaurant D&S","Notification envoyée depuis l'admin ✅");
-    if(ok) toast("Push envoyé !");
-    else toast("Erreur envoi push");
+    sendPush("🔔 Test Restaurant D&S","Notification envoyée depuis l'admin ✅");
+    toast("Push envoyé !");
+    return;
+  }
+  if(action==="admin-install-pwa"){
+    if(window.__deferredPrompt){
+      window.__deferredPrompt.prompt();
+      const { outcome } = await window.__deferredPrompt.userChoice;
+      if(outcome === "accepted"){
+        toast("Application installée !");
+        window.__deferredPrompt = null;
+      }
+    } else {
+      toast("Utilisez le menu Chrome → Ajouter à l'écran d'accueil");
+    }
     return;
   }
 
@@ -1073,6 +1127,26 @@ if("Notification" in window && Notification.permission==="default"){setTimeout((
 })();
 
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("service-worker.js").catch(e=>console.warn("SW:",e));});}
+
+// ============ PWA INSTALL PROMPT ============
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  window.__deferredPrompt = e;
+  const btn = document.getElementById("pwa-install-btn");
+  if(btn){
+    btn.style.background = "var(--jaune)";
+    btn.style.color = "var(--noir)";
+  }
+  const status = document.getElementById("pwa-status");
+  if(status) status.textContent = "✅ Prêt à installer — cliquez sur le bouton";
+  console.log("📱 PWA installable détectée");
+});
+
+window.addEventListener("appinstalled", (e) => {
+  console.log("✅ PWA installée");
+  window.__deferredPrompt = null;
+  toast("Application installée !");
+});
 
 (async function boot(){
   try{
