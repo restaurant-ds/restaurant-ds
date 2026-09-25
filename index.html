@@ -204,14 +204,27 @@ function genRecoveryCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; cons
 // ============================================================
 // NOTIFICATIONS PUSH (via Google Apps Script Webhook)
 // ============================================================
+// Chaque appareil est étiqueté (tag OneSignal) avec son rôle :
+//   role      = client | serveuse | cuisine | gerant | livreur | admin | anonymous
+//   is_staff  = "true" | "false"
+//
+// Le webhook reçoit : { token, title, message, targetRole?, staffOnly? }
+// - targetRole présent → tag role == targetRole
+// - staffOnly = true   → tag is_staff == "true"
+// - sinon              → broadcast à tous (segment All)
+// ============================================================
 function sendPush(title, message, targetRole){
-  console.log("📤 PUSH → [" + (targetRole || "TOUS") + "] " + title + " : " + message);
+  console.log("📤 PUSH → [" + (targetRole || "STAFF") + "] " + title + " : " + message);
   try{
     const url = webhookUrl();
     const token = webhookToken();
     if(!url || !token){ console.warn("⚠️ Push non configuré"); return; }
     const body = { token, title, message };
-    if(targetRole) body.targetRole = targetRole;
+    if(targetRole){
+      body.targetRole = targetRole;
+    } else {
+      body.staffOnly = true;
+    }
     fetch(url, {
       method: "POST",
       mode: "no-cors",
@@ -221,6 +234,40 @@ function sendPush(title, message, targetRole){
   } catch(e){
     console.warn("❌ Erreur push :", e);
   }
+}
+
+// ---- Tags OneSignal par rôle (avec retries) ----
+async function applyRoleTag(role){
+  const MAX_TRIES = 12;
+  const tagRole = role || "anonymous";
+  const isStaff = role && role !== "client";
+  for(let i=0;i<MAX_TRIES;i++){
+    try{
+      const OS = window.OneSignal;
+      if(OS && OS.User && typeof OS.User.addTag === "function"){
+        await OS.User.addTag("role", tagRole);
+        await OS.User.addTag("is_staff", isStaff ? "true" : "false");
+        console.log("🏷️ Tag appliqué → role=" + tagRole + " is_staff=" + isStaff);
+        return true;
+      }
+    }catch(e){
+      console.warn("Tag tentative " + i + " échouée:", e);
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  console.warn("⚠️ Impossible d'appliquer le tag rôle après " + MAX_TRIES + " tentatives");
+  return false;
+}
+
+async function clearRoleTag(){
+  try{
+    const OS = window.OneSignal;
+    if(OS && OS.User && typeof OS.User.addTag === "function"){
+      await OS.User.addTag("role", "anonymous");
+      await OS.User.addTag("is_staff", "false");
+      console.log("🏷️ Tag rôle réinitialisé (anonymous)");
+    }
+  }catch(e){ console.warn("clearRoleTag:", e); }
 }
 
 const SEED = {
@@ -317,7 +364,11 @@ function notify(title,body,urgent){try{if("Notification" in window && Notificati
 function loadOneSignal(){
   const appId = DATA.settings.oneSignalAppId;
   if(!appId){ console.warn("OneSignal: App ID non configuré"); return; }
-  if(window.__osLoaded) return;
+  if(window.__osLoaded) {
+    // Si déjà chargé, ré-applique juste le tag courant
+    applyRoleTag(SESSION ? SESSION.role : null);
+    return;
+  }
   window.__osLoaded = true;
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   window.OneSignalDeferred.push(async function(OneSignal) {
@@ -330,9 +381,8 @@ function loadOneSignal(){
         serviceWorkerPath: "/restaurant-ds/OneSignalSDKWorker.js"
       });
       console.log("✅ OneSignal initialisé");
-      if (SESSION && SESSION.role) {
-        try { await OneSignal.User.addTag("role", SESSION.role); } catch(e){}
-      }
+      // Applique le tag du rôle si déjà connecté, sinon "anonymous"
+      await applyRoleTag(SESSION ? SESSION.role : null);
       if (typeof Notification !== "undefined" && Notification.permission === "default") {
         try { OneSignal.Slidedown.promptPush(); } catch(e) {}
       }
@@ -349,19 +399,15 @@ function randomDeletePercent(pct){const all=DATA.orders.slice();if(all.length===
 const A = {
   login(role,name){
     SESSION={role,name,userId:DEVICE_ID,since:Date.now()};
-    setTimeout(loadOneSignal,500);
-    setTimeout(async ()=>{
-      if(window.OneSignal && window.OneSignal.User && window.OneSignal.User.addTag){
-        try{ await window.OneSignal.User.addTag("role", role); }catch(e){}
-      }
-    }, 3000);
+    setTimeout(loadOneSignal, 200);
+    // Applique le tag dès que OneSignal est prêt (retries jusqu'à ~6s)
+    applyRoleTag(role);
     render();
   },
-  logout(){ SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; render(); },
+  logout(){ SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; clearRoleTag(); render(); },
   async addOrder(order){
     const newOrder={createdAt:Date.now(),date:nowDate(),status:"att_validation",type:order.type||"sur_place",tableId:order.tableId||null,tableNumber:order.tableNumber||null,serveuseId:order.serveuseId||null,serveuseName:order.serveuseName||null,livreurId:null,deliveryStatus:null,clientInfo:order.clientInfo||null,deliveryLat:order.deliveryLat||null,deliveryLon:order.deliveryLon||null,deliveryKm:order.deliveryKm||null,deliveryAddrText:order.deliveryAddrText||null,items:order.items.map(i=>({...i,statut:null,motif:null})),paymentMethod:null,paymentRef:null,readyAt:null,servedAt:null,cashIssue:null,callCount:0,source:order.source||"client"};
     const ref=await addDoc(collection(db,"orders"),newOrder);
-    // 🔔 Notif GÉRANT
     const label = order.type==="livraison" ? "Livraison "+(order.clientInfo?.name||"") : "Table "+order.tableNumber;
     sendPush("🍽️ Nouvelle commande", label+" — à valider", "gerant");
     return ref.id;
@@ -374,11 +420,10 @@ const A = {
     const o=DATA.orders.find(x=>x._docId===id);if(!o)return;
     const nextStatus=o.type==="livraison"?"att_paiement":"att_collect";
     await updateDoc(doc(db,"orders",id),{status:nextStatus,validatedAt:Date.now()});
-    // 🔔 Notif SERVEUSE (sur place) ou CLIENT (livraison)
     if(o.type==="sur_place"){
       sendPush("💰 À encaisser", "Table "+(o.tableNumber||"")+" — "+money(orderTotal(o)), "serveuse");
     } else {
-      sendPush("✅ Commande validée", "Livraison "+(o.clientInfo?.name||"")+" — paiement à faire");
+      sendPush("✅ Commande validée", "Livraison "+(o.clientInfo?.name||"")+" — paiement à faire", "client");
     }
   },
   async markOrderPaid(id,method,ref){
@@ -387,50 +432,43 @@ const A = {
     for(const item of o.items){if(item.statut==="Refusé")continue;const dish=DATA.menu.find(d=>d._docId===item.id);if(!dish||!dish.recipe)continue;for(const ing of dish.recipe){batch.set(doc(collection(db,"stockMoves")),{stockId:ing.stockId,type:"Sortie",qty:ing.qty*item.qty,motif:"Cmd #"+id.slice(-6),date:nowDate(),_ts:Date.now()});}}
     batch.update(doc(db,"orders",id),{status:"payee",paymentMethod:method,paymentRef:ref||null,paidAt:Date.now(),cashIssue:null});
     await batch.commit();
-    // 🔔 Notif CUISINE + GÉRANT
     const label = o.type==="livraison" ? "Livraison "+(o.clientInfo?.name||"") : "Table "+(o.tableNumber||"");
     sendPush("👨‍🍳 Nouvelle préparation", label+" — "+(method==="cash"?"Cash":"MoMo")+" — "+money(orderTotal(o)), "cuisine");
-    sendPush("💰 Paiement reçu", label+" — "+money(orderTotal(o))+" ("+(method==="cash"?"Cash":"MoMo")+")");
+    sendPush("💰 Paiement reçu", label+" — "+money(orderTotal(o))+" ("+(method==="cash"?"Cash":"MoMo")+")", "gerant");
   },
   async confirmCash(id,method,ref){await A.markOrderPaid(id,method,ref);},
   async reportCashIssue(id){
     const o=DATA.orders.find(x=>x._docId===id);
     await updateDoc(doc(db,"orders",id),{cashIssue:"non_recu",cashIssueAt:Date.now()});
-    // 🔔 Notif GÉRANT + SERVEUSE
     sendPush("⚠️ Paiement non reçu", "Table "+(o?.tableNumber||"")+" — "+(o?.serveuseName||""), "gerant");
   },
   async resolveCashIssue(id){
     const o=DATA.orders.find(x=>x._docId===id);
     await updateDoc(doc(db,"orders",id),{cashIssue:null,cashIssueResolvedAt:Date.now()});
-    // 🔔 Notif SERVEUSE
     sendPush("✅ Paiement résolu", "Table "+(o?.tableNumber||"")+" — la serveuse peut encaisser", "serveuse");
   },
   async markReady(id){
     const o=DATA.orders.find(x=>x._docId===id);
     await updateDoc(doc(db,"orders",id),{readyAt:Date.now()});
     const label = o?.type==="livraison" ? "Livraison "+(o?.clientInfo?.name||"") : "Table "+(o?.tableNumber||"");
-    // 🔔 Notif SERVEUSE + GÉRANT + CLIENT
     sendPush("🍽️ Plat prêt", label+" — à récupérer", "serveuse");
-    sendPush("🍽️ Commande prête", label);
+    sendPush("🍽️ Commande prête", label, "livreur");
   },
   async markServed(id){
     const o=DATA.orders.find(x=>x._docId===id);
     await updateDoc(doc(db,"orders",id),{status:"servie",servedAt:Date.now()});
     const label = o?.type==="livraison" ? "Livraison "+(o?.clientInfo?.name||"") : "Table "+(o?.tableNumber||"");
-    // 🔔 Notif GÉRANT
-    sendPush("✅ Commande servie", label+" — "+(o?.serveuseName||o?.livreurName||""));
+    sendPush("✅ Commande servie", label+" — "+(o?.serveuseName||o?.livreurName||""), "gerant");
   },
   async markDelivered(id){
     const o=DATA.orders.find(x=>x._docId===id);
     await updateDoc(doc(db,"orders",id),{status:"livree",servedAt:Date.now()});
-    // 🔔 Notif GÉRANT
-    sendPush("🛵 Commande livrée", (o?.clientInfo?.name||"")+" — "+money(orderGrandTotal(o)));
+    sendPush("🛵 Commande livrée", (o?.clientInfo?.name||"")+" — "+money(orderGrandTotal(o)), "gerant");
   },
   async markPrinted(id){await updateDoc(doc(db,"orders",id),{printedAt:Date.now()});},
   async takeDelivery(id,livreurId,livreurName){
     await updateDoc(doc(db,"orders",id),{livreurId,livreurName,deliveryStatus:"prise"});
     const o=DATA.orders.find(x=>x._docId===id);
-    // 🔔 Notif GÉRANT
     sendPush("🛵 Livraison prise", (livreurName||"Livreur")+" — "+(o?.clientInfo?.name||""), "gerant");
   },
   async setDeliveryStatus(id,st){await updateDoc(doc(db,"orders",id),{deliveryStatus:st});},
@@ -462,7 +500,6 @@ const A = {
     const p={callCount:nc,lastCall:Date.now()};
     if(nc>=3)p.escalated=true;
     await updateDoc(doc(db,"orders",orderId),p);
-    // 🔔 Notif SERVEUSE (1-2x) ou GÉRANT (3x)
     if(nc < 3){
       sendPush("🔔 Client appelle", "Table "+(o.tableNumber||""), "serveuse");
     } else {
@@ -749,7 +786,8 @@ function screenPinModal(){
   if(!pendingReset) return "";
   const labels={today:"Effacer les ventes du jour",all:"Effacer TOUTES les ventes",active:"Effacer les commandes en cours",menu:"Réinitialiser le menu",stock:"Réinitialiser le stock",everything:"TOUT RÉINITIALISER","clear-logs":"Vider le journal",discreet:"Exécuter l'opération"};
   const fieldName="pwd-"+Math.random().toString(36).slice(2,10);
-  return '<div class="modal-overlay"><div class="modal-card"><div style="font-size:48px;margin-bottom:12px">🔐</div><h2>Vérification</h2><p style="margin-bottom:6px;font-size:13px">Action :</p><p style="font-weight:700;color:var(--rouge);font-size:15px;margin-bottom:14px">'+esc(labels[pendingReset.action]||pendingReset.action)+'</p><p style="font-size:13px;margin-bottom:10px">Mot de passe administrateur :</p><input type="password" id="reset-pin-input" name="'+fieldName+'" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" value="" class="pin-modal-input" placeholder="••••">'+(pendingReset.error?'<p style="color:var(--rouge);font-size:13px;margin:0 0 10px;font-weight:600">'+esc(pendingReset.error)+'</p>':'<div style="height:20px"></div>')+'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ghost" style="flex:1" data-action="reset-cancel">Annuler</button><button class="btn btn-danger" style="flex:1" data-action="reset-confirm">Confirmer</button></div></div></div>';
+  const pwdValue=esc(pendingReset.pin||"");
+  return '<div class="modal-overlay"><div class="modal-card"><div style="font-size:48px;margin-bottom:12px">🔐</div><h2>Vérification</h2><p style="margin-bottom:6px;font-size:13px">Action :</p><p style="font-weight:700;color:var(--rouge);font-size:15px;margin-bottom:14px">'+esc(labels[pendingReset.action]||pendingReset.action)+'</p><p style="font-size:13px;margin-bottom:10px">Mot de passe administrateur :</p><input type="password" id="reset-pin-input" data-input="reset-pin" name="'+fieldName+'" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" value="'+pwdValue+'" class="pin-modal-input" placeholder="••••">'+(pendingReset.error?'<p style="color:var(--rouge);font-size:13px;margin:0 0 10px;font-weight:600">'+esc(pendingReset.error)+'</p>':'<div style="height:20px"></div>')+'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ghost" style="flex:1" data-action="reset-cancel">Annuler</button><button class="btn btn-danger" style="flex:1" data-action="reset-confirm">Confirmer</button></div></div></div>';
 }
 
 function screenRecoveryCodeModal(){
@@ -775,7 +813,6 @@ function render(){
   root.innerHTML=html;
   restoreInput(saved);
   if(SESSION.role==="client" && clientS.screen==="deliveryInfo"){setTimeout(initLeafletMap,80);}
-  // Mettre à jour l'état du bouton PWA
   setTimeout(()=>{
     const btn = document.getElementById("pwa-install-btn");
     const status = document.getElementById("pwa-status");
@@ -785,7 +822,17 @@ function render(){
       if(status) status.textContent = "✅ Prêt à installer";
     }
   }, 200);
-  if(pendingReset){setTimeout(()=>{const el=document.getElementById("reset-pin-input");if(el){el.value="";el.focus();}},60);}
+  if(pendingReset){
+    setTimeout(()=>{
+      const el=document.getElementById("reset-pin-input");
+      if(el){
+        el.value = pendingReset.pin || "";
+        el.focus();
+        const len = el.value.length;
+        try{ el.setSelectionRange(len, len); }catch(e){}
+      }
+    }, 60);
+  }
 }
 
 function pinAdd(d){if(loginPin.length>=4)return;loginPin+=d;loginError="";if(loginPin.length===4){setTimeout(()=>{const u=DATA.staff.find(s=>s.role===loginRole&&s.pin===loginPin);if(u){A.login(loginRole,u.name);loginRole=null;loginPin="";loginError="";}else{loginError="PIN incorrect";loginPin="";render();}},150);}else render();}
@@ -1030,8 +1077,8 @@ document.addEventListener("change",async function(e){
 });
 
 document.addEventListener("input",function(e){
-  if(e.target.id==="reset-pin-input"){if(pendingReset){pendingReset.pin=e.target.value;pendingReset.error="";}return;}
   const el=e.target;const key=el.dataset.input;
+  if(key==="reset-pin"){if(pendingReset){pendingReset.pin=el.value;pendingReset.error="";}return;}
   if(key==="login-email"){loginEmail=el.value;return;}
   if(key==="login-password"){loginPassword=el.value;return;}
   if(key==="rec-email"&&loginRecovery){loginRecovery.email=el.value;loginRecovery.error="";return;}
@@ -1041,7 +1088,11 @@ document.addEventListener("input",function(e){
   if(!key)return;
   const v=clientS;
   if(key==="info-name")v.info.name=el.value;
-  if(key==="info-phone")v.info.phone=el.value.replace(/[^\d]/g,"").slice(0,10);
+  if(key==="info-phone"){
+    const clean = el.value.replace(/[^\d]/g,"").slice(0,10);
+    if(clean !== el.value) el.value = clean;
+    v.info.phone = clean;
+  }
   if(key==="info-address")v.info.address=el.value;
   if(key==="srv-collect-ref")srvS.collectRef=el.value;
   if(key==="new-staff-name")admS.newStaff.name=el.value;
@@ -1071,7 +1122,7 @@ document.addEventListener("input",function(e){
 });
 
 document.addEventListener("keydown",function(e){
-  if(pendingReset && document.activeElement && document.activeElement.id==="reset-pin-input"){
+  if(pendingReset && document.activeElement && document.activeElement.dataset && document.activeElement.dataset.input==="reset-pin"){
     if(e.key==="Enter"){e.preventDefault();document.querySelector('[data-action="reset-confirm"]')?.click();return;}
     return;
   }
@@ -1120,11 +1171,28 @@ if("Notification" in window && Notification.permission==="default"){setTimeout((
   setTimeout(()=>clearInterval(ci),15000);
 })();
 
-(function checkUrlTable(){
-  const params=new URLSearchParams(window.location.search);
-  const t=params.get("table");
-  if(t){clientS.urlTable=parseInt(t);clientS.mode="sur_place";const f=DATA.tables.find(x=>x.number===parseInt(t));if(f){clientS.tableId=f._docId;clientS.screen="menu";}else{clientS.screen="menu";}}
-})();
+// Vérification URL ?table=X — exécutée une fois après le chargement de DATA.tables
+let urlTableChecked = false;
+function checkUrlTableOnce(){
+  if(urlTableChecked) return;
+  if(!DATA.tables.length) return; // attend que les tables soient chargées
+  urlTableChecked = true;
+  const params = new URLSearchParams(window.location.search);
+  const t = params.get("table");
+  if(!t) return;
+  const num = parseInt(t);
+  if(!num) return;
+  clientS.urlTable = num;
+  clientS.mode = "sur_place";
+  const f = DATA.tables.find(x => x.number === num);
+  if(f){
+    clientS.tableId = f._docId;
+    clientS.screen = "menu";
+    console.log("📱 QR table détecté : Table " + num);
+  } else {
+    console.warn("⚠️ Table " + num + " introuvable en base");
+  }
+}
 
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("service-worker.js").catch(e=>console.warn("SW:",e));});}
 
@@ -1151,7 +1219,8 @@ window.addEventListener("appinstalled", (e) => {
 (async function boot(){
   try{
     await seedIfEmpty();
-    subscribeAll(render);
+    subscribeAll(() => { checkUrlTableOnce(); render(); });
+    checkUrlTableOnce();
     render();
     setTimeout(loadOneSignal, 2000);
   }catch(e){
