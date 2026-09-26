@@ -203,7 +203,6 @@ function genRecoveryCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; cons
 
 // ============================================================
 // MENU DU JOUR — confirmation matinale par le gérant
-// Stocké dans settings.menuOfDay = { date, dishIds, confirmedAt }
 // ============================================================
 function todayMenu(){
   const m = DATA.settings.menuOfDay;
@@ -223,7 +222,7 @@ function isDishAvailableToday(d){
 }
 
 // ============================================================
-// NOTIFICATIONS PUSH (via Google Apps Script Webhook)
+// NOTIFICATIONS PUSH
 // ============================================================
 function sendPush(title, message, targetRole){
   console.log("📤 PUSH → [" + (targetRole || "STAFF") + "] " + title + " : " + message);
@@ -499,7 +498,22 @@ const A = {
   async updateStaff(id,patch){await updateDoc(doc(db,"staff",id),patch);},
   async removeStaff(id){await deleteDoc(doc(db,"staff",id));},
   async resetPin(id){const pin=String(Math.floor(1000+Math.random()*9000));await updateDoc(doc(db,"staff",id),{pin});return pin;},
-  async addTable(){const n=DATA.tables.reduce((m,t)=>Math.max(m,t.number),0)+1;await addDoc(collection(db,"tables"),{number:n,token:Math.random().toString(36).slice(2,8)});},
+  async addTable(number){
+    const num = parseInt(number);
+    if(!num || num < 1) throw new Error("Numéro invalide (>=1)");
+    if(num > 999) throw new Error("Numéro trop grand (max 999)");
+    if(DATA.tables.some(t=>t.number===num)) throw new Error("La table " + num + " existe déjà");
+    await addDoc(collection(db,"tables"),{number:num, token:Math.random().toString(36).slice(2,8)});
+    return num;
+  },
+  async updateTableNumber(id, number){
+    const num = parseInt(number);
+    if(!num || num < 1) throw new Error("Numéro invalide (>=1)");
+    if(num > 999) throw new Error("Numéro trop grand (max 999)");
+    if(DATA.tables.some(t=>t.number===num && t._docId!==id)) throw new Error("La table " + num + " existe déjà");
+    await updateDoc(doc(db,"tables",id),{number:num});
+    return num;
+  },
   async removeTable(id){await deleteDoc(doc(db,"tables",id));},
   async setAffectation(date,tableId,serveuseId){const day={...(DATA.affectation[date]||{})};if(serveuseId===null)delete day[tableId];else day[tableId]=serveuseId;await setDoc(doc(db,"affectation",date),day);},
   async addStockMove(m){await addDoc(collection(db,"stockMoves"),{...m,date:nowDate(),_ts:Date.now()});},
@@ -558,7 +572,7 @@ function stockQty(id){const item=DATA.stock.find(x=>x._docId===id);if(!item)retu
 function statusBadge(o){if(o.status==="servie")return '<span class="badge badge-vert">Servie</span>';if(o.status==="livree")return '<span class="badge badge-vert">Livrée</span>';if(o.status==="refusee")return '<span class="badge badge-rouge">Refusée</span>';if(o.status==="att_collect")return '<span class="badge badge-orange">À encaisser</span>';if(o.status==="payee"){if(o.cashIssue==="non_recu")return '<span class="badge badge-rouge">⚠ Non reçu</span>';const r=o.items.every(i=>i.statut==="Refusé"||o.readyAt);return '<span class="badge '+(r?"badge-vert":"badge-orange")+'">'+(r?"Prête":"En cuisine")+'</span>';}if(o.status==="att_paiement")return '<span class="badge badge-orange">À payer</span>';return '<span class="badge badge-rouge">À valider</span>';}
 
 let loginRole=null, loginPin="", loginEmail="", loginPassword="", loginError="", loginRecovery=null;
-let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};
+let clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,tableNumber:null,urlTable:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};
 let gerS={tab:"validation",menuDraft:null};
 let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null};
@@ -566,7 +580,7 @@ let livS={tab:"available"};
 let pendingReset=null;
 let mapInstance=null, mapMarker=null;
 
-function resetClient(){clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};localStorage.removeItem("ds_client_order");}
+function resetClient(){clientS={screen:"landing",mode:null,cart:{},cat:"Plats",tableId:null,tableNumber:null,urlTable:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{}};localStorage.removeItem("ds_client_order");}
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
 
 function topbar(opts){const back=opts.backAction?'<button class="topbar-btn" data-action="'+opts.backAction+'">←</button>':'<button class="topbar-btn" data-action="'+opts.homeAction+'">🏠</button>';return '<div class="topbar">'+back+'<div style="flex:1;min-width:0"><p class="topbar-sub">'+esc(opts.role||"")+'</p><div class="topbar-title">'+esc(opts.title||"")+'</div></div><button class="topbar-logout" data-action="logout">Déco</button></div>';}
@@ -617,6 +631,7 @@ function screenClient(){
     if((order.status==="servie"||order.status==="livree")&&v.screen==="tracking")v.screen="done";
   }
   if(v.screen==="landing"){
+    if(v.urlTable && v.tableId){ v.screen="menu"; v.mode="sur_place"; return screenClient(); }
     return '<div class="login"><div class="login-logo">🍽️</div><p class="login-sub">Bienvenue</p><h1 class="serif">Restaurant <span>D&S</span></h1><p style="color:#aaa;margin-bottom:20px;text-align:center">Comment souhaitez-vous commander ?</p><div style="width:100%;max-width:280px;display:flex;flex-direction:column;gap:10px"><button class="btn btn-accent btn-block" style="padding:16px;font-size:16px" data-action="client-mode" data-mode="sur_place">🍽️ Sur place</button><button class="btn btn-block" style="padding:16px;font-size:16px;background:white;color:var(--noir)" data-action="client-mode" data-mode="livraison">🛵 En livraison</button><button class="btn btn-ghost btn-block" style="padding:12px;margin-top:8px" data-action="logout">← Retour</button></div></div>';
   }
   if(v.screen==="menu"){
@@ -625,7 +640,8 @@ function screenClient(){
     const count=Object.values(v.cart).reduce((a,b)=>a+b,0);
     const total=menu.filter(isDishAvailableToday).reduce((sum,d)=>sum+(v.cart[d._docId]||0)*d.price,0);
     const tableName=v.mode==="sur_place"&&v.tableId?("Table "+(tables.find(t=>t._docId===v.tableId)?.number||"?")):"Livraison";
-    return '<div class="app" style="padding-bottom:100px"><div class="topbar"><button class="topbar-btn" data-action="client-back">←</button><div style="flex:1;min-width:0"><p class="topbar-sub">'+tableName+'</p><div class="topbar-title">Menu</div></div><button class="topbar-logout" data-action="client-home">🏠</button></div><div class="menu-header"><div class="cat-tabs" style="margin-top:0">'+cats.map(c=>'<button class="cat-btn on-dark '+(v.cat===c?"active":"")+'" data-action="client-cat" data-cat="'+c+'">'+c+'</button>').join("")+'</div></div><div class="content content-narrow" style="padding-top:12px">'+(dishes.length===0?'<p class="empty">Aucun plat</p>':dishes.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p>'+(d.desc?'<p class="dish-desc">'+esc(d.desc)+'</p>':"")+'<div class="dish-meta"><span class="dish-price">'+money(d.price)+'</span><span class="dish-time">⏱ ~'+d.time+' min</span></div></div><div class="qty-controls">'+(v.cart[d._docId]>0?'<button class="qty-btn" data-action="client-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.cart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="client-add" data-id="'+d._docId+'">+</button></div></div>').join(""))+'</div>'+(count>0?'<div class="cart-fab" data-action="client-cart"><span class="label">Voir le panier ('+count+')</span><span class="total">'+money(total)+'</span></div>':"")+'</div>';
+    const qrBanner = (v.urlTable && v.mode==="sur_place" && v.tableId) ? '<div style="background:linear-gradient(135deg,var(--jaune) 0%,var(--jaune-fonce) 100%);color:var(--noir);padding:10px 16px;display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px"><span style="font-size:20px">📍</span><span>Vous commandez à la <strong>'+tableName.replace("Table ","")+'</strong></span></div>' : '';
+    return '<div class="app" style="padding-bottom:100px"><div class="topbar"><button class="topbar-btn" data-action="client-back">←</button><div style="flex:1;min-width:0"><p class="topbar-sub">'+tableName+'</p><div class="topbar-title">Menu</div></div><button class="topbar-logout" data-action="client-home">🏠</button></div>'+qrBanner+'<div class="menu-header"><div class="cat-tabs" style="margin-top:0">'+cats.map(c=>'<button class="cat-btn on-dark '+(v.cat===c?"active":"")+'" data-action="client-cat" data-cat="'+c+'">'+c+'</button>').join("")+'</div></div><div class="content content-narrow" style="padding-top:12px">'+(dishes.length===0?'<p class="empty">Aucun plat</p>':dishes.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p>'+(d.desc?'<p class="dish-desc">'+esc(d.desc)+'</p>':"")+'<div class="dish-meta"><span class="dish-price">'+money(d.price)+'</span><span class="dish-time">⏱ ~'+d.time+' min</span></div></div><div class="qty-controls">'+(v.cart[d._docId]>0?'<button class="qty-btn" data-action="client-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.cart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="client-add" data-id="'+d._docId+'">+</button></div></div>').join(""))+'</div>'+(count>0?'<div class="cart-fab" data-action="client-cart"><span class="label">Voir le panier ('+count+')</span><span class="total">'+money(total)+'</span></div>':"")+'</div>';
   }
   if(v.screen==="table"){
     return '<div class="app">'+topbar({title:"Choisir une table",homeAction:"client-home",backAction:"client-back"})+'<div class="content content-narrow"><p class="section-sub">Touchez votre table</p><div class="table-grid">'+tables.map(t=>'<button class="table-cell '+(v.tableId===t._docId?"active":"")+'" data-action="client-table" data-id="'+t._docId+'">'+t.number+'</button>').join("")+'</div></div></div>';
@@ -647,7 +663,7 @@ function screenClient(){
   }
   if(v.screen==="waiting"){return '<div class="login"><div class="spin" style="border-color:#222;border-top-color:var(--jaune)"></div><p class="login-sub" style="margin-top:20px">Envoyée</p><h1 class="serif" style="text-align:center">En attente validation</h1><p style="color:#aaa;text-align:center;margin:0 0 24px">Le gérant examine…</p><button class="btn btn-ghost btn-block" style="max-width:280px" data-action="client-cancel-wait">Annuler</button></div>';}
   if(v.screen==="serving"){
-    return '<div class="app">'+topbar({title:"Votre commande",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:40px"><div style="font-size:64px;margin-bottom:20px">💁</div><h2 class="section-title">Commande validée !</h2><p class="muted" style="margin-bottom:24px">Votre serveuse va venir à votre table pour encaisser votre paiement.</p><div class="card" style="text-align:left"><p class="bold">Table '+(order?.tableNumber||"")+'</p><p class="text-sm muted" style="margin-top:6px">Montant à régler : <strong class="mono" style="color:var(--noir);font-size:18px">'+money(orderGrandTotal(order))+'</strong></p></div><p class="text-xs muted" style="margin-top:16px;margin-bottom:14px">La cuisine commencera dès que le paiement est confirmé.</p><button class="btn btn-outline btn-block" data-action="client-edit-from-refused">✏️ Modifier ma commande</button></div></div>';
+    return '<div class="app">'+topbar({title:"Votre commande",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:40px"><div style="font-size:64px;margin-bottom:20px">💁</div><h2 class="section-title">Commande validée !</h2><p class="muted" style="margin-bottom:24px">Votre serveuse va venir à votre table pour encaisser votre paiement.</p><div class="card" style="text-align:left"><p class="bold">Table '+(order?.tableNumber||"")+'</p><p class="text-sm muted" style="margin-top:6px">Montant à régler : <strong class="mono" style="color:var(--noir);font-size:18px">'+money(orderGrandTotal(order))+'</strong></p></div><p class="text-xs muted" style="margin-top:16px;margin-bottom:14px">La cuisine commencera dès que le paiement est confirmé.</p><button class="btn btn-outline btn-block" data-action="client-edit-from-refused">✏️ Modifier ma commande</button><button class="btn btn-ghost btn-block" style="margin-top:8px;color:var(--rouge);border-color:var(--rouge)" data-action="client-cancel-order">❌ Annuler la commande</button></div></div>';
   }
   if(v.screen==="refused"&&order){
     const it=order.items[v.refusedIdx];
@@ -662,7 +678,7 @@ function screenClient(){
   }
   if(v.screen==="payment"&&order){
     const total=orderGrandTotal(order); const fee=deliveryFeeFor(order);
-    return '<div class="app">'+topbar({title:"Paiement",homeAction:"client-home"})+'<div class="content content-narrow"><p class="section-sub">Choisissez votre paiement.</p><div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px"><button class="card card-row" data-action="client-pay" data-method="momo" style="text-align:left;cursor:pointer;border:2px solid var(--sable)"><div><p class="card-title">📱 Mobile Money</p><p class="card-sub">Orange / MTN</p></div></button><button class="card card-row" data-action="client-pay" data-method="cash" style="text-align:left;cursor:pointer;border:2px solid var(--sable)"><div><p class="card-title">💵 Cash</p><p class="card-sub">Au livreur</p></div></button></div>'+(fee>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Livraison</span><span class="mono">'+money(fee)+'</span></div>':"")+'<div class="card" style="display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--jaune)"><span class="bold">Total</span><span class="mono" style="font-size:22px;font-weight:bold">'+money(total)+'</span></div><button class="btn btn-ghost btn-block" style="margin-top:16px" data-action="client-edit-order">✏️ Modifier la commande</button></div></div>';
+    return '<div class="app">'+topbar({title:"Paiement",homeAction:"client-home"})+'<div class="content content-narrow"><p class="section-sub">Choisissez votre paiement.</p><div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px"><button class="card card-row" data-action="client-pay" data-method="momo" style="text-align:left;cursor:pointer;border:2px solid var(--sable)"><div><p class="card-title">📱 Mobile Money</p><p class="card-sub">Orange / MTN</p></div></button><button class="card card-row" data-action="client-pay" data-method="cash" style="text-align:left;cursor:pointer;border:2px solid var(--sable)"><div><p class="card-title">💵 Cash</p><p class="card-sub">Au livreur</p></div></button></div>'+(fee>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Livraison</span><span class="mono">'+money(fee)+'</span></div>':"")+'<div class="card" style="display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--jaune)"><span class="bold">Total</span><span class="mono" style="font-size:22px;font-weight:bold">'+money(total)+'</span></div><button class="btn btn-ghost btn-block" style="margin-top:16px" data-action="client-edit-order">✏️ Modifier la commande</button><button class="btn btn-ghost btn-block" style="margin-top:8px;color:var(--rouge);border-color:var(--rouge)" data-action="client-cancel-order">❌ Annuler la commande</button></div></div>';
   }
   if(v.screen==="editOrder"&&order){const cats=["Entrées","Plats","Desserts","Boissons"];const dishes=menu.filter(d=>d.cat===v.cat&&isDishAvailableToday(d));const items=menu.filter(m=>v.editCart[m._docId]>0 && isDishAvailableToday(m));const total=items.reduce((sum,d)=>sum+d.price*v.editCart[d._docId],0);return '<div class="app" style="padding-bottom:100px"><div class="topbar"><button class="topbar-btn" data-action="client-edit-cancel">← Annuler</button><div style="flex:1;min-width:0"><p class="topbar-sub">Modification</p><div class="topbar-title">Ma commande</div></div><span></span></div><div class="menu-header"><div class="cat-tabs" style="margin-top:0">'+cats.map(c=>'<button class="cat-btn on-dark '+(v.cat===c?"active":"")+'" data-action="client-edit-cat" data-cat="'+c+'">'+c+'</button>').join("")+'</div></div><div class="content content-narrow" style="padding-top:12px">'+dishes.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p></div><div class="qty-controls">'+(v.editCart[d._docId]>0?'<button class="qty-btn" data-action="client-edit-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.editCart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="client-edit-add" data-id="'+d._docId+'">+</button></div></div>').join("")+'</div>'+(items.length>0?'<div style="position:fixed;bottom:16px;left:16px;right:16px;max-width:480px;margin:0 auto"><button class="btn btn-accent btn-block" style="padding:16px" data-action="client-edit-save">Enregistrer ('+items.reduce((s,d)=>s+v.editCart[d._docId],0)+') — '+money(total)+'</button></div>':"")+'</div>';}
   if(v.screen==="tracking"&&order){
@@ -813,7 +829,7 @@ function screenAdmin(){
   } else if(v.section==="staff"){
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2><div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'"><select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select><input class="input mono" placeholder="PIN (serveuse)" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'"><input class="input" placeholder="Email (gérant/admin)" type="email" data-input="new-staff-email" value="'+esc(v.newStaff.email||"")+'"><input class="input" placeholder="Mot de passe (gérant/admin)" type="text" data-input="new-staff-pwd" value="'+esc(v.newStaff.password||"")+'"><button class="btn btn-primary" data-action="admin-add-staff">Ajouter</button></div></div><div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>{const isAg=p.role==="gerant"||p.role==="admin";const creds=isAg?'📧 '+esc(p.email||"—")+'<br>🔑 '+esc(p.password||"—"):'PIN '+esc(p.pin||"—");return '<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+'</p><p class="mono text-xs" style="color:var(--jaune-fonce);margin-top:6px">'+creds+'</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+(isAg?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Réinit MDP</button><button class="btn btn-ghost btn-sm" data-action="admin-gen-recovery" data-id="'+p._docId+'" data-name="'+esc(p.name)+'">🔑 Code</button>':'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+'<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>';}).join("")+'</div>';
   } else if(v.section==="tables"){
-    content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Tables & QR</h2><div class="flex gap-2" style="flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-action="admin-add-table">+ Ajouter</button><button class="btn btn-accent btn-sm" data-action="admin-print-all-qr">🖨️ QR</button><button class="btn btn-success btn-sm" data-action="admin-print-unique-qr">🎯 QR unique</button></div></div><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">'+DATA.tables.map(t=>{const url=SITE_URL+"?table="+t.number;return '<div class="qr-card"><p class="qr-resto">Restaurant D&S</p><img src="'+qrUrl(url,300)+'" alt="QR Table '+t.number+'"><p class="qr-table-num">Table '+t.number+'</p><p class="qr-hint">Scannez pour voir le menu</p><button class="btn btn-ghost btn-sm" style="width:100%;color:var(--rouge);margin-top:8px" data-action="admin-del-table" data-id="'+t._docId+'">🗑️ Supprimer</button></div>';}).join("")+'</div>';
+    content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Tables & QR</h2><div class="flex gap-2" style="flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-action="admin-add-table">+ Ajouter</button><button class="btn btn-accent btn-sm" data-action="admin-print-all-qr">🖨️ QR</button><button class="btn btn-success btn-sm" data-action="admin-print-unique-qr">🎯 QR unique</button></div></div><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">'+DATA.tables.map(t=>{const url=SITE_URL+"?table="+t.number;return '<div class="qr-card"><p class="qr-resto">Restaurant D&S</p><img src="'+qrUrl(url,300)+'" alt="QR Table '+t.number+'"><p class="qr-table-num">Table '+t.number+'</p><p class="qr-hint">Scannez pour voir le menu</p><button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" data-action="admin-edit-table-num" data-id="'+t._docId+'" data-num="'+t.number+'">✏️ Modifier le n°</button><button class="btn btn-ghost btn-sm" style="width:100%;color:var(--rouge);margin-top:6px" data-action="admin-del-table" data-id="'+t._docId+'">🗑️ Supprimer</button></div>';}).join("")+'</div>';
   } else if(v.section==="stock"){
     if(!v.stockForm.stockId&&DATA.stock[0])v.stockForm.stockId=DATA.stock[0]._docId;
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Stock</h2><button class="btn btn-primary btn-sm" data-action="admin-toggle-new-stock">'+(v.showNewStock?"✕ Annuler":"+ Ingrédient")+'</button></div>';
@@ -987,7 +1003,7 @@ document.addEventListener("click",async function(e){
     return;
   }
 
-  if(action==="logout"){resetClient();destroyMap();pendingReset=null;admS.recoveryModal=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null};livS={tab:"available"};admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null};A.logout();return;}
+  if(action==="logout"){resetClient();if(window.location.search.includes("table=")){history.replaceState({}, "", window.location.pathname);}destroyMap();pendingReset=null;admS.recoveryModal=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null};livS={tab:"available"};admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null};A.logout();return;}
 
   if(action==="reset-cancel"){pendingReset=null;render();return;}
   if(action==="reset-confirm"){
@@ -1038,7 +1054,14 @@ document.addEventListener("click",async function(e){
   }
 
   if(action==="client-mode"){v.mode=el.dataset.mode;v.screen="menu";render();return;}
-  if(action==="client-home"){v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;destroyMap();render();return;}
+  if(action==="client-home"){
+    v.screen="landing";v.mode=null;v.cart={};v.orderId=null;v.refusedIdx=null;
+    v.urlTable=null;v.tableNumber=null;v.tableId=null;
+    if(window.location.search.includes("table=")){
+      history.replaceState({}, "", window.location.pathname);
+    }
+    destroyMap();render();return;
+  }
   if(action==="client-back"){
     if(v.screen==="menu")v.screen="landing";
     else if(v.screen==="table")v.screen="menu";
@@ -1058,7 +1081,14 @@ document.addEventListener("click",async function(e){
     if(!phoneOk){toast("Téléphone invalide");return;}
     if(!locOk){toast("Position requise");return;}
     v.screen="cart";destroyMap();render();return;}
-  if(action==="client-cancel-wait"){v.screen="menu";v.orderId=null;localStorage.removeItem("ds_client_order");render();return;}
+  if(action==="client-cancel-wait"){
+    const oid=v.orderId;
+    if(oid){try{await A.deleteOrder(oid);}catch(e){console.warn("deleteOrder:",e);}}
+    localStorage.removeItem("ds_client_order");
+    v.screen="landing";v.orderId=null;v.cart={};v.refusedIdx=null;
+    toast("Commande annulée");
+    render();return;
+  }
   if(action==="client-submit"){
     const items=DATA.menu.filter(m=>v.cart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:v.cart[d._docId],time:d.time}));
     if(!items.length){toast("Panier vide");return;}
@@ -1095,10 +1125,18 @@ document.addEventListener("click",async function(e){
     render();return;
   }
   if(action==="client-cancel-order"){
+    const o=DATA.orders.find(x=>x._docId===v.orderId);
+    if(o && o.status==="payee"){
+      toast("Impossible d'annuler une commande payée");
+      return;
+    }
     if(!confirm("Annuler définitivement cette commande ?"))return;
     const oid=v.orderId;
-    if(oid){await A.deleteOrder(oid);localStorage.removeItem("ds_client_order");}
-    resetClient();render();return;
+    if(oid){try{await A.deleteOrder(oid);}catch(e){console.warn(e);}}
+    localStorage.removeItem("ds_client_order");
+    resetClient();
+    toast("Commande annulée");
+    render();return;
   }
   if(action==="client-pay"){const method=el.dataset.method;const ref=method==="momo"?"REF"+Math.floor(Math.random()*1000000):null;await A.markOrderPaid(v.orderId,method,ref);v.timerTotal=0;v.timerRemaining=0;render();return;}
   if(action==="client-edit-order"){const o=DATA.orders.find(o=>o._docId===v.orderId);if(!o)return;v.editCart={};o.items.filter(it=>it.statut!=="Refusé").forEach(it=>{v.editCart[it.id]=it.qty;});v.editingOrder=true;v.screen="editOrder";render();return;}
@@ -1166,8 +1204,31 @@ document.addEventListener("click",async function(e){
   if(action==="admin-reset-creds"){const newPwd=prompt("Nouveau mot de passe (min. 6) :");if(!newPwd||newPwd.length<6){toast("Min 6 caractères");return;}await A.updateStaff(id,{password:newPwd});toast("MDP mis à jour");return;}
   if(action==="admin-gen-recovery"){const name=el.dataset.name||"";const code=await A.generateRecoveryCode(id);admS.recoveryModal={name,code};render();return;}
   if(action==="admin-del-staff"){if(confirm("Supprimer ?"))await A.removeStaff(id);return;}
-  if(action==="admin-add-table"){await A.addTable();return;}
-  if(action==="admin-del-table"){if(confirm("Supprimer ?"))await A.removeTable(id);return;}
+  if(action==="admin-add-table"){
+    const suggested = DATA.tables.length ? (DATA.tables.reduce((m,t)=>Math.max(m,t.number),0)+1) : 1;
+    const input = prompt("Numéro de la nouvelle table :", String(suggested));
+    if(input===null) return;
+    try{
+      const n = await A.addTable(input);
+      toast("Table " + n + " ajoutée ✓");
+    }catch(err){
+      toast("Erreur : " + err.message);
+    }
+    return;
+  }
+  if(action==="admin-edit-table-num"){
+    const current = el.dataset.num;
+    const input = prompt("Nouveau numéro pour cette table :", current);
+    if(input===null || String(input)===String(current)) return;
+    try{
+      const n = await A.updateTableNumber(id, input);
+      toast("Table renommée → " + n + " ✓");
+    }catch(err){
+      toast("Erreur : " + err.message);
+    }
+    return;
+  }
+  if(action==="admin-del-table"){if(confirm("Supprimer cette table ? Les commandes associées ne sont pas supprimées."))await A.removeTable(id);return;}
   if(action==="admin-print-all-qr"){printQrCodes("all");return;}
   if(action==="admin-print-unique-qr"){printQrCodes("unique");return;}
   if(action==="admin-toggle-new-stock"){admS.showNewStock=!admS.showNewStock;render();return;}
@@ -1300,22 +1361,42 @@ let urlTableChecked = false;
 function checkUrlTableOnce(){
   if(urlTableChecked) return;
   if(!DATA.tables.length) return;
-  urlTableChecked = true;
   const params = new URLSearchParams(window.location.search);
   const t = params.get("table");
-  if(!t) return;
+  if(!t){ urlTableChecked = true; return; }
   const num = parseInt(t);
-  if(!num) return;
-  clientS.urlTable = num;
-  clientS.mode = "sur_place";
+  if(!num){ urlTableChecked = true; return; }
+  urlTableChecked = true;
+
   const f = DATA.tables.find(x => x.number === num);
-  if(f){
-    clientS.tableId = f._docId;
-    clientS.screen = "menu";
-    console.log("📱 QR table détecté : Table " + num);
-  } else {
+  if(!f){
     console.warn("⚠️ Table " + num + " introuvable en base");
+    return;
   }
+  console.log("📱 QR table détecté : Table " + num);
+
+  const existingOrderId = localStorage.getItem("ds_client_order");
+  if(existingOrderId){
+    const o = DATA.orders.find(x=>x._docId===existingOrderId);
+    if(o && o.status!=="servie" && o.status!=="livree" && o.status!=="refusee"){
+      clientS.orderId = existingOrderId;
+      return;
+    }
+  }
+
+  if(!SESSION || SESSION.role!=="client"){
+    SESSION = {role:"client", name:"Client", userId:DEVICE_ID, since:Date.now()};
+    setTimeout(loadOneSignal, 200);
+    applyRoleTag("client");
+  }
+  clientS.mode = "sur_place";
+  clientS.tableId = f._docId;
+  clientS.tableNumber = f.number;
+  clientS.urlTable = num;
+  clientS.screen = "menu";
+  clientS.cart = {};
+  clientS.refusedIdx = null;
+  render();
 }
 
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("service-worker.js").catch(e=>console.warn("SW:",e));});}
