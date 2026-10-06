@@ -1,0 +1,1697 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Restaurant D&S</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--noir:#0a0a0a;--jaune:#ffc107;--jaune-fonce:#e0a800;--creme:#f7f5ef;--sable:#e8e2d0;--vert:#2d7a3e;--rouge:#c0392b;--gris:#6b6b6b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--creme);color:#1a1a1a}
+.serif{font-family:Georgia,'Times New Roman',serif}
+button{font-family:inherit;cursor:pointer;border:none}
+input,select,textarea{font-family:inherit;font-size:16px}
+.app{min-height:100vh;display:flex;flex-direction:column}
+.loader{position:fixed;inset:0;background:var(--noir);color:var(--jaune);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999}
+.loader-logo{width:80px;height:80px;border-radius:50%;background:var(--jaune);color:var(--noir);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:bold;margin-bottom:16px;font-family:Georgia,serif}
+.loader-text{margin-top:20px;font-size:14px;color:#888;text-align:center;padding:0 20px}
+.spin{width:40px;height:40px;border:4px solid #222;border-top-color:var(--jaune);border-radius:50%;animation:spin 1s linear infinite;margin-top:20px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.login{min-height:100vh;background:var(--noir);color:white;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.login-logo{width:80px;height:80px;border-radius:50%;background:var(--jaune);color:var(--noir);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:bold;margin-bottom:16px;font-family:Georgia,serif}
+.login h1{font-size:26px;margin:0 0 20px;text-align:center;font-family:Georgia,serif}
+.login h1 span{color:var(--jaune)}
+.login-sub{font-size:11px;letter-spacing:0.3em;text-transform:uppercase;color:var(--jaune);margin-bottom:6px}
+.role-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:340px}
+.role-btn{background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:14px;text-align:left;color:white}
+.role-btn .em{font-size:22px;margin-bottom:6px}
+.role-btn .lab{font-weight:600;margin:0;font-size:14px}
+.role-btn .desc{font-size:11px;color:#888;margin:2px 0 0}
+.pin-wrap{width:100%;max-width:340px}
+.pin-display{display:flex;justify-content:center;gap:12px;margin:20px 0}
+.pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid #444}
+.pin-dot.filled{background:var(--jaune);border-color:var(--jaune)}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pin-key{aspect-ratio:1.6;background:#1a1a1a;border:1px solid #333;border-radius:12px;color:white;font-size:24px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.pin-key.blank{background:transparent;border:none}
+.pin-key.del{background:#333;font-size:20px}
+.pin-error{color:#ff7066;font-size:13px;text-align:center;margin-top:12px}
+.pin-back{display:block;margin:16px auto 0;color:#888;background:transparent;font-size:13px;text-decoration:underline;padding:8px}
+.pin-hint{font-size:11px;color:#666;margin-top:14px;text-align:center;line-height:1.7}
+.auth-input{width:100%;padding:12px;border:1px solid #333;border-radius:8px;font-size:16px;background:#1a1a1a;color:white;margin-top:6px}
+.auth-input:focus{outline:none;border-color:var(--jaune)}
+.topbar{background:var(--noir);color:white;padding:8px 10px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:30;border-bottom:3px solid var(--jaune)}
+.topbar-btn{background:transparent;color:white;padding:8px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:4px;min-height:40px}
+.topbar-title{flex:1;font-family:Georgia,serif;font-size:15px;font-weight:600;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar-sub{font-size:10px;color:#aaa;margin:0;text-align:center}
+.topbar-logout{background:transparent;color:#ff7066;font-size:12px;padding:8px;font-weight:600}
+.topbar-badge{background:rgba(255,193,7,0.15);color:var(--jaune);font-size:11px;padding:6px 10px;border-radius:8px;font-weight:700;white-space:nowrap}
+.tabs-scroll{background:var(--noir);border-top:1px solid #333;padding:0 6px 8px;display:flex;gap:4px;flex-wrap:wrap}
+.tabs-scroll .tab{background:transparent;color:#aaa;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap}
+.tabs-scroll .tab.active{background:var(--jaune);color:var(--noir)}
+.bottom-nav{display:grid;background:white;border-top:2px solid var(--jaune);position:sticky;bottom:0;z-index:20}
+.bottom-nav.cols-4{grid-template-columns:repeat(4,1fr)}
+.bottom-nav.cols-3{grid-template-columns:repeat(3,1fr)}
+.bn-btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px 12px;font-size:11px;font-weight:500;background:transparent;color:var(--gris);position:relative;min-height:56px}
+.bn-btn.active{color:var(--jaune-fonce)}
+.bn-btn .em{font-size:22px;line-height:1}
+.bn-badge{position:absolute;top:6px;right:calc(50% - 24px);background:var(--rouge);color:white;font-size:10px;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;font-weight:bold}
+.content{flex:1;padding:16px;width:100%}
+.content-narrow{max-width:520px;margin:0 auto}
+.section-title{font-family:Georgia,serif;font-size:22px;margin:0 0 4px}
+.section-sub{font-size:13px;color:var(--gris);margin:0 0 16px}
+.card{background:white;border:1px solid var(--sable);border-radius:12px;padding:14px}
+.card+.card{margin-top:10px}
+.card-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.card-title{font-weight:600;margin:0;font-size:15px}
+.card-sub{font-size:12px;color:var(--gris);margin:2px 0 0}
+.btn{padding:10px 16px;border-radius:8px;font-weight:600;font-size:14px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn-primary{background:var(--noir);color:white}
+.btn-accent{background:var(--jaune);color:var(--noir);font-weight:700}
+.btn-success{background:var(--vert);color:white}
+.btn-danger{background:var(--rouge);color:white}
+.btn-outline{background:transparent;border:2px solid var(--noir);color:var(--noir)}
+.btn-ghost{background:transparent;border:1px solid var(--sable);color:var(--gris)}
+.btn:disabled{opacity:0.4}
+.btn-block{display:flex;width:100%}
+.btn-sm{padding:6px 12px;font-size:12px;min-height:36px}
+.badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;display:inline-block}
+.badge-neutre{background:rgba(107,107,107,0.12);color:var(--gris)}
+.badge-vert{background:rgba(45,122,62,0.12);color:var(--vert)}
+.badge-orange{background:rgba(224,168,0,0.18);color:var(--jaune-fonce)}
+.badge-rouge{background:rgba(192,57,43,0.12);color:var(--rouge)}
+.input{width:100%;padding:12px;border:1px solid var(--sable);border-radius:8px;font-size:16px;background:white}
+.input:focus{outline:none;border-color:var(--jaune)}
+.cart-fab{position:fixed;bottom:16px;left:16px;right:16px;padding:16px;background:var(--noir);color:white;border-radius:12px;display:flex;justify-content:space-between;align-items:center;z-index:50;max-width:480px;margin:0 auto;border:2px solid var(--jaune)}
+.cart-fab .total{color:var(--jaune);font-family:monospace;font-weight:bold}
+.dish-row{background:white;border:1px solid var(--sable);border-radius:12px;padding:12px;display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.dish-info{flex:1;min-width:0}
+.dish-name{font-weight:600;font-size:15px;margin:0}
+.dish-desc{font-size:12px;color:var(--gris);margin:2px 0 0}
+.dish-meta{display:flex;align-items:center;gap:10px;margin-top:6px}
+.dish-price{font-family:monospace;font-weight:bold}
+.dish-time{font-size:12px;color:var(--rouge);font-weight:500}
+.qty-controls{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.qty-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--noir);background:white;font-size:18px;display:flex;align-items:center;justify-content:center}
+.qty-btn.add{background:var(--noir);color:white;border-color:var(--noir)}
+.qty-val{font-family:monospace;font-weight:bold;min-width:22px;text-align:center;font-size:15px}
+.menu-header{background:var(--noir);color:white;padding:16px;position:sticky;top:0;z-index:10;border-bottom:2px solid var(--jaune)}
+.cat-tabs{display:flex;gap:8px;margin-top:12px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.cat-tabs::-webkit-scrollbar{display:none}
+.cat-btn{padding:6px 14px;border-radius:999px;font-size:13px;font-weight:500;white-space:nowrap;border:1px solid var(--sable);background:white;color:var(--gris)}
+.cat-btn.active{background:var(--jaune);color:var(--noir);border-color:var(--jaune);font-weight:700}
+.cat-btn.on-dark{background:transparent;border-color:#444;color:#aaa}
+.cat-btn.on-dark.active{background:var(--jaune);color:var(--noir);border-color:var(--jaune)}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat-card{background:white;border:1px solid var(--sable);border-radius:12px;padding:14px;border-left:4px solid var(--jaune)}
+.stat-label{font-size:12px;color:var(--gris);margin:0 0 4px}
+.stat-value{font-family:Georgia,serif;font-size:22px;font-weight:bold;margin:0}
+.table-wrap{background:white;border:1px solid var(--sable);border-radius:12px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{background:#faf8f2;color:var(--gris)}
+th{text-align:left;padding:10px 12px;font-weight:500;font-size:12px;white-space:nowrap}
+td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
+.progress-circle{position:relative;width:180px;height:180px;margin:0 auto 20px}
+.progress-circle svg{width:100%;height:100%;transform:rotate(-90deg)}
+.progress-circle .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.table-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.table-cell{aspect-ratio:1;background:white;border:1px solid var(--sable);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;min-height:56px}
+.table-cell.active{background:var(--jaune);border-color:var(--jaune);color:var(--noir)}
+.timer{font-family:monospace;font-size:20px;font-weight:bold}
+.timer.urgent{color:var(--rouge)}
+.timer.ok{color:var(--vert)}
+.ticket{background:white;border:2px solid var(--sable);border-radius:16px;padding:14px}
+.ticket.urgent{border-color:var(--rouge)}
+.empty{text-align:center;color:var(--gris);padding:24px 12px;font-size:14px}
+.flex{display:flex}.between{justify-content:space-between}.center{align-items:center}
+.gap-2{gap:8px}.gap-3{gap:12px}
+.text-sm{font-size:13px}.text-xs{font-size:11px}
+.muted{color:var(--gris)}.mono{font-family:monospace}.bold{font-weight:700}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--noir);color:white;padding:12px 20px;border-radius:8px;font-size:14px;z-index:9999;border:2px solid var(--jaune);box-shadow:0 8px 24px rgba(0,0,0,0.3);max-width:90%;text-align:center}
+.qr-card{background:white;border:2px solid var(--noir);border-radius:12px;padding:16px;text-align:center}
+.qr-card img{width:180px;height:180px;display:block;margin:0 auto 10px}
+.qr-card .qr-table-num{font-family:Georgia,serif;font-size:32px;font-weight:bold;color:var(--noir)}
+.qr-card .qr-resto{font-family:Georgia,serif;font-size:16px;color:var(--jaune-fonce);font-weight:bold;margin-bottom:4px}
+.qr-card .qr-hint{font-size:11px;color:var(--gris);margin-top:6px}
+.cat-group{margin-bottom:24px}
+.cat-group-title{font-family:Georgia,serif;font-size:18px;color:var(--noir);padding:8px 12px;background:var(--jaune);border-radius:8px;margin-bottom:8px;display:inline-block}
+.alert-banner{background:rgba(192,57,43,0.1);border:2px solid var(--rouge);border-radius:12px;padding:14px;margin-bottom:16px}
+.alert-banner strong{color:var(--rouge)}
+#map{width:100%;height:320px;border-radius:12px;border:2px solid var(--sable);z-index:1}
+.map-info{background:var(--noir);color:white;padding:12px 14px;border-radius:12px;margin-top:12px;border-left:4px solid var(--jaune)}
+.map-info .dist{font-family:monospace;font-size:20px;font-weight:bold;color:var(--jaune)}
+.chart-bar{display:flex;flex-direction:column;align-items:center;gap:4px}
+.chart-bar .bar{background:var(--jaune);width:100%;min-height:4px;border-radius:4px 4px 0 0}
+.chart-bar .lbl{font-size:10px;color:var(--gris);white-space:nowrap}
+.chart-bar .val{font-size:10px;font-weight:bold;font-family:monospace}
+.chart-container{display:flex;align-items:flex-end;gap:4px;height:200px;padding:16px;background:white;border:1px solid var(--sable);border-radius:12px;overflow-x:auto}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-card{background:white;border-radius:16px;max-width:420px;width:100%;padding:24px;text-align:center;border:3px solid var(--jaune)}
+.modal-card h2{font-family:Georgia,serif;font-size:22px;margin:0 0 12px}
+.modal-card p{color:var(--gris);font-size:14px;margin-bottom:12px}
+.pin-modal-input{text-align:center;font-size:28px;letter-spacing:0.8em;font-family:monospace;padding:12px 12px 12px 20px;width:220px;margin:12px auto;display:block;border:2px solid var(--sable);border-radius:12px;background:var(--creme);color:#000}
+.pin-modal-input:focus{outline:none;border-color:var(--jaune)}
+.recovery-code{font-family:monospace;font-size:24px;font-weight:bold;color:var(--noir);background:var(--creme);border:2px dashed var(--jaune);border-radius:12px;padding:16px;margin:16px 0;letter-spacing:0.1em;text-align:center}
+.log-row{display:flex;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #f0ede4;font-size:12px;gap:10px;align-items:flex-start}
+.log-row:last-child{border-bottom:none}
+.log-row .when{color:var(--gris);font-family:monospace;font-size:10px;margin-top:2px}
+.log-ok{color:var(--vert);font-weight:600}
+.log-fail{color:var(--rouge);font-weight:600}
+.discreet-zone{padding:14px 10px;text-align:center;border-top:1px dashed var(--sable);margin-top:24px;opacity:0.35}
+.discreet-zone:hover,.discreet-zone:focus-within{opacity:1}
+.discreet-zone input{width:60px;padding:4px;border:1px solid var(--sable);border-radius:4px;text-align:center;font-size:12px;background:transparent}
+.discreet-zone button{background:transparent;color:var(--gris);font-size:11px;padding:4px 8px;text-decoration:underline}
+.flow-step{background:#faf8f2;border-left:4px solid var(--jaune);padding:10px 14px;border-radius:8px;margin-bottom:8px;font-size:13px}
+.role-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;border:2px solid var(--sable);font-size:13px;font-weight:600;background:white;color:var(--gris);cursor:pointer;user-select:none}
+.role-chip.on{background:var(--jaune);color:var(--noir);border-color:var(--jaune)}
+.role-chip.locked{opacity:0.4;cursor:not-allowed}
+.momo-box{background:var(--noir);color:white;padding:16px;border-radius:12px;border:2px solid var(--jaune);text-align:center}
+.momo-num{font-family:monospace;font-size:22px;font-weight:bold;color:var(--jaune);letter-spacing:0.05em;margin:8px 0}
+.star-row{display:flex;gap:8px;justify-content:center;font-size:32px;margin:14px 0}
+.star{cursor:pointer;color:#ddd;transition:color 0.15s;user-select:none}
+.star.on{color:var(--jaune)}
+.claim-opt{display:flex;align-items:center;gap:10px;padding:12px;border:2px solid var(--sable);border-radius:10px;margin-bottom:8px;cursor:pointer;background:white}
+.claim-opt.on{border-color:var(--jaune);background:rgba(255,193,7,0.08)}
+.claim-opt .dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--sable);flex-shrink:0}
+.claim-opt.on .dot{background:var(--jaune);border-color:var(--jaune)}
+@media print{@page{size:80mm auto;margin:0}body *{visibility:hidden}#qr-print-area,#qr-print-area *{visibility:visible}#qr-print-area{position:absolute;left:0;top:0;width:100%;padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:20px}#invoice-print,#invoice-print *{visibility:visible}#invoice-print{position:absolute;left:0;top:0;width:80mm;padding:2mm 3mm;font-family:'Courier New',monospace;font-size:11px;color:#000;background:#fff}#invoice-print .inv-line{border-top:1px dashed #000;margin:4px 0}}
+#invoice-print{display:none;font-family:'Courier New',monospace}
+</style>
+</head>
+<body>
+<div id="root"><div class="loader"><div class="loader-logo">D&S</div><h1 style="font-family:Georgia,serif;margin:0 0 20px;color:var(--jaune)">Restaurant D&S</h1><div class="spin"></div><p class="loader-text">Connexion…</p></div></div>
+<div id="invoice-print"></div>
+<script>
+(function(){
+  function show(msg){ var r=document.getElementById('root'); if(r && r.querySelector('.loader')){ r.innerHTML='<div class="loader"><div class="loader-logo">⚠️</div><p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">'+msg+'</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;border-radius:10px;border:none;background:#fdc400;font-weight:700">Réessayer</button></div>'; } }
+  window.addEventListener('error',function(e){ show('Erreur de chargement : '+(e.message||'inconnue')); });
+  window.addEventListener('unhandledrejection',function(e){ show('Erreur : '+((e.reason&&e.reason.message)||e.reason||'inconnue')); });
+  setTimeout(function(){ show('Connexion impossible. Ouvrez le lien directement dans Chrome (pas dans un aperçu) et vérifiez votre connexion internet.'); },12000);
+})();
+</script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot, query, limit, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, sendPasswordResetEmail, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const firebaseConfig = { apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0", authDomain: "restaurant-ds-494a6.firebaseapp.com", projectId: "restaurant-ds-494a6", storageBucket: "restaurant-ds-494a6.firebasestorage.app", messagingSenderId: "1026668587499", appId: "1:1026668587499:web:7ed7b77fd623070007d1ae" };
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const auth = getAuth(fbApp);
+// 2e instance Firebase : sert uniquement à créer des comptes sans déconnecter l'admin
+let _secondaryAuth = null;
+function getSecondaryAuth(){ if(!_secondaryAuth) _secondaryAuth = getAuth(initializeApp(firebaseConfig, "secondary")); return _secondaryAuth; }
+const STAFF_EMAIL_DOMAIN = "staff.restaurant-ds.app";
+
+const DEFAULT_RESTO = { lat: 6.454877410013232, lon: 2.279816313097269 };
+const DEFAULT_PRIX_KM = 110;
+const SITE_URL = "https://restaurant-ds.github.io/restaurant-ds/";
+const DEFAULT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxS4EBYEyB54lALhoM01XJs2riGMZM7eWHCXtX7h5yd36YOFqwVUTNIp85W8J-hdU9E2Q/exec";
+const DEFAULT_WEBHOOK_TOKEN = "DS-PUSH-2026";
+const CLAIM_DELAY_MS = 60*60*1000; // 1h
+const LIVREUR_SHARE = 0.80;
+
+let DEVICE_ID = localStorage.getItem("ds_device_id");
+if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); localStorage.setItem("ds_device_id", DEVICE_ID); }
+
+let SESSION = null;
+let DATA = { menu:[], staff:[], directory:[], users:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{}, zones:[], resetLogs:[] };
+
+function restoCoords(){ return { lat: (DATA.settings.restoLat != null) ? Number(DATA.settings.restoLat) : DEFAULT_RESTO.lat, lon: (DATA.settings.restoLon != null) ? Number(DATA.settings.restoLon) : DEFAULT_RESTO.lon }; }
+function prixParKm(){ return DATA.settings.prixKm != null ? Number(DATA.settings.prixKm) : DEFAULT_PRIX_KM; }
+function webhookUrl(){ return DATA.settings.webhookUrl || DEFAULT_WEBHOOK_URL; }
+function webhookToken(){ return DATA.settings.webhookToken || DEFAULT_WEBHOOK_TOKEN; }
+function restoMomoNumber(){ return DATA.settings.momoNumber || "01 97 00 00 00"; }
+
+// ============================================================
+// HORAIRES DE SERVICE — heure Bénin (UTC+1)
+// ============================================================
+function getBeninTime(){ const now=new Date(); return { hour:(now.getUTCHours()+1)%24, min:now.getUTCMinutes(), sec:now.getUTCSeconds() }; }
+function getBeninHour(){ return getBeninTime().hour; }
+function getOpenHour(){ return DATA.settings.openHour != null ? Number(DATA.settings.openHour) : 11; }
+function getCloseHour(){ return DATA.settings.closeHour != null ? Number(DATA.settings.closeHour) : 2; }
+function isWithinOpenHours(){
+  const h=getBeninHour(); const open=getOpenHour(); const close=getCloseHour();
+  if(open === close) return true;
+  if(open < close) return h >= open && h < close;
+  return h >= open || h < close;
+}
+function hasGraceActive(){ return Date.now() < Number(DATA.settings.graceUntil || 0); }
+function getGraceRemainingMin(){ const ms = Number(DATA.settings.graceUntil||0) - Date.now(); return ms > 0 ? Math.ceil(ms/60000) : 0; }
+function isAppAllowed(role){
+  if(role === "admin") return true;
+  if(isWithinOpenHours()) return true;
+  if(hasGraceActive()){ if(!role) return true; return (DATA.settings.graceRoles||[]).includes(role); }
+  return false;
+}
+
+// ============================================================
+// MENU DU JOUR
+// ============================================================
+function todayMenu(){ const m=DATA.settings.menuOfDay; if(!m||m.date!==nowDate()||!m.confirmedAt) return null; return m.dishIds||[]; }
+function todayMenuDraft(){ const m=DATA.settings.menuOfDay; if(m && m.date===nowDate() && m.dishIds) return m.dishIds; return DATA.menu.filter(d=>d.available).map(d=>d._docId); }
+function isDishAvailableToday(d){ if(!d.available) return false; const ids=todayMenu(); if(ids === null) return true; return ids.includes(d._docId); }
+
+// ============================================================
+// PUSH
+// ============================================================
+function sendPush(title, message, targetRole){
+  console.log("📤 PUSH → [" + (targetRole || "STAFF") + "] " + title + " : " + message);
+  try{
+    const url = webhookUrl(); const token = webhookToken();
+    if(!url || !token){ console.warn("⚠️ Push non configuré"); return; }
+    const body = { token, title, message };
+    if(targetRole) body.targetRole = targetRole; else body.staffOnly = true;
+    fetch(url, { method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(body) }).catch(e=>console.warn("Push fetch error:", e));
+  } catch(e){ console.warn("❌ Erreur push :", e); }
+}
+async function applyRoleTag(role){
+  const MAX_TRIES = 12; const tagRole = role || "anonymous"; const isStaff = role && role !== "client";
+  for(let i=0;i<MAX_TRIES;i++){
+    try{
+      const OS = window.OneSignal;
+      if(OS && OS.User && typeof OS.User.addTag === "function"){
+        await OS.User.addTag("role", tagRole); await OS.User.addTag("is_staff", isStaff ? "true" : "false");
+        console.log("🏷️ Tag appliqué → role=" + tagRole); return true;
+      }
+    }catch(e){ console.warn("Tag tentative " + i + " échouée:", e); }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return false;
+}
+async function clearRoleTag(){
+  try{ const OS=window.OneSignal; if(OS&&OS.User&&typeof OS.User.addTag==="function"){ await OS.User.addTag("role","anonymous"); await OS.User.addTag("is_staff","false"); } }catch(e){}
+}
+
+const SEED = {
+  menu: [
+    { id:"m1", name:"Salade César", cat:"Entrées", price:2500, time:5, available:true, desc:"Romaine, parmesan, croûtons" },
+    { id:"m2", name:"Beignets de crevettes", cat:"Entrées", price:3000, time:10, available:true, desc:"Pâte croustillante" },
+    { id:"m3", name:"Poulet DG", cat:"Plats", price:5000, time:18, available:true, desc:"Poulet mijoté, plantain, légumes" },
+    { id:"m4", name:"Poisson braisé", cat:"Plats", price:5500, time:20, available:true, desc:"Grillé au feu de bois, attiéké" },
+    { id:"m5", name:"Riz sauté aux légumes", cat:"Plats", price:3500, time:12, available:true, desc:"Riz wok" },
+    { id:"m6", name:"Attiéké poisson", cat:"Plats", price:4000, time:15, available:true, desc:"Semoule de manioc" },
+    { id:"m7", name:"Salade de fruits", cat:"Desserts", price:1500, time:4, available:true, desc:"Fruits frais" },
+    { id:"m8", name:"Tarte au citron", cat:"Desserts", price:2000, time:3, available:true, desc:"Pâte sablée" },
+    { id:"m9", name:"Jus de bissap", cat:"Boissons", price:1000, time:2, available:true, desc:"Hibiscus glacé" },
+    { id:"m10", name:"Eau minérale", cat:"Boissons", price:500, time:1, available:true, desc:"" }
+  ],
+  tables: Array.from({length:25},(_,i)=>({ id:"t"+(i+1), number:i+1, token:Math.random().toString(36).slice(2,8) })),
+  stock: [
+    { id:"st1", name:"Poulet", unit:"kg", initial:30, threshold:5 },
+    { id:"st2", name:"Poisson", unit:"kg", initial:25, threshold:5 },
+    { id:"st3", name:"Riz", unit:"kg", initial:80, threshold:15 },
+    { id:"st4", name:"Huile", unit:"L", initial:40, threshold:8 },
+    { id:"st5", name:"Légumes", unit:"kg", initial:20, threshold:5 }
+  ],
+  settings: {
+    restaurantName:"Restaurant D&S", phone:"27 20 00 00 00", timerMode:"auto", waitMode:"max", bilanResetHour:6,
+    restoLat: DEFAULT_RESTO.lat, restoLon: DEFAULT_RESTO.lon, prixKm: DEFAULT_PRIX_KM,
+    emailRapport:"", oneSignalAppId:"8fdaa67c-c57e-4794-b668-0373607cf39c",
+    webhookUrl: DEFAULT_WEBHOOK_URL, webhookToken: DEFAULT_WEBHOOK_TOKEN,
+    openHour: 11, closeHour: 2, graceUntil: 0, graceRoles: [], graceDuration: 60,
+    momoNumber: "01 97 00 00 00"
+  }
+};
+
+async function seedIfEmpty() {
+  const check = await getDocs(query(collection(db, "menu"), limit(1)));
+  if (!check.empty) return;
+  const batch = writeBatch(db);
+  SEED.menu.forEach(m => batch.set(doc(db, "menu", m.id), m));
+  SEED.tables.forEach(t => batch.set(doc(db, "tables", t.id), t));
+  SEED.stock.forEach(s => batch.set(doc(db, "stock", s.id), s));
+  batch.set(doc(db, "settings", "main"), SEED.settings);
+  await batch.commit();
+}
+
+function money(n){return (n||0).toLocaleString("fr-FR")+" F";}
+function nowDate(){const d=new Date();const y=d.getUTCFullYear();const m=String(d.getUTCMonth()+1).padStart(2,"0");const day=String(d.getUTCDate()).padStart(2,"0");return y+"-"+m+"-"+day;}
+function fmtDate(iso){return new Date(iso).toLocaleDateString("fr-FR",{day:"2-digit",month:"short"});}
+function fmtDateTime(ts){const d=new Date(ts);return d.toLocaleDateString("fr-FR")+" "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});}
+function timeAgo(ts){if(!ts)return "à l'instant";const m=Math.floor((Date.now()-ts)/60000);if(m<=0)return "à l'instant";if(m<60)return "il y a "+m+" min";return "il y a "+Math.floor(m/60)+"h";}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function validPhoneBJ(p){return /^01\d{8}$/.test(String(p||"").replace(/\s/g,""));}
+function qrUrl(text, size){size=size||400;return "https://api.qrserver.com/v1/create-qr-code/?size="+size+"x"+size+"&data="+encodeURIComponent(text);}
+
+function bilanStart(){const now=new Date();const h=DATA.settings.bilanResetHour||6;const start=new Date(now);start.setHours(h,0,0,0);if(now.getHours()<h)start.setDate(start.getDate()-1);return start.getTime();}
+function inCurrentBilan(o){ return (o.createdAt||0) >= bilanStart(); }
+
+function haversineKm(lat1,lon1,lat2,lon2){const R=6371;const dLat=(lat2-lat1)*Math.PI/180;const dLon=(lon2-lon1)*Math.PI/180;const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(a));}
+async function calcRoadDistanceKm(clientLat, clientLon){
+  const rc = restoCoords();
+  const url = "https://router.project-osrm.org/route/v1/driving/"+rc.lon+","+rc.lat+";"+clientLon+","+clientLat+"?overview=false&alternatives=false";
+  try{const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),8000);const res=await fetch(url,{signal:ctrl.signal});clearTimeout(t);const data=await res.json();if(data.code==="Ok"&&data.routes&&data.routes[0])return {km:data.routes[0].distance/1000,source:"route"};}catch(e){}
+  const straight=haversineKm(rc.lat,rc.lon,clientLat,clientLon);
+  return { km: straight*1.4, source:"approx" };
+}
+function orderTimerInfo(o){const items=o.items.filter(i=>i.statut!=="Refusé");const maxTime=Math.max(...items.map(i=>i.time),0);const start=o.paidAt||o.createdAt;const deadline=start+maxTime*60*1000;const remainingMs=deadline-Date.now();const remainingSec=Math.floor(remainingMs/1000);const abs=Math.abs(remainingSec);const mm=String(Math.floor(abs/60)).padStart(2,"0");const ss=String(abs%60).padStart(2,"0");return { remainingMs, overdue: remainingMs<=0, text:(remainingMs<=0?"+":"")+mm+":"+ss, maxTime, urgent: remainingMs>0 && remainingMs<maxTime*60*1000*0.25 };}
+function deliveryFeeFor(o){if(!o||o.type!=="livraison")return 0;if(o.deliveryKm!=null)return Math.round(o.deliveryKm*prixParKm());return 0;}
+function repriceItems(items){return items.map(i=>{const d=DATA.menu.find(m=>m._docId===i.id);return d?{...i,price:d.price,time:d.time}:i;});}
+function orderTotal(o){return o.items.filter(i=>i.statut!=="Refusé").reduce((s,i)=>s+i.price*i.qty,0);}
+function orderGrandTotal(o){return orderTotal(o) + deliveryFeeFor(o);}
+function orderIsFinal(o){ return o && (o.status==="servie" || o.status==="livree" || o.status==="refusee" || o.status==="annulee"); }
+
+function preserveInput(){const a=document.activeElement;if(!a||!a.dataset||!a.dataset.input)return null;return { key:a.dataset.input, start:a.selectionStart, end:a.selectionEnd };}
+function restoreInput(saved){if(!saved)return;const el=document.querySelector('[data-input="'+saved.key+'"]');if(el){el.focus();try{el.setSelectionRange(saved.start,saved.end);}catch(e){}}}
+
+let UNSUB_PUBLIC=[], UNSUB_STAFF=[], UNSUB_CLIENT=null;
+const LOADED={}; // collections publiques déjà reçues au moins une fois
+function onSubError(name){ return err => console.warn("Lecture refusée ("+name+") :", (err && err.code) ? err.code : err); }
+function dataChanged(){ handleUrlParams(); render(); }
+function recomputeStaff(){ DATA.staff = DATA.users.length ? DATA.users : DATA.directory; }
+function subCol(list, col, key, tr, afterSet){
+  list.push(onSnapshot(collection(db,col), snap=>{
+    const arr=[]; snap.forEach(d=>arr.push({...d.data(),_docId:d.id}));
+    DATA[key]=tr?tr(arr):arr; LOADED[col]=true; if(afterSet)afterSet(); dataChanged();
+  }, onSubError(col)));
+}
+// Données publiques (tout utilisateur connecté, y compris client anonyme)
+function startPublicSubs(){
+  stopPublicSubs();
+  subCol(UNSUB_PUBLIC,"menu","menu");
+  subCol(UNSUB_PUBLIC,"tables","tables",arr=>arr.sort((a,b)=>a.number-b.number));
+  subCol(UNSUB_PUBLIC,"staffDirectory","directory",null,recomputeStaff);
+  UNSUB_PUBLIC.push(onSnapshot(collection(db,"affectation"),snap=>{const obj={};snap.forEach(d=>obj[d.id]=d.data());DATA.affectation=obj;dataChanged();},onSubError("affectation")));
+  UNSUB_PUBLIC.push(onSnapshot(doc(db,"settings","main"),snap=>{if(snap.exists())DATA.settings=snap.data();dataChanged();},onSubError("settings")));
+}
+function stopPublicSubs(){ UNSUB_PUBLIC.forEach(u=>{try{u();}catch(e){}}); UNSUB_PUBLIC=[]; }
+// Données réservées au personnel, selon le rôle
+function startStaffSubs(role){
+  stopStaffSubs();
+  subCol(UNSUB_STAFF,"orders","orders",arr=>arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+  if(role==="gerant"||role==="admin"){
+    subCol(UNSUB_STAFF,"stock","stock");
+    subCol(UNSUB_STAFF,"stockMoves","stockMoves",arr=>arr.sort((a,b)=>(b._ts||0)-(a._ts||0)));
+  }
+  if(role==="admin"){
+    subCol(UNSUB_STAFF,"users","users",arr=>arr.sort((a,b)=>String(a.name).localeCompare(String(b.name))),recomputeStaff);
+    subCol(UNSUB_STAFF,"zones","zones");
+    subCol(UNSUB_STAFF,"resetLogs","resetLogs",arr=>arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+  }
+}
+function stopStaffSubs(){
+  UNSUB_STAFF.forEach(u=>{try{u();}catch(e){}}); UNSUB_STAFF=[];
+  DATA.orders=[]; DATA.stock=[]; DATA.stockMoves=[]; DATA.users=[]; DATA.zones=[]; DATA.resetLogs=[]; recomputeStaff();
+}
+// Un client ne lit QUE sa propre commande
+function watchClientOrder(orderId){
+  if(UNSUB_CLIENT){try{UNSUB_CLIENT();}catch(e){} UNSUB_CLIENT=null;}
+  if(!orderId) return;
+  UNSUB_CLIENT=onSnapshot(doc(db,"orders",orderId), snap=>{ DATA.orders = snap.exists()?[{...snap.data(),_docId:snap.id}]:[]; dataChanged(); }, onSubError("order"));
+}
+function stopClientOrder(){ if(UNSUB_CLIENT){try{UNSUB_CLIENT();}catch(e){} UNSUB_CLIENT=null;} DATA.orders=[]; }
+
+// ---------- Authentification ----------
+async function resetToAnonymous(){
+  stopPublicSubs();
+  try{ await signOut(auth); }catch(e){}
+  try{ await signInAnonymously(auth); }catch(e){ console.warn("Connexion anonyme impossible :", e); }
+  startPublicSubs();
+}
+function authErrorMessage(e, pinMode){
+  const c=(e && e.code) ? String(e.code) : "";
+  if(c==="ds/role-mismatch") return "Accès refusé pour ce rôle";
+  if(c==="auth/too-many-requests") return "Trop de tentatives. Réessayez dans quelques minutes.";
+  if(c==="auth/network-request-failed") return "Pas de connexion internet";
+  if(c.startsWith("auth/")) return pinMode ? "PIN incorrect" : "Identifiants incorrects";
+  return "Erreur : "+((e && e.message) || c || "inconnue");
+}
+async function adminMigrations(){
+  try{ if(DATA.settings && DATA.settings.masterCode!==undefined) await setDoc(doc(db,"settings","main"),{masterCode:deleteField()},{merge:true}); }catch(e){ console.warn(e); }
+  try{ await seedIfEmpty(); }catch(e){ console.warn(e); }
+}
+async function finishStaffLogin(expectedRole){
+  const user=auth.currentUser;
+  const snap=await getDoc(doc(db,"users",user.uid));
+  const prof=snap.exists()?snap.data():null;
+  if(!prof || prof.role!==expectedRole){ await resetToAnonymous(); throw {code:"ds/role-mismatch"}; }
+  startStaffSubs(prof.role);
+  loginRole=null; loginStaffId=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null;
+  A.login(prof.role,prof.name,user.uid);
+  if(prof.role==="gerant"||prof.role==="admin") A.logAuth(prof.role,prof.email||"","✅ Connexion réussie");
+  if(prof.role==="admin") adminMigrations();
+}
+async function restoreStaffSession(){
+  const u=auth.currentUser; if(!u||u.isAnonymous) return;
+  try{
+    const snap=await getDoc(doc(db,"users",u.uid));
+    if(snap.exists()){
+      const p=snap.data();
+      startStaffSubs(p.role);
+      SESSION={role:p.role,name:p.name,uid:u.uid,userId:DEVICE_ID,since:Date.now()};
+      setTimeout(loadOneSignal,200); applyRoleTag(p.role);
+      if(p.role==="admin") adminMigrations();
+      return;
+    }
+  }catch(e){ console.warn(e); }
+  await resetToAnonymous();
+}
+async function attemptPinLogin(){
+  const u=DATA.staff.find(x=>x._docId===loginStaffId);
+  if(!u||!u.alias){ loginError="Compte introuvable"; loginPin=""; render(); return; }
+  loginBusy=true; render();
+  try{ await signInWithEmailAndPassword(auth,u.alias,loginPin); await finishStaffLogin(loginRole); }
+  catch(e){ loginPin=""; loginError=authErrorMessage(e,true); }
+  loginBusy=false; render();
+}
+
+function notify(title,body,urgent){try{if("Notification" in window && Notification.permission==="granted"){new Notification(title,{body,tag:"ds-"+Date.now(),requireInteraction:!!urgent});}}catch(e){}if(urgent&&navigator.vibrate){try{navigator.vibrate([200,100,200]);}catch(e){}}}
+
+function loadOneSignal(){
+  const appId = DATA.settings.oneSignalAppId;
+  if(!appId){ console.warn("OneSignal: App ID non configuré"); return; }
+  if(window.__osLoaded) { applyRoleTag(SESSION ? SESSION.role : null); return; }
+  window.__osLoaded = true;
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  window.OneSignalDeferred.push(async function(OneSignal) {
+    try {
+      await OneSignal.init({ appId, allowLocalhostAsSecureOrigin:true, notifyButton:{enable:false}, serviceWorkerParam:{scope:"/restaurant-ds/"}, serviceWorkerPath:"/restaurant-ds/service-worker.js" });
+      console.log("✅ OneSignal initialisé");
+      await applyRoleTag(SESSION ? SESSION.role : null);
+      if (typeof Notification !== "undefined" && Notification.permission === "default") { try { OneSignal.Slidedown.promptPush(); } catch(e) {} }
+    } catch(e) { console.error("❌ OneSignal init:", e); }
+  });
+  const s = document.createElement("script");
+  s.src = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
+  s.defer = true; document.head.appendChild(s);
+}
+
+function randomDeletePercent(pct){const all=DATA.orders.slice();if(all.length===0)return [];const n=Math.max(1,Math.round(all.length*(pct/100)));const idxs=all.map((_,i)=>i);for(let i=idxs.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[idxs[i],idxs[j]]=[idxs[j],idxs[i]];}return idxs.slice(0,n).map(i=>all[i]._docId);}
+
+const A = {
+  login(role,name,uid){ SESSION={role,name,uid:uid||(auth.currentUser&&auth.currentUser.uid)||null,userId:DEVICE_ID,since:Date.now()}; setTimeout(loadOneSignal,200); applyRoleTag(role); render(); },
+  logout(){ SESSION=null; loginRole=null; loginStaffId=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; clearRoleTag(); stopStaffSubs(); stopClientOrder(); resetToAnonymous().then(()=>render()); render(); },
+
+  async addOrder(order){
+    const isLivraison = order.type === "livraison";
+    const newOrder={
+      createdAt:Date.now(), date:nowDate(), ownerUid:(auth.currentUser?auth.currentUser.uid:null),
+      status: isLivraison ? "att_verif_paiement" : "att_validation",
+      type:order.type||"sur_place",
+      tableId:order.tableId||null, tableNumber:order.tableNumber||null,
+      serveuseId:order.serveuseId||null, serveuseName:order.serveuseName||null,
+      livreurId:null, deliveryStatus:null,
+      clientInfo:order.clientInfo||null,
+      deliveryLat:order.deliveryLat||null, deliveryLon:order.deliveryLon||null,
+      deliveryKm:order.deliveryKm||null, deliveryAddrText:order.deliveryAddrText||null,
+      momoRef:order.momoRef||null, momoRefSubmittedAt: order.momoRef ? Date.now() : null,
+      momoRefStatus:null, momoRefNote:null,
+      items:order.items.map(i=>({...i,statut:null,motif:null})),
+      paymentMethod: null, paymentRef:null,
+      readyAt:null, servedAt:null, cashIssue:null, callCount:0,
+      source:order.source||"client", deviceId:DEVICE_ID,
+      rating:null, claim:null
+    };
+    const ref=await addDoc(collection(db,"orders"),newOrder);
+    const label = isLivraison ? "Livraison "+(order.clientInfo?.name||"") : "Table "+order.tableNumber;
+    if(isLivraison){
+      sendPush("🛵 Livraison à vérifier", label+" — "+money(orderGrandTotal({...newOrder,_docId:ref.id})), "gerant");
+    } else {
+      sendPush("🍽️ Nouvelle commande", label+" — à valider", "gerant");
+    }
+    return ref.id;
+  },
+
+  async updateOrder(id,patch){ await updateDoc(doc(db,"orders",id),patch); },
+  // Plus aucune suppression de commande : une annulation est archivée (traçabilité comptable)
+  async cancelOrder(id){ await updateDoc(doc(db,"orders",id),{status:"annulee",cancelledAt:Date.now(),cancelledBy:(SESSION?(SESSION.name||SESSION.role):"client")}); },
+
+  async setItemStatut(orderId,idx,statut,motif){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const items=o.items.map((it,i)=>i===idx?{...it,statut,motif:statut==="Refusé"?(motif||it.motif):null}:it);await updateDoc(doc(db,"orders",orderId),{items});},
+  async setItemMotif(orderId,idx,motif){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const items=o.items.map((it,i)=>i===idx?{...it,motif}:it);await updateDoc(doc(db,"orders",orderId),{items});},
+
+  // Gérant valide une commande sur place (att_validation → att_collect)
+  async validateOrder(id){
+    const o=DATA.orders.find(x=>x._docId===id);if(!o)return;
+    const validItems = o.items.filter(i=>i.statut!=="Refusé");
+    if(validItems.length === 0){
+      await updateDoc(doc(db,"orders",id),{status:"refusee",validatedAt:Date.now()});
+      return;
+    }
+    const repriced=repriceItems(o.items); // prix relus dans le menu par le gérant (le client ne peut pas fixer ses prix)
+    await updateDoc(doc(db,"orders",id),{status:"att_collect",validatedAt:Date.now(),items:repriced});
+    sendPush("💰 À encaisser", "Table "+(o.tableNumber||"")+" — "+money(orderTotal({...o,items:repriced})), "serveuse");
+  },
+
+  // Gérant valide une livraison après vérif MoMo (att_verif_paiement → payee)
+  async validateDeliveryPayment(id){
+    const o=DATA.orders.find(x=>x._docId===id);if(!o)return;
+    const validItems = o.items.filter(i=>i.statut!=="Refusé");
+    if(validItems.length === 0){
+      await updateDoc(doc(db,"orders",id),{status:"refusee",validatedAt:Date.now()});
+      return;
+    }
+    const rp=repriceItems(o.items);
+    await updateDoc(doc(db,"orders",id),{
+      status:"payee", items:rp, validatedAt:Date.now(), paidAt:Date.now(),
+      paymentMethod:"momo", paymentRef: o.momoRef||null,
+      momoRefStatus:"ok"
+    });
+    const label = "Livraison "+(o.clientInfo?.name||"");
+    sendPush("👨‍🍳 Nouvelle préparation", label+" — MoMo vérifié — "+money(orderGrandTotal({...o,items:rp})), "cuisine");
+    sendPush("🛵 Livraison prête à dispatcher", label+" — "+money(orderGrandTotal({...o,items:rp})), "gerant");
+  },
+
+  // Gérant refuse la livraison (réf bidon)
+  async rejectDeliveryPayment(id, motif){
+    const o=DATA.orders.find(x=>x._docId===id);if(!o)return;
+    await updateDoc(doc(db,"orders",id),{
+      status:"refusee", validatedAt:Date.now(),
+      momoRefStatus:"refusee", momoRefNote: motif||"Référence inexacte"
+    });
+  },
+
+  async markOrderPaid(id,method,ref){
+    const o=DATA.orders.find(o=>o._docId===id);if(!o)return;
+    const batch=writeBatch(db);
+    for(const item of o.items){if(item.statut==="Refusé")continue;const dish=DATA.menu.find(d=>d._docId===item.id);if(!dish||!dish.recipe)continue;for(const ing of dish.recipe){batch.set(doc(collection(db,"stockMoves")),{stockId:ing.stockId,type:"Sortie",qty:ing.qty*item.qty,motif:"Cmd #"+id.slice(-6),date:nowDate(),_ts:Date.now()});}}
+    batch.update(doc(db,"orders",id),{status:"payee",paymentMethod:method,paymentRef:ref||null,paidAt:Date.now(),cashIssue:null});
+    await batch.commit();
+    const label = o.type==="livraison" ? "Livraison "+(o.clientInfo?.name||"") : "Table "+(o.tableNumber||"");
+    sendPush("👨‍🍳 Nouvelle préparation", label+" — "+(method==="cash"?"Cash":"MoMo"), "cuisine");
+    sendPush("💰 Paiement reçu", label+" — "+money(orderTotal(o)), "gerant");
+  },
+  async confirmCash(id,method,ref){await A.markOrderPaid(id,method,ref);},
+  async reportCashIssue(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{cashIssue:"non_recu",cashIssueAt:Date.now()});sendPush("⚠️ Paiement non reçu", "Table "+(o?.tableNumber||""), "gerant");},
+  async resolveCashIssue(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{cashIssue:null,cashIssueResolvedAt:Date.now()});sendPush("✅ Paiement résolu", "Table "+(o?.tableNumber||""), "serveuse");},
+  async markReady(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{readyAt:Date.now()});const label=o?.type==="livraison"?"Livraison "+(o?.clientInfo?.name||""):"Table "+(o?.tableNumber||"");sendPush("🍽️ Plat prêt", label, "serveuse");sendPush("🍽️ Commande prête", label, "livreur");},
+  async markServed(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{status:"servie",servedAt:Date.now()});const label=o?.type==="livraison"?"Livraison "+(o?.clientInfo?.name||""):"Table "+(o?.tableNumber||"");sendPush("✅ Commande servie", label, "gerant");},
+  async markDelivered(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{status:"livree",servedAt:Date.now()});sendPush("🛵 Commande livrée", (o?.clientInfo?.name||""), "gerant");},
+  async markPrinted(id){await updateDoc(doc(db,"orders",id),{printedAt:Date.now()});},
+  async takeDelivery(id,livreurId,livreurName){await updateDoc(doc(db,"orders",id),{livreurId,livreurName,deliveryStatus:"prise"});const o=DATA.orders.find(x=>x._docId===id);sendPush("🛵 Livraison prise", (livreurName||"Livreur")+" — "+(o?.clientInfo?.name||""), "gerant");},
+  async setDeliveryStatus(id,st){await updateDoc(doc(db,"orders",id),{deliveryStatus:st});},
+  async assignLivreur(id,livreurId){const l=DATA.staff.find(x=>x._docId===livreurId);await updateDoc(doc(db,"orders",id),{livreurId:livreurId||null,livreurName:l?l.name:null,deliveryStatus:livreurId?"prise":null});if(livreurId){const o=DATA.orders.find(x=>x._docId===id);sendPush("🛵 Nouvelle livraison", (o?.clientInfo?.name||"")+" — "+(o?.clientInfo?.address||""), "livreur");}},
+
+  // Notation + Réclamation
+  async submitRating(id, rating){ await updateDoc(doc(db,"orders",id),{ rating: {...rating, createdAt:Date.now()}, ratedAt:Date.now() }); },
+  async submitClaim(id, claim){ await updateDoc(doc(db,"orders",id),{ claim: {...claim, createdAt:Date.now(), resolvedAt:null, resolvedBy:null}, claimedAt:Date.now() });
+    sendPush("⚠️ Réclamation livraison", (claim.type||"") + " — " + (DATA.orders.find(o=>o._docId===id)?.clientInfo?.name||""), "gerant");
+  },
+  async resolveClaim(id){ await updateDoc(doc(db,"orders",id),{ "claim.resolvedAt": Date.now(), "claim.resolvedBy": SESSION?.name||"?" }); },
+
+  async addDish(d){await addDoc(collection(db,"menu"),d);},
+  async updateDish(id,patch){await updateDoc(doc(db,"menu",id),patch);},
+  async removeDish(id){await deleteDoc(doc(db,"menu",id));},
+  // Création d'un compte : PIN (6 chiffres) pour serveuse/cuisine/livreur, e-mail + mot de passe pour gérant/admin.
+  async createStaffAccount(st){
+    const name=(st.name||"").trim(); if(!name) throw new Error("Nom requis");
+    const isMgr=(st.role==="gerant"||st.role==="admin");
+    let email, password;
+    if(isMgr){
+      email=(st.email||"").trim().toLowerCase(); password=st.password||"";
+      if(!email||password.length<8) throw new Error("E-mail et mot de passe (8 caractères min) requis");
+    } else {
+      if(!/^\d{6}$/.test(st.pin||"")) throw new Error("PIN de 6 chiffres requis");
+      password=st.pin; email="s"+Date.now().toString(36)+Math.random().toString(36).slice(2,8)+"@"+STAFF_EMAIL_DOMAIN;
+    }
+    const secondaryAuth=getSecondaryAuth();
+    const cred=await createUserWithEmailAndPassword(secondaryAuth,email,password);
+    const uid=cred.user.uid;
+    try{ await signOut(secondaryAuth); }catch(e){}
+    const batch=writeBatch(db);
+    batch.set(doc(db,"users",uid),{name,role:st.role,email,createdAt:Date.now()});
+    if(!isMgr) batch.set(doc(db,"staffDirectory",uid),{name,role:st.role,alias:email});
+    await batch.commit();
+    return uid;
+  },
+  async removeStaff(id){
+    if(auth.currentUser && id===auth.currentUser.uid) throw new Error("Vous ne pouvez pas supprimer votre propre compte");
+    const batch=writeBatch(db); batch.delete(doc(db,"users",id)); batch.delete(doc(db,"staffDirectory",id)); await batch.commit();
+  },
+  // Réinitialiser un PIN = nouveau compte avec nouveau PIN (l'ancien compte perd tous ses droits)
+  async resetPin(id){
+    const u=DATA.staff.find(x=>x._docId===id); if(!u) throw new Error("Compte introuvable");
+    const pin=String(100000+(crypto.getRandomValues(new Uint32Array(1))[0]%900000));
+    const newId=await A.createStaffAccount({name:u.name,role:u.role,pin});
+    const today=nowDate(); const day=DATA.affectation[today];
+    if(day){ const patch={}; let changed=false; Object.entries(day).forEach(([t,sid])=>{ if(sid===id){patch[t]=newId;changed=true;} else patch[t]=sid; }); if(changed) await setDoc(doc(db,"affectation",today),patch); }
+    await A.removeStaff(id);
+    return pin;
+  },
+
+  // Table : numérotation intelligente (plus petit trou sinon max+1)
+  async addTable(){
+    const used = DATA.tables.map(t=>Number(t.number)).filter(n=>!isNaN(n)).sort((a,b)=>a-b);
+    let candidate = 1;
+    for(let i=0;i<used.length;i++){ if(used[i] === candidate) candidate++; else if(used[i] > candidate) break; }
+    if(candidate > 999) { throw new Error("Limite 999 tables atteinte"); }
+    await addDoc(collection(db,"tables"),{number:candidate,token:Math.random().toString(36).slice(2,8)});
+    return candidate;
+  },
+  async removeTable(id){
+    // Bloquer si commande active
+    const active = DATA.orders.filter(o=>o.tableId===id && (o.status==="att_validation"||o.status==="att_collect"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt)));
+    if(active.length>0) throw new Error("Commande en cours sur cette table");
+    await deleteDoc(doc(db,"tables",id));
+  },
+  async setAffectation(date,tableId,serveuseId){const day={...(DATA.affectation[date]||{})};if(serveuseId===null)delete day[tableId];else day[tableId]=serveuseId;await setDoc(doc(db,"affectation",date),day);},
+  async addStockMove(m){await addDoc(collection(db,"stockMoves"),{...m,date:nowDate(),_ts:Date.now()});},
+  async addStockItem(item){await addDoc(collection(db,"stock"),item);},
+  async removeStockItem(id){await deleteDoc(doc(db,"stock",id));},
+  async updateSettings(patch){await setDoc(doc(db,"settings","main"),patch,{merge:true});},
+
+  async activateGrace(durationMin, roles){
+    const until = Date.now() + durationMin*60*1000;
+    await A.updateSettings({ graceUntil: until, graceRoles: roles, graceDuration: durationMin });
+    await A.logReset("Dérogation horaires ("+durationMin+" min)", "✅ Activée — rôles: "+roles.join(", "), null);
+  },
+  async cancelGrace(){ await A.updateSettings({ graceUntil: 0 }); await A.logReset("Dérogation horaires", "✅ Annulée", null); },
+
+  async callServeuse(orderId){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const nc=(o.callCount||0)+1;const p={callCount:nc,lastCall:Date.now()};if(nc>=3)p.escalated=true;await updateDoc(doc(db,"orders",orderId),p);if(nc < 3){sendPush("🔔 Client appelle", "Table "+(o.tableNumber||""), "serveuse");}else{sendPush("🚨 Client appelle (3x)", "Table "+(o.tableNumber||""), "gerant");}},
+
+  async resetMenu(){const batch=writeBatch(db);DATA.menu.forEach(m=>batch.delete(doc(db,"menu",m._docId)));SEED.menu.forEach(m=>batch.set(doc(db,"menu",m.id),m));await batch.commit();},
+  async resetStock(){const batch=writeBatch(db);DATA.stock.forEach(s=>batch.delete(doc(db,"stock",s._docId)));DATA.stockMoves.forEach(m=>batch.delete(doc(db,"stockMoves",m._docId)));SEED.stock.forEach(s=>batch.set(doc(db,"stock",s.id),s));await batch.commit();},
+  async logReset(action,result,pinTried){const masked=pinTried?"••"+String(pinTried).slice(-2):"";await addDoc(collection(db,"resetLogs"),{createdAt:Date.now(),adminName:SESSION?SESSION.name:"?",action,result,pinTried:masked});},
+  async clearResetLogs(){const batch=writeBatch(db);DATA.resetLogs.forEach(l=>batch.delete(doc(db,"resetLogs",l._docId)));await batch.commit();},
+  async logAuth(role,email,result){try{await addDoc(collection(db,"resetLogs"),{createdAt:Date.now(),adminName:email||"?",action:"Connexion "+(role==="admin"?"Admin":role==="gerant"?"Gérant":"?"),result,pinTried:""});}catch(e){}},
+  async toggleMenuOfDay(dishId){
+    const m = DATA.settings.menuOfDay;
+    const isToday = m && m.date === nowDate();
+    const cur = (isToday && m.dishIds) ? m.dishIds : DATA.menu.filter(d=>d.available).map(d=>d._docId);
+    const next = cur.includes(dishId) ? cur.filter(x=>x!==dishId) : [...cur, dishId];
+    await A.updateSettings({ menuOfDay: { date: nowDate(), dishIds: next, confirmedAt: (isToday && m.confirmedAt) || null } });
+  },
+  async confirmMenuOfDay(dishIds){ await A.updateSettings({ menuOfDay: { date: nowDate(), dishIds: dishIds, confirmedAt: Date.now() } }); },
+  async downloadBackup(){const payload={exportedAt:new Date().toISOString(),settings:DATA.settings,menu:DATA.menu,staff:DATA.staff,tables:DATA.tables,stock:DATA.stock,stockMoves:DATA.stockMoves,zones:DATA.zones,affectation:DATA.affectation,orders:DATA.orders,resetLogs:DATA.resetLogs};const json=JSON.stringify(payload,null,2);const blob=new Blob([json],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="restaurant-ds-backup-"+nowDate()+".json";a.click();URL.revokeObjectURL(url);}
+};
+
+function stockQty(id){const item=DATA.stock.find(x=>x._docId===id);if(!item)return 0;return DATA.stockMoves.filter(m=>m.stockId===id).reduce((a,m)=>a+(m.type==="Entrée"?m.qty:-m.qty),item.initial);}
+function statusBadge(o){
+  if(o.status==="annulee")return '<span class="badge badge-neutre">Annulée</span>';
+  if(o.status==="servie")return '<span class="badge badge-vert">Servie</span>';
+  if(o.status==="livree")return '<span class="badge badge-vert">Livrée</span>';
+  if(o.status==="refusee")return '<span class="badge badge-rouge">Refusée</span>';
+  if(o.status==="att_verif_paiement")return '<span class="badge badge-rouge">Vérif paiement</span>';
+  if(o.status==="att_collect")return '<span class="badge badge-orange">À encaisser</span>';
+  if(o.status==="payee"){if(o.cashIssue==="non_recu")return '<span class="badge badge-rouge">⚠ Non reçu</span>';const r=o.items.every(i=>i.statut==="Refusé"||o.readyAt);return '<span class="badge '+(r?"badge-vert":"badge-orange")+'">'+(r?"Prête":"En cuisine")+'</span>';}
+  if(o.status==="att_paiement")return '<span class="badge badge-orange">À payer</span>';
+  return '<span class="badge badge-rouge">À valider</span>';
+}
+
+let loginRole=null, loginStaffId=null, loginBusy=false, loginPin="", loginEmail="", loginPassword="", loginError="", loginRecovery=null;
+let urlMode="default"; // "default" | "staff" | "admin" | "table"
+let clientS={screen:"menu",mode:"livraison",cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{},momoRefInput:"",claimType:null,claimText:"",ratingDriver:0,ratingResto:0,ratingComment:""};
+let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};
+let gerS={tab:"validation",menuDraft:null};
+let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null,graceForm:{duration:60,roles:["serveuse","cuisine","livreur","gerant"]},livrPeriod:"today"};
+let livS={tab:"available"};
+let pendingReset=null;
+let mapInstance=null, mapMarker=null;
+
+function resetClient(){
+  clientS={screen:"menu",mode:"livraison",cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{},momoRefInput:"",claimType:null,claimText:"",ratingDriver:0,ratingResto:0,ratingComment:""};
+  localStorage.removeItem("ds_client_order");
+}
+function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
+
+function topbar(opts){const back=opts.backAction?'<button class="topbar-btn" data-action="'+opts.backAction+'">←</button>':'<button class="topbar-btn" data-action="'+opts.homeAction+'">🏠</button>';return '<div class="topbar">'+back+'<div style="flex:1;min-width:0"><p class="topbar-sub">'+esc(opts.role||"")+'</p><div class="topbar-title">'+esc(opts.title||"")+'</div></div><button class="topbar-logout" data-action="logout">Déco</button></div>';}
+
+function screenClosed(){
+  const open=getOpenHour();const close=getCloseHour();const phone=DATA.settings.phone||"";
+  const btnPhone = phone ? '<a href="tel:'+phone.replace(/\s/g,"")+'" class="btn btn-ghost btn-block" style="margin-top:14px;text-decoration:none;color:white;border-color:#444;max-width:300px">📞 '+esc(phone)+'</a>' : "";
+  return '<div class="login"><div class="login-logo">🌙</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Nous sommes fermés</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Merci de revenir pendant nos horaires d\'ouverture.</p><div class="card" style="background:#1a1a1a;border:1px solid #333;color:white;max-width:300px;width:100%;text-align:center"><p class="text-sm" style="color:#aaa;margin-bottom:8px">🕐 Horaires</p><p style="font-size:15px;margin:0"><strong>Ouverture :</strong> '+String(open).padStart(2,"0")+'h00</p><p style="font-size:15px;margin:4px 0 0"><strong>Fermeture :</strong> '+String(close).padStart(2,"0")+'h00</p></div>'+btnPhone+'</div>';
+}
+
+function screenLogin(){
+  // URL modes : staff = pas de client, admin = admin uniquement
+  let roles;
+  if(urlMode === "admin"){
+    roles = [{key:"admin",em:"⚙️",label:"Admin",desc:"Administrateur"}];
+  } else if(urlMode === "staff"){
+    roles = [
+      {key:"serveuse",em:"👩‍🍳",label:"Serveuse",desc:"Service (PIN)"},
+      {key:"cuisine",em:"👨‍🍳",label:"Cuisine",desc:"Prépare (PIN)"},
+      {key:"livreur",em:"🛵",label:"Livreur",desc:"Livraisons (PIN)"},
+      {key:"gerant",em:"📋",label:"Gérant",desc:"Identifiants"}
+    ];
+  } else {
+    roles = [
+      {key:"client",em:"🍽️",label:"Client",desc:"Commander"},
+      {key:"serveuse",em:"👩‍🍳",label:"Serveuse",desc:"Service (PIN)"},
+      {key:"gerant",em:"📋",label:"Gérant",desc:"Identifiants"},
+      {key:"cuisine",em:"👨‍🍳",label:"Cuisine",desc:"Prépare (PIN)"},
+      {key:"livreur",em:"🛵",label:"Livreur",desc:"Livraisons (PIN)"},
+      {key:"admin",em:"⚙️",label:"Admin",desc:"Identifiants"}
+    ];
+  }
+  if(!loginRole){
+    return '<div class="login"><div class="login-logo">D&S</div><p class="login-sub">Bienvenue au</p><h1 class="serif">Restaurant <span>D&S</span></h1><div class="role-grid">'+roles.map(r=>'<button class="role-btn" data-action="pick-role" data-role="'+r.key+'"><div class="em">'+r.em+'</div><p class="lab">'+r.label+'</p><p class="desc">'+r.desc+'</p></button>').join("")+'</div>'+(urlMode === "default" ? '<button class="pin-back" data-action="client-mode-goto" style="margin-top:20px">🛵 Commander en livraison</button>' : '')+'</div>';
+  }
+  if(loginRecovery) return screenRecovery();
+  if(loginRole==="gerant"||loginRole==="admin"){
+    const labels={gerant:"Gérant",admin:"Administrateur"};
+    return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Identifiez-vous</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="login-email" value="'+esc(loginEmail)+'" autocomplete="username" autocapitalize="none"></div><div><label class="text-xs" style="color:#aaa;font-weight:600">MOT DE PASSE</label><input class="auth-input" type="password" data-input="login-password" value="'+esc(loginPassword)+'" autocomplete="current-password"></div>'+(loginError?'<p class="pin-error" style="margin:0">'+esc(loginError)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="login-submit">Se connecter</button><button class="btn btn-ghost btn-block" style="padding:10px;font-size:13px" data-action="login-forgot-pwd">🔑 Mot de passe oublié ?</button><button class="pin-back" data-action="back-role">← Changer de rôle</button></div></div></div>';
+  }
+  const labels={serveuse:"Serveuse",cuisine:"Cuisine",livreur:"Livreur"};
+  if(!loginStaffId){
+    const names=DATA.staff.filter(x=>x.role===loginRole);
+    return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 16px">Qui êtes-vous ?</p><div style="display:flex;flex-direction:column;gap:10px">'+(names.length===0?'<p class="pin-hint">Aucun compte pour ce rôle. Demandez à l\'administrateur d\'en créer un.</p>':names.map(n=>'<button class="role-btn" data-action="pick-staff" data-id="'+n._docId+'"><p class="lab">'+esc(n.name)+'</p></button>').join(""))+'</div><button class="pin-back" data-action="back-role">← Changer de rôle</button></div></div>';
+  }
+  const who=DATA.staff.find(x=>x._docId===loginStaffId);
+  const dots=[0,1,2,3,4,5].map(i=>'<div class="pin-dot '+(i<loginPin.length?"filled":"")+'"></div>').join("");
+  const keypad=[1,2,3,4,5,6,7,8,9].map(n=>'<button class="pin-key" data-action="pin-digit" data-digit="'+n+'">'+n+'</button>').join("");
+  return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+esc(who?who.name:labels[loginRole])+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0">'+(loginBusy?"Vérification…":"Entrez votre PIN (6 chiffres)")+'</p><div class="pin-display">'+dots+'</div><div class="pin-pad">'+keypad+'<button class="pin-key blank" disabled></button><button class="pin-key" data-action="pin-digit" data-digit="0">0</button><button class="pin-key del" data-action="pin-del">⌫</button></div>'+(loginError?'<p class="pin-error">'+esc(loginError)+'</p>':"")+'<button class="pin-back" data-action="pin-back-name">← Changer de nom</button></div></div>';
+}
+
+function screenRecovery(){
+  const r=loginRecovery; if(!r) return "";
+  const roleLabel=loginRole==="admin"?"Administrateur":"Gérant";
+  if(r.stage==="sent"){
+    return '<div class="login"><div class="login-logo">✉️</div><h1 class="serif">Vérifiez vos e-mails</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Si un compte existe pour cette adresse, un lien de réinitialisation vient d\'être envoyé. Pensez à regarder les courriers indésirables.</p><button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-done">Retour</button></div></div>';
+  }
+  return '<div class="login"><div class="login-logo">🔑</div><h1 class="serif">Mot de passe oublié</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Compte '+roleLabel+'</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="rec-email" value="'+esc(r.email||"")+'"></div>'+(r.error?'<p class="pin-error">'+esc(r.error)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-send">Envoyer le lien</button><button class="pin-back" data-action="rec-cancel">← Retour</button></div></div></div>';
+}
+
+// ============================================================
+// CLIENT
+// ============================================================
+function screenClient(){
+  const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables;
+  const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
+
+  // Si la commande est terminée et que le client a déjà noté/claimé → écran final
+  if(order && orderIsFinal(order)){
+    if(order.status==="refusee" && v.screen!=="fully_refused"){ v.screen="fully_refused"; }
+    if(order.status==="livree"){
+      const hasRating = !!order.rating;
+      const hasClaim = !!order.claim;
+      if(!hasRating && !hasClaim && v.screen!=="confirm_delivery" && v.screen!=="rate" && v.screen!=="claim" && v.screen!=="thanks"){
+        v.screen = "confirm_delivery";
+      }
+      if(hasRating || hasClaim) v.screen = "thanks";
+    }
+    if(order.status==="servie" && v.screen==="tracking") v.screen="done";
+  }
+
+  if(order && order.status!=="refusee" && order.status!=="livree" && order.status!=="servie"){
+    if(order.status==="att_verif_paiement" && v.screen==="waiting"){ /* reste sur waiting */ }
+    if(order.status==="att_collect" && v.screen==="waiting")v.screen="serving";
+    if(order.status==="att_paiement" && v.screen==="waiting")v.screen="serving";
+    if(order.status==="payee" && (v.screen==="payment"||v.screen==="serving")){v.screen="tracking";v.timerTotal=0;}
+    const refIdx=order.items.findIndex((it,i)=>it.statut==="Refusé"&&v.refusedIdx!==i);
+    if(refIdx>=0 && v.screen!=="refused" && v.screen!=="fully_refused" && v.screen!=="editOrder"){v.refusedIdx=refIdx;v.screen="refused";}
+  }
+
+  // MENU
+  if(v.screen==="menu"){
+    const cats=["Entrées","Plats","Desserts","Boissons"];
+    const dishes=menu.filter(d=>d.cat===v.cat&&isDishAvailableToday(d));
+    const count=Object.values(v.cart).reduce((a,b)=>a+b,0);
+    const total=menu.filter(isDishAvailableToday).reduce((sum,d)=>sum+(v.cart[d._docId]||0)*d.price,0);
+    const isSurPlace=v.mode==="sur_place";
+    const t=isSurPlace?tables.find(t=>t._docId===v.tableId):null;
+    const tableName=isSurPlace&&t?("Table "+t.number):"Livraison";
+    const leftBtn=isSurPlace?'<div class="topbar-badge">🍽️ '+tableName+'</div>':'<span style="width:40px"></span>';
+    const rightBtn=isSurPlace?'<span style="width:40px"></span>':'<button class="topbar-logout" data-action="logout">✕</button>';
+    return '<div class="app" style="padding-bottom:100px"><div class="topbar">'+leftBtn+'<div style="flex:1;min-width:0"><p class="topbar-sub">Restaurant D&S</p><div class="topbar-title">Menu</div></div>'+rightBtn+'</div><div class="menu-header"><div class="cat-tabs" style="margin-top:0">'+cats.map(c=>'<button class="cat-btn on-dark '+(v.cat===c?"active":"")+'" data-action="client-cat" data-cat="'+c+'">'+c+'</button>').join("")+'</div></div><div class="content content-narrow" style="padding-top:12px">'+(dishes.length===0?'<p class="empty">Aucun plat disponible</p>':dishes.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p>'+(d.desc?'<p class="dish-desc">'+esc(d.desc)+'</p>':"")+'<div class="dish-meta"><span class="dish-price">'+money(d.price)+'</span><span class="dish-time">⏱ ~'+d.time+' min</span></div></div><div class="qty-controls">'+(v.cart[d._docId]>0?'<button class="qty-btn" data-action="client-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.cart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="client-add" data-id="'+d._docId+'">+</button></div></div>').join(""))+'</div>'+(count>0?'<div class="cart-fab" data-action="client-cart"><span class="label">Voir le panier ('+count+')</span><span class="total">'+money(total)+'</span></div>':"")+'</div>';
+  }
+
+  // INFOS LIVRAISON
+  if(v.screen==="deliveryInfo"){
+    const phoneOk=validPhoneBJ(v.info.phone);
+    const nameOk=v.info.name && v.info.name.trim().length>1;
+    const locOk=v.deliveryLat!=null && v.deliveryLon!=null;
+    const allOk = nameOk && phoneOk && locOk;
+    return '<div class="app">'+topbar({title:"Livraison",homeAction:"client-home",backAction:"client-back"})+'<div class="content content-narrow"><p class="section-sub">Vos coordonnées pour la livraison.</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="info-name" value="'+esc(v.info.name)+'"></div><div><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px;'+(v.info.phone&&!phoneOk?"border-color:var(--rouge)":"")+'" inputmode="tel" data-input="info-phone" value="'+esc(v.info.phone)+'" maxlength="10" placeholder="01 XX XX XX XX">'+(v.info.phone&&!phoneOk?'<p class="text-xs" style="color:var(--rouge);margin-top:4px">Format 01 + 8 chiffres</p>':"")+'</div><div><label class="text-xs muted bold">POSITION DE LIVRAISON</label><button class="btn btn-accent btn-block" style="margin:6px 0 8px" data-action="client-use-gps">📍 Utiliser ma position</button><div id="map"></div><div id="distance-panel">'+renderDistancePanel()+'</div></div><div><label class="text-xs muted bold">REPÈRES (optionnel)</label><textarea class="input" style="margin-top:6px" rows="2" data-input="info-address">'+esc(v.info.address)+'</textarea></div><button class="btn btn-accent btn-block" style="padding:14px;opacity:'+(allOk?"1":"0.5")+'" data-action="client-delivery-next">Suivant</button></div></div></div>';
+  }
+
+  // PANIER
+  if(v.screen==="cart"){
+    const items=menu.filter(m=>v.cart[m._docId]>0 && isDishAvailableToday(m));
+    const total=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
+    const fee=v.mode==="livraison"&&v.deliveryKm!=null?Math.round(v.deliveryKm*prixParKm()):0;
+    const wait=items.length?(s.waitMode==="sum"?items.reduce((a,d)=>a+d.time,0):Math.max(...items.map(d=>d.time))):0;
+    const isSurPlace=v.mode==="sur_place";
+    const t=isSurPlace?tables.find(t=>t._docId===v.tableId):null;
+    const tableName=isSurPlace&&t?("Table "+t.number):"Livraison";
+    const leftBtn=isSurPlace?'<div class="topbar-badge">🍽️ '+tableName+'</div>':'<button class="topbar-btn" data-action="client-back">←</button>';
+    const ctaLabel = isSurPlace ? "Envoyer la commande" : "Suivant";
+    const ctaAction = isSurPlace ? "client-submit" : "client-cart-to-delivery";
+    return '<div class="app"><div class="topbar">'+leftBtn+'<div style="flex:1;min-width:0"><p class="topbar-sub">Restaurant D&S</p><div class="topbar-title">Panier</div></div><span style="width:40px"></span></div><div class="content content-narrow" style="flex:1">'+(items.length===0?'<p class="empty">Panier vide</p>':items.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p><p class="dish-desc">'+money(d.price)+' × '+v.cart[d._docId]+'</p></div><div class="qty-controls"><button class="qty-btn" data-action="client-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.cart[d._docId]+'</span><button class="qty-btn add" data-action="client-add" data-id="'+d._docId+'">+</button></div></div>').join(""))+'</div>'+(items.length>0?'<div style="padding:16px;background:white;border-top:2px solid var(--jaune);position:sticky;bottom:0"><div class="flex between text-sm muted" style="margin-bottom:6px"><span>Temps estimé</span><span class="bold" style="color:var(--rouge)">~'+wait+' min</span></div>'+(fee>0?'<div class="flex between text-sm muted" style="margin-bottom:6px"><span>Livraison ('+v.deliveryKm.toFixed(2)+' km)</span><span class="mono">'+money(fee)+'</span></div>':"")+'<div class="flex between" style="font-size:18px;font-weight:bold;margin-bottom:14px"><span>Total</span><span class="mono">'+money(total+fee)+'</span></div><button class="btn btn-accent btn-block" style="padding:14px" data-action="'+ctaAction+'">'+ctaLabel+'</button></div>':"")+'</div>';
+  }
+
+  // RÉCAP LIVRAISON (après infos)
+  if(v.screen==="deliveryRecap"){
+    const items=menu.filter(m=>v.cart[m._docId]>0 && isDishAvailableToday(m));
+    const total=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
+    const fee=v.deliveryKm!=null?Math.round(v.deliveryKm*prixParKm()):0;
+    return '<div class="app">'+topbar({title:"Récapitulatif",homeAction:"client-home",backAction:"client-recap-back"})+'<div class="content content-narrow"><h2 class="section-title" style="font-size:18px">Votre commande</h2><div class="card" style="margin-bottom:14px">'+items.map(d=>'<div class="flex between text-sm" style="margin-bottom:6px"><span>'+d.qty?(''+v.cart[d._docId]+'× '+esc(d.name)):''+'</span><span class="mono">'+money(d.price*v.cart[d._docId])+'</span></div>').join("")+'</div><h2 class="section-title" style="font-size:18px">Livraison à</h2><div class="card" style="margin-bottom:14px"><p class="bold">'+esc(v.info.name)+'</p><p class="text-sm muted">📞 '+esc(v.info.phone)+'</p>'+(v.info.address?'<p class="text-sm muted">📍 '+esc(v.info.address)+'</p>':"")+'<p class="text-sm muted">🛣️ '+v.deliveryKm.toFixed(2)+' km</p></div><div class="card" style="border-left:4px solid var(--jaune)"><div class="flex between text-sm muted"><span>Sous-total</span><span class="mono">'+money(total)+'</span></div><div class="flex between text-sm muted" style="margin-top:4px"><span>Frais livraison</span><span class="mono">'+money(fee)+'</span></div><div class="flex between" style="font-size:20px;font-weight:bold;margin-top:10px;padding-top:10px;border-top:1px solid var(--sable)"><span>Total</span><span class="mono">'+money(total+fee)+'</span></div></div><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="client-go-payment">Payer maintenant</button></div></div>';
+  }
+
+  // PAIEMENT MOMO LIVRAISON
+  if(v.screen==="deliveryPayment"){
+    const items=menu.filter(m=>v.cart[m._docId]>0 && isDishAvailableToday(m));
+    const total=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
+    const fee=v.deliveryKm!=null?Math.round(v.deliveryKm*prixParKm()):0;
+    const grand = total+fee;
+    const refOk = (v.momoRefInput||"").trim().length >= 8;
+    return '<div class="app">'+topbar({title:"Paiement",homeAction:"client-home",backAction:"client-payment-back"})+'<div class="content content-narrow"><div class="momo-box"><p class="text-xs" style="color:#aaa;margin:0">Payez ce montant</p><div class="momo-num">'+money(grand)+'</div><p class="text-xs" style="color:#aaa;margin:6px 0 0">au numéro MoMo du restaurant</p><div class="momo-num">'+esc(restoMomoNumber())+'</div><p class="text-xs" style="color:#aaa;margin:6px 0 0">Sans frais supplémentaires</p></div><div class="flow-step" style="margin-top:14px"><strong>Comment faire ?</strong><br>1. Ouvrez votre app MoMo<br>2. Envoyez <strong>'+money(grand)+'</strong> au '+esc(restoMomoNumber())+'<br>3. Copiez le SMS de confirmation<br>4. Collez-le ci-dessous</div><div style="margin-top:14px"><label class="text-xs muted bold">MESSAGE DE TRANSACTION MoMo</label><textarea class="input" style="margin-top:6px;font-family:monospace;font-size:12px" rows="4" data-input="client-momo-ref" placeholder="Collez ici le SMS de confirmation reçu...">'+esc(v.momoRefInput||"")+'</textarea><p class="text-xs muted" style="margin-top:6px">Le gérant vérifiera et validera votre commande.</p></div><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px;opacity:'+(refOk?"1":"0.5")+'" data-action="client-submit-livraison" '+(refOk?"":"disabled")+'>Envoyer la commande</button></div></div>';
+  }
+
+  // EN ATTENTE VALIDATION (sur place) OU VÉRIF PAIEMENT (livraison)
+  if(v.screen==="waiting" && order){
+    const isLiv = order.type==="livraison";
+    const title = isLiv ? "Vérification du paiement" : "En attente validation";
+    const txt = isLiv ? "Le gérant vérifie votre paiement MoMo…" : "Le gérant examine votre commande…";
+    return '<div class="login"><div class="spin" style="border-color:#222;border-top-color:var(--jaune)"></div><p class="login-sub" style="margin-top:20px">Envoyée</p><h1 class="serif" style="text-align:center">'+title+'</h1><p style="color:#aaa;text-align:center;margin:0 0 24px">'+txt+'</p>'+(isLiv?'<p class="text-xs" style="color:#888;text-align:center;max-width:280px">Paiement envoyé : pour annuler, appelez le restaurant.</p>':'<button class="btn btn-ghost btn-block" style="max-width:280px" data-action="client-cancel-wait">Annuler</button>')+'</div>';
+  }
+
+  // SERVING (sur place en attente encaissement)
+  if(v.screen==="serving" && order){
+    return '<div class="app">'+topbar({title:"Votre commande",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:40px"><div style="font-size:64px;margin-bottom:20px">💁</div><h2 class="section-title">Commande validée !</h2><p class="muted" style="margin-bottom:24px">Votre serveuse va venir encaisser.</p><div class="card" style="text-align:left"><p class="bold">Table '+(order.tableNumber||"")+'</p><p class="text-sm muted" style="margin-top:6px">Montant : <strong class="mono" style="color:var(--noir);font-size:18px">'+money(orderGrandTotal(order))+'</strong></p></div><p class="text-xs muted" style="margin-top:16px;margin-bottom:14px">La cuisine commencera après paiement.</p><button class="btn btn-outline btn-block" data-action="client-edit-from-refused">✏️ Modifier</button></div></div>';
+  }
+
+  // REFUSED (un plat refusé)
+  if(v.screen==="refused" && order){
+    const it=order.items[v.refusedIdx];
+    if(!it){v.screen="payment";return screenClient();}
+    const validItems=order.items.filter(i=>i.statut!=="Refusé");
+    const lastValid=validItems.length<=1 && order.items[v.refusedIdx].statut==="Refusé";
+    return '<div class="app">'+topbar({title:"Plat indisponible",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:20px"><div style="font-size:56px;margin-bottom:16px">❌</div><h2 class="section-title">Plat indisponible</h2><div class="card" style="margin:16px 0;text-align:left"><p class="card-title">'+it.qty+'× '+esc(it.name)+'</p><p style="color:var(--rouge);font-size:13px;margin:6px 0 0">'+esc(it.motif||"Indisponible")+'</p></div>'+(lastValid?'<p class="text-sm bold" style="color:var(--rouge);margin-bottom:14px">⚠️ C\'était votre dernier plat disponible</p><button class="btn btn-accent btn-block" style="padding:14px;margin-bottom:8px" data-action="client-edit-from-refused">✏️ Choisir d\'autres plats</button><button class="btn btn-ghost btn-block" data-action="client-cancel-order">Annuler</button>':'<button class="btn btn-accent btn-block" style="padding:14px;margin-bottom:8px" data-action="client-remove-refused">Continuer sans ce plat</button><button class="btn btn-outline btn-block" data-action="client-edit-from-refused">✏️ Modifier</button>')+'</div></div>';
+  }
+
+  // FULLY REFUSED
+  if(v.screen==="fully_refused" && order){
+    return '<div class="app">'+topbar({title:"Commande refusée",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:20px"><div style="font-size:56px;margin-bottom:16px">😔</div><h2 class="section-title">Commande refusée</h2><p class="muted" style="margin-bottom:14px">Tous vos plats sont indisponibles.</p><div class="card" style="text-align:left;margin-bottom:14px">'+order.items.map(it=>'<div class="flex between" style="font-size:13px;margin-bottom:4px;text-decoration:line-through;color:var(--gris)"><span>'+it.qty+'× '+esc(it.name)+'</span><span class="text-xs">'+esc(it.motif||"")+'</span></div>').join("")+'</div><button class="btn btn-accent btn-block" style="padding:14px;margin-bottom:8px" data-action="client-edit-from-refused">✏️ Choisir d\'autres plats</button><button class="btn btn-ghost btn-block" data-action="client-cancel-order">Annuler</button></div></div>';
+  }
+
+  // EDIT ORDER
+  if(v.screen==="editOrder" && order){
+    const cats=["Entrées","Plats","Desserts","Boissons"];
+    const dishes=menu.filter(d=>d.cat===v.cat&&isDishAvailableToday(d));
+    const items=menu.filter(m=>v.editCart[m._docId]>0 && isDishAvailableToday(m));
+    const total=items.reduce((sum,d)=>sum+d.price*v.editCart[d._docId],0);
+    return '<div class="app" style="padding-bottom:100px"><div class="topbar"><button class="topbar-btn" data-action="client-edit-cancel">← Annuler</button><div style="flex:1;min-width:0"><p class="topbar-sub">Modification</p><div class="topbar-title">Ma commande</div></div><span></span></div><div class="menu-header"><div class="cat-tabs" style="margin-top:0">'+cats.map(c=>'<button class="cat-btn on-dark '+(v.cat===c?"active":"")+'" data-action="client-edit-cat" data-cat="'+c+'">'+c+'</button>').join("")+'</div></div><div class="content content-narrow" style="padding-top:12px">'+dishes.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p></div><div class="qty-controls">'+(v.editCart[d._docId]>0?'<button class="qty-btn" data-action="client-edit-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.editCart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="client-edit-add" data-id="'+d._docId+'">+</button></div></div>').join("")+'</div>'+(items.length>0?'<div style="position:fixed;bottom:16px;left:16px;right:16px;max-width:480px;margin:0 auto"><button class="btn btn-accent btn-block" style="padding:16px" data-action="client-edit-save">Enregistrer ('+items.reduce((s,d)=>s+v.editCart[d._docId],0)+') — '+money(total)+'</button></div>':"")+'</div>';
+  }
+
+  // TRACKING
+  if(v.screen==="tracking" && order){
+    const allItems=order.items.filter(i=>i.statut!=="Refusé");
+    const waitMin=s.waitMode==="sum"?allItems.reduce((a,i)=>a+i.time,0):Math.max(...allItems.map(i=>i.time),0);
+    if(!v.timerTotal){v.timerTotal=Math.max(6,Math.round(waitMin*1.5));v.timerRemaining=v.timerTotal;}
+    const ready=order.readyAt,served=order.status==="servie"||order.status==="livree";
+    const mm=String(Math.floor(v.timerRemaining/60)).padStart(2,"0");const ss=String(v.timerRemaining%60).padStart(2,"0");
+    const progress=v.timerTotal?1-v.timerRemaining/v.timerTotal:1;const circ=2*Math.PI*86,dash=circ*(1-progress);
+    const title = order.type==="livraison"?"Livraison":"Table "+(order.tableNumber||"");
+    return '<div class="app">'+topbar({title:"Suivi",homeAction:"client-home"})+'<div style="background:var(--noir);color:white;flex:1;padding:24px 20px 40px;display:flex;flex-direction:column;align-items:center"><p class="login-sub">'+title+'</p><h1 class="serif" style="text-align:center;font-size:20px;margin:8px 0 20px;color:white">'+(served?"Terminée":ready?"Prête !":"En cours")+'</h1><div class="progress-circle"><svg><circle cx="90" cy="90" r="86" stroke="#2a2a2a" stroke-width="10" fill="none"/><circle cx="90" cy="90" r="86" stroke="'+(ready?"#2d7a3e":"#ffc107")+'" stroke-width="10" fill="none" stroke-dasharray="'+circ+'" stroke-dashoffset="'+dash+'" stroke-linecap="round"/></svg><div class="center">'+(ready?'<div style="font-size:48px">✅</div>':'<span class="mono" style="font-size:26px;font-weight:bold;color:white">'+mm+':'+ss+'</span>')+'</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><button class="btn btn-accent" data-action="client-call-serveuse">🔔 Appeler serveuse</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="text-decoration:none;color:var(--jaune);border-color:#444">📞 Restaurant</a></div></div></div>';
+  }
+
+  // DONE (sur place, servi)
+  if(v.screen==="done"){
+    const isSurPlace=v.mode==="sur_place";
+    return '<div class="app">'+topbar({title:"Terminé",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:40px"><div style="font-size:64px;margin-bottom:20px">🎉</div><h2 class="section-title" style="font-size:26px">Bon appétit !</h2><p class="muted" style="margin-top:14px;margin-bottom:24px">Merci de votre visite 🙏</p>'+(isSurPlace?'<button class="btn btn-accent btn-block" style="padding:16px;margin-bottom:8px" data-action="client-rescan">📷 Rescanner une table</button><button class="btn btn-ghost btn-block" data-action="client-switch-livraison">🛵 Commander en livraison</button>':'<p class="text-xs muted">Vous pouvez fermer cette page.</p>')+'</div></div>';
+  }
+
+  // RESCAN
+  if(v.screen==="rescan"){
+    return '<div class="login"><div class="login-logo">📷</div><h1 class="serif" style="font-size:22px;text-align:center">Scannez à nouveau</h1><p style="color:#aaa;text-align:center;margin:0 0 20px;font-size:14px">Scannez le QR code de votre nouvelle table avec l\'appareil photo de votre téléphone.</p><div class="card" style="background:#1a1a1a;border:1px solid #333;color:white;max-width:300px;width:100%;text-align:center"><p class="text-xs" style="color:#aaa;margin:0">Le QR est collé sur la table</p></div><div style="margin-top:24px;text-align:center;max-width:300px;width:100%"><p class="text-xs" style="color:#666;margin-bottom:8px">Déjà rentré chez vous ?</p><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444">🛵 Commander en livraison</button></div></div>';
+  }
+
+  // CONFIRMATION DE LIVRAISON (client)
+  if(v.screen==="confirm_delivery" && order){
+    return '<div class="app">'+topbar({title:"Commande livrée",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:30px"><div style="font-size:64px;margin-bottom:20px">🛵</div><h2 class="section-title">Avez-vous été livré ?</h2><p class="muted" style="margin-bottom:24px">Confirmez la réception de votre commande.</p><button class="btn btn-success btn-block" style="padding:16px;margin-bottom:10px" data-action="client-confirm-received">✅ Oui, bien reçue</button><button class="btn btn-danger btn-block" style="padding:16px" data-action="client-confirm-issue">⚠️ Non / Problème</button></div></div>';
+  }
+
+  // NOTATION
+  if(v.screen==="rate" && order){
+    const sd=v.ratingDriver||0; const sr=v.ratingResto||0;
+    const stars=(n,cur)=>[1,2,3,4,5].map(i=>'<span class="star '+(i<=cur?"on":"")+'" data-action="client-rate" data-target="'+n+'" data-value="'+i+'">★</span>').join("");
+    return '<div class="app">'+topbar({title:"Votre avis",homeAction:"client-home"})+'<div class="content content-narrow"><div class="card" style="text-align:center"><p class="bold" style="margin-bottom:4px">⭐ Notez le livreur</p><div class="star-row">'+stars("driver",sd)+'</div></div><div class="card" style="text-align:center"><p class="bold" style="margin-bottom:4px">⭐ Notez le restaurant</p><div class="star-row">'+stars("resto",sr)+'</div></div><div class="card"><label class="text-xs muted bold">💬 Commentaire (optionnel)</label><textarea class="input" style="margin-top:6px" rows="3" data-input="client-rating-comment">'+esc(v.ratingComment||"")+'</textarea></div><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="client-rate-send">Envoyer</button><button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="client-rate-skip">Passer</button></div></div>';
+  }
+
+  // RÉCLAMATION
+  if(v.screen==="claim" && order){
+    const types=[
+      {k:"non_recue", l:"Commande non reçue"},
+      {k:"incomplete", l:"Commande incomplète"},
+      {k:"qualite", l:"Produit de mauvaise qualité"},
+      {k:"autre", l:"Autre"}
+    ];
+    return '<div class="app">'+topbar({title:"Signaler un problème",homeAction:"client-home"})+'<div class="content content-narrow"><p class="section-sub">Qu\'est-ce qui s\'est passé ?</p>'+types.map(t=>'<div class="claim-opt '+(v.claimType===t.k?"on":"")+'" data-action="client-claim-type" data-type="'+t.k+'"><div class="dot"></div><span>'+t.l+'</span></div>').join("")+'<div class="card" style="margin-top:14px"><label class="text-xs muted bold">💬 Décrivez (optionnel)</label><textarea class="input" style="margin-top:6px" rows="3" data-input="client-claim-text">'+esc(v.claimText||"")+'</textarea></div><button class="btn btn-danger btn-block" style="padding:14px;margin-top:14px;opacity:'+(v.claimType?"1":"0.5")+'" data-action="client-claim-send" '+(v.claimType?"":"disabled")+'>Envoyer la réclamation</button></div></div>';
+  }
+
+  // THANKS (fin)
+  if(v.screen==="thanks"){
+    return '<div class="app">'+topbar({title:"Merci",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:60px"><div style="font-size:64px;margin-bottom:20px">🙏</div><h2 class="section-title" style="font-size:24px">Merci !</h2><p class="muted" style="margin-top:14px">Vous pouvez fermer cette page.</p><p class="text-xs muted" style="margin-top:20px">Pour recommander, rafraîchissez la page.</p></div></div>';
+  }
+
+  return "";
+}
+
+function renderDistancePanel(){if(clientS.deliveryLat==null)return '<div class="card" style="text-align:center;color:var(--gris);font-size:13px;margin-top:12px">Aucune position sélectionnée</div>';const fee=clientS.deliveryKm!=null?Math.round(clientS.deliveryKm*prixParKm()):0;return '<div class="map-info" style="margin-top:12px"><div class="flex between center"><div><div class="text-xs" style="color:#aaa">Distance route</div><div class="dist">'+(clientS.deliveryKm!=null?clientS.deliveryKm.toFixed(2)+" km":"Calcul…")+'</div></div><div style="text-align:right"><div class="text-xs" style="color:#aaa">Frais livraison</div><div class="dist">'+(fee?money(fee):"—")+'</div></div></div></div>';}
+function updateDistancePanel(){const p=document.getElementById("distance-panel");if(p)p.innerHTML=renderDistancePanel();}
+function initLeafletMap(){const mapEl=document.getElementById("map");if(!mapEl)return;if(mapInstance)destroyMap();const rc=restoCoords();mapInstance=L.map("map").setView([rc.lat,rc.lon],13);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OSM"}).addTo(mapInstance);L.marker([rc.lat,rc.lon]).addTo(mapInstance).bindPopup("🍽️ Restaurant D&S").openPopup();const lat=clientS.deliveryLat||rc.lat;const lon=clientS.deliveryLon||rc.lon;if(clientS.deliveryLat!=null){mapMarker=L.marker([lat,lon],{draggable:true}).addTo(mapInstance);mapMarker.on("dragend",()=>{const p=mapMarker.getLatLng();setClientPosition(p.lat,p.lng);});mapInstance.setView([lat,lon],15);}mapInstance.on("click",e=>{if(!mapMarker)mapMarker=L.marker([e.latlng.lat,e.latlng.lng],{draggable:true}).addTo(mapInstance);else mapMarker.setLatLng(e.latlng);mapMarker.off("dragend");mapMarker.on("dragend",()=>{const p=mapMarker.getLatLng();setClientPosition(p.lat,p.lng);});setClientPosition(e.latlng.lat,e.latlng.lng);});}
+function setClientPosition(lat,lon){clientS.deliveryLat=lat;clientS.deliveryLon=lon;clientS.deliveryKm=null;updateDistancePanel();calcRoadDistanceKm(lat,lon).then(r=>{clientS.deliveryKm=r.km;updateDistancePanel();render();}).catch(e=>toast("Erreur calcul distance"));}
+function destroyMap(){if(mapInstance){try{mapInstance.remove();}catch(e){}mapInstance=null;mapMarker=null;}}
+
+// ============================================================
+// SERVEUSE
+// ============================================================
+function screenServeuse(){
+  const me=DATA.staff.find(s=>s._docId===SESSION.uid&&s.role==="serveuse");
+  const today=nowDate();const day=DATA.affectation[today]||{};
+  const tableIds=me?Object.entries(day).filter(([tid,sid])=>sid===me._docId).map(([tid])=>tid):[];
+  const myTables=DATA.tables.filter(t=>tableIds.includes(t._docId));
+  const myActiveOrders=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.status==="payee"&&!o.servedAt);
+  const toCollect=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.status==="att_collect");
+  const v=srvS; let content="";
+  if(v.tab==="tables"){
+    content='<h2 class="section-title">Mes tables du jour</h2>'+(myTables.length===0?'<p class="empty">Aucune table affectée.</p>':myTables.map(t=>{const o=myActiveOrders.find(x=>x.tableId===t._docId)||toCollect.find(x=>x.tableId===t._docId);const timer=o&&o.status==="payee"?orderTimerInfo(o):null;return '<div class="card"><div class="card-row"><div class="flex center gap-3"><div style="width:44px;height:44px;border-radius:50%;background:var(--noir);color:var(--jaune);display:flex;align-items:center;justify-content:center;font-weight:bold">'+t.number+'</div><div><p class="card-title">Table '+t.number+'</p><p class="card-sub">'+(o?statusBadge(o):"Libre")+'</p></div></div>'+(timer?'<div class="mono bold '+(timer.overdue||timer.urgent?"timer urgent":"timer ok")+'">'+timer.text+'</div>':"")+'</div></div>';}).join(""));
+  } else if(v.tab==="order"){
+    if(v.orderStep==="table"){content='<h2 class="section-title">Nouvelle commande</h2>'+(myTables.length===0?'<p class="empty">Aucune table affectée</p>':'<div class="table-grid">'+myTables.map(t=>'<button class="table-cell" data-action="srv-pick-table" data-id="'+t._docId+'">'+t.number+'</button>').join("")+'</div>');}
+    else {const cats=["Entrées","Plats","Desserts","Boissons"];const dishes=DATA.menu.filter(d=>d.cat===v.orderCat&&isDishAvailableToday(d));const items=DATA.menu.filter(m=>v.orderCart[m._docId]>0);const total=items.reduce((sum,d)=>sum+d.price*v.orderCart[d._docId],0);const t=DATA.tables.find(x=>x._docId===v.orderTable);content='<div style="padding-bottom:100px"><div class="flex between center" style="margin-bottom:12px"><button class="btn btn-ghost btn-sm" data-action="srv-back-table">← Changer</button><h2 class="section-title" style="font-size:18px;margin:0">Table '+(t?t.number:"")+'</h2><span></span></div><div class="cat-tabs" style="margin:12px 0">'+cats.map(c=>'<button class="cat-btn '+(v.orderCat===c?"active":"")+'" data-action="srv-cat" data-cat="'+c+'">'+c+'</button>').join("")+'</div>'+dishes.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p><p class="dish-desc">'+money(d.price)+' · ~'+d.time+' min</p></div><div class="qty-controls">'+(v.orderCart[d._docId]>0?'<button class="qty-btn" data-action="srv-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.orderCart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="srv-add" data-id="'+d._docId+'">+</button></div></div>').join("")+(items.length>0?'<div class="cart-fab" data-action="srv-send"><span class="label">Envoyer ('+items.reduce((s,d)=>s+v.orderCart[d._docId],0)+')</span><span class="total">'+money(total)+'</span></div>':"")+'</div>';}
+  } else if(v.tab==="collect"){
+    if(toCollect.length===0){content='<h2 class="section-title">Encaissements</h2><p class="section-sub">Rien à encaisser pour le moment</p><p class="empty">Aucune commande en attente.</p>';}
+    else {content='<h2 class="section-title">💰 Encaissements</h2><p class="section-sub">'+toCollect.length+' commande(s)</p>'+toCollect.map(o=>{const issue=o.cashIssue==="non_recu";const sel=v.collectMethod && v.collectOrderId===o._docId ? v.collectMethod : null;return '<div class="card" style="margin-bottom:12px;border-left:4px solid '+(issue?"var(--rouge)":"var(--jaune-fonce)")+'"><div class="card-row" style="margin-bottom:10px"><div><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+timeAgo(o.createdAt)+'</p></div><span class="mono bold">'+money(orderTotal(o))+'</span></div><ul style="margin:0 0 10px 0;padding-left:20px;font-size:13px;color:#555">'+o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+'</ul>'+(issue?'<div class="alert-banner" style="padding:10px;margin-bottom:10px"><strong>⚠️ Non reçu</strong></div>':"")+(!issue?('<div class="grid-2" style="margin-bottom:10px"><button class="btn btn-'+(sel==="cash"?"accent":"ghost")+'" data-action="srv-collect-method" data-id="'+o._docId+'" data-method="cash">💵 Cash</button><button class="btn btn-'+(sel==="momo"?"accent":"ghost")+'" data-action="srv-collect-method" data-id="'+o._docId+'" data-method="momo">📱 MoMo</button></div>'+(sel==="momo"?'<div><label class="text-xs muted bold">RÉF MoMo</label><input class="input" style="margin-top:4px" data-input="srv-collect-ref" value="'+esc(v.collectRef||"")+'"></div>':"")+'<button class="btn btn-success btn-block" style="margin-top:10px" data-action="srv-collect-confirm" data-id="'+o._docId+'">✓ Paiement reçu</button><button class="btn btn-danger btn-block" style="margin-top:6px" data-action="srv-collect-issue" data-id="'+o._docId+'">❌ Non reçu</button>'):"")+'</div>';}).join("");}
+  } else if(v.tab==="suivi"){
+    content='<h2 class="section-title">Suivi</h2><p class="section-sub">'+myActiveOrders.length+' active(s)</p>'+(myActiveOrders.length===0?'<p class="empty">Aucune commande active</p>':myActiveOrders.map(o=>{const ready=!!o.readyAt;const timer=orderTimerInfo(o);return '<div class="card" style="margin-bottom:10px"><div class="flex between center" style="margin-bottom:8px"><div><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+money(orderTotal(o))+'</p></div><div style="text-align:right">'+statusBadge(o)+'<p class="mono bold '+(timer.urgent||timer.overdue?"timer urgent":"timer ok")+'" style="margin-top:4px;font-size:14px">'+timer.text+'</p></div></div><ul style="margin:0 0 10px 0;padding-left:20px;font-size:13px;color:#555">'+o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+'</ul>'+(ready?'<button class="btn btn-success btn-block" data-action="srv-served" data-id="'+o._docId+'">✓ J\'ai servi</button>':'<p class="text-xs muted" style="text-align:center">Attente cuisine…</p>')+'</div>';}).join(""));
+  }
+  const suiviBadge=myActiveOrders.filter(o=>o.readyAt).length;
+  return '<div class="app" style="max-width:520px;margin:0 auto">'+topbar({role:"Serveuse",title:SESSION.name,homeAction:"srv-home"})+'<div class="content">'+content+'</div><div class="bottom-nav cols-4">'+[{key:"tables",em:"🗂️",label:"Tables"},{key:"order",em:"🛍️",label:"Commander"},{key:"collect",em:"💰",label:"Encaisser",badge:toCollect.filter(o=>!o.cashIssue).length},{key:"suivi",em:"📋",label:"Suivi",badge:suiviBadge}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="srv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+'</div></div>';
+}
+
+// ============================================================
+// GÉRANT
+// ============================================================
+function screenGerant(){
+  const v=gerS;const today=nowDate();const dayAffect=DATA.affectation[today]||{};const hasAffectation=Object.keys(dayAffect).length>0;
+  const hasMenuToday = todayMenu() !== null;
+  const needsSetup = !hasAffectation || !hasMenuToday;
+  if(needsSetup && v.tab!=="affectation" && v.tab!=="menuDuJour"){
+    const stepAffect = !hasAffectation;
+    const title = stepAffect ? "Attribution des tables" : "Menu du jour à confirmer";
+    const emoji = stepAffect ? "📋" : "🍽️";
+    const txt = stepAffect ? "Attribuez les tables aux serveuses." : "Confirmez les plats disponibles aujourd'hui.";
+    const cta = stepAffect ? "Commencer" : "Confirmer";
+    const act = stepAffect ? "ger-force-affect" : "ger-force-menu";
+    return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content"><div class="modal-overlay" style="position:fixed"><div class="modal-card"><div style="font-size:48px;margin-bottom:12px">'+emoji+'</div><h2>'+title+'</h2><p>'+txt+'</p><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="'+act+'">'+cta+'</button></div></div></div></div>';
+  }
+  const pending=DATA.orders.filter(o=>o.status==="att_validation");
+  const pendingLiv=DATA.orders.filter(o=>o.status==="att_verif_paiement");
+  const awaitingCollect=DATA.orders.filter(o=>o.status==="att_collect");
+  const awaitingPay=DATA.orders.filter(o=>o.status==="att_paiement");
+  const live=DATA.orders.filter(o=>o.status==="payee"&&!o.servedAt&&o.type!=="livraison");
+  const delivering=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.servedAt);
+  const livreurs=DATA.staff.filter(s=>s.role==="livreur");
+  const cashIssues=DATA.orders.filter(o=>o.cashIssue==="non_recu"&&!o.servedAt);
+  const invoicesToPrint=DATA.orders.filter(o=>o.status==="payee"&&o.paymentMethod&&!o.printedAt&&inCurrentBilan(o));
+  const openClaims=DATA.orders.filter(o=>o.claim && !o.claim.resolvedAt);
+  let content="";
+  if(v.tab==="validation"){
+    let alertHtml="";
+    if(cashIssues.length>0){alertHtml='<div class="alert-banner" style="grid-column:1/-1"><strong>⚠️ '+cashIssues.length+' paiement(s) non reçu</strong>'+cashIssues.map(o=>'<div class="flex between center" style="margin-top:8px;font-size:13px"><span>Table '+(o.tableNumber||"—")+' — '+money(orderTotal(o))+'</span><button class="btn btn-success btn-sm" data-action="ger-resolve-cash" data-id="'+o._docId+'">✓ Résolu</button></div>').join("")+'</div>';}
+    content='<div style="display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">'+alertHtml+
+    // LIVRAISONS À VÉRIFIER
+    '<div><h2 class="section-title" style="font-size:17px">🛵 Livraisons à vérifier ('+pendingLiv.length+')</h2>'+(pendingLiv.length===0?'<p class="empty">Aucune</p>':pendingLiv.map(o=>{const label="Livraison — "+(o.clientInfo?.name||"");const refDisplay = o.momoRef?('<div style="background:#faf8f2;padding:10px;border-radius:8px;font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;margin-bottom:10px">'+esc(o.momoRef)+'</div>'):"<p class='text-xs muted'>Aucune réf fournie</p>";return '<div class="card" style="margin-bottom:12px;border-left:4px solid var(--rouge)"><div class="card-row" style="margin-bottom:10px"><div style="min-width:0"><p class="card-title">'+esc(label)+'</p><p class="card-sub">'+timeAgo(o.createdAt)+' · '+money(orderGrandTotal(o))+'</p></div></div><p class="text-xs muted">📞 '+esc(o.clientInfo?.phone||"")+' · 📍 '+esc(o.clientInfo?.address||"")+'</p><ul style="margin:8px 0;padding-left:20px;font-size:13px;color:#555">'+o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+'</ul><p class="text-xs muted bold" style="margin-bottom:6px">RÉFÉRENCE MoMo :</p>'+refDisplay+'<div class="grid-2" style="margin-top:8px"><button class="btn btn-success" data-action="ger-validate-liv" data-id="'+o._docId+'">✓ Valider</button><button class="btn btn-danger" data-action="ger-reject-liv" data-id="'+o._docId+'">✕ Refuser</button></div></div>';}).join(""))+'</div>'+
+    // SUR PLACE À VALIDER
+    '<div><h2 class="section-title" style="font-size:17px">📋 Sur place à valider ('+pending.length+')</h2>'+(pending.length===0?'<p class="empty">Rien en attente</p>':pending.map(o=>{const allDecided=o.items.every(i=>i.statut&&(i.statut!=="Refusé"||i.motif));const hasValid=o.items.some(i=>i.statut==="Validé");const validateLabel = hasValid ? "Valider" : "Refuser tout";const validateClass = hasValid ? "btn-primary" : "btn-danger";const label="Table "+(o.tableNumber||"—");return '<div class="card" style="margin-bottom:12px"><div class="card-row" style="margin-bottom:10px"><div style="min-width:0"><p class="card-title">'+esc(label)+'</p><p class="card-sub">'+timeAgo(o.createdAt)+'</p></div></div>'+o.items.map((it,idx)=>{const motifs=["Rupture de stock","Ingrédient manquant","Cuisine surchargée"];return '<div style="margin-bottom:10px"><div class="flex between center" style="margin-bottom:6px"><span style="'+(it.statut==="Refusé"?"text-decoration:line-through;color:var(--rouge)":"")+';font-size:14px">'+it.qty+'× '+esc(it.name)+'</span><div class="flex gap-2"><button class="qty-btn '+(it.statut==="Validé"?"add":"")+'" style="'+(it.statut==="Validé"?"background:var(--vert);border-color:var(--vert)":"")+'" data-action="ger-item-valid" data-id="'+o._docId+'" data-idx="'+idx+'">✓</button><button class="qty-btn" style="'+(it.statut==="Refusé"?"background:var(--rouge);color:white;border-color:var(--rouge)":"color:var(--rouge)")+'" data-action="ger-item-refuse" data-id="'+o._docId+'" data-idx="'+idx+'">✕</button></div></div>'+(it.statut==="Refusé"?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-left:6px">'+motifs.map(m=>'<button class="badge '+(it.motif===m?"badge-rouge":"badge-neutre")+'" style="border:1px solid var(--sable);padding:6px 10px" data-action="ger-motif" data-id="'+o._docId+'" data-idx="'+idx+'" data-motif="'+esc(m)+'">'+esc(m)+'</button>').join("")+'</div>':"")+'</div>';}).join("")+'<div class="flex gap-2" style="margin-top:8px"><button class="btn '+validateClass+'" style="flex:1" data-action="ger-validate" data-id="'+o._docId+'" '+(allDecided?"":"disabled")+'>'+validateLabel+'</button><button class="btn btn-danger btn-sm" data-action="ger-delete" data-id="'+o._docId+'">🗑️</button></div></div>';}).join(""))+'</div>'+
+    // ENCAISSEMENT SERVEUSE
+    '<div><h2 class="section-title" style="font-size:17px">💰 Encaissement ('+awaitingCollect.length+')</h2>'+(awaitingCollect.length===0?'<p class="empty">Aucune</p>':awaitingCollect.map(o=>'<div class="card" style="margin-bottom:10px"><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+money(orderTotal(o))+' · '+(o.serveuseName||"")+'</p></div>').join(""))+'</div>'+
+    '</div>';
+  } else if(v.tab==="claims"){
+    content='<h2 class="section-title">🚨 Réclamations ('+openClaims.length+')</h2><p class="section-sub">Plaintes des clients livraison</p>'+(openClaims.length===0?'<p class="empty">Aucune réclamation en cours</p>':openClaims.map(o=>{const t=o.claim.type;const labels={non_recue:"Commande non reçue",incomplete:"Commande incomplète",qualite:"Produit de mauvaise qualité",autre:"Autre"};return '<div class="card" style="margin-bottom:12px;border-left:4px solid var(--rouge)"><p class="card-title">'+esc(labels[t]||t)+'</p><p class="card-sub">'+timeAgo(o.claim.createdAt)+' · '+esc(o.clientInfo?.name||"")+'</p>'+(o.claim.description?'<p class="text-sm" style="margin:8px 0;background:#faf8f2;padding:10px;border-radius:8px">'+esc(o.claim.description)+'</p>':"")+'<div class="flex gap-2" style="margin-top:8px"><a href="tel:'+(o.clientInfo?.phone||"").replace(/\s/g,"")+'" class="btn btn-primary btn-sm" style="text-decoration:none;flex:1">📞 Appeler</a><button class="btn btn-success btn-sm" style="flex:1" data-action="ger-resolve-claim" data-id="'+o._docId+'">✓ Réglée</button></div></div>';}).join(""));
+  } else if(v.tab==="salle"){
+    content='<h2 class="section-title">👥 Salle ('+live.length+')</h2>'+(live.length===0?'<p class="empty">Aucune</p>':'<div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">'+live.map(o=>{const timer=orderTimerInfo(o);return '<div class="card" style="border-left:4px solid var(--vert)"><div class="flex between center"><div><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+money(orderTotal(o))+'</p></div><div style="text-align:right">'+statusBadge(o)+'<p class="mono bold" style="margin-top:6px">'+timer.text+'</p></div></div></div>';}).join("")+'</div>');
+  } else if(v.tab==="invoices"){
+    content='<h2 class="section-title">🧾 Factures</h2><p class="section-sub">'+invoicesToPrint.length+' en attente</p>'+(invoicesToPrint.length===0?'<p class="empty">Aucune</p>':invoicesToPrint.map(o=>'<div class="card" style="margin-bottom:10px"><div class="card-row"><div><p class="card-title">'+(o.type==="livraison"?"Livraison — "+(o.clientInfo?.name||""):"Table "+(o.tableNumber||"—"))+'</p><p class="card-sub">'+fmtDateTime(o.paidAt||o.createdAt)+' · '+money(orderGrandTotal(o))+'</p></div></div><button class="btn btn-accent btn-block" style="margin-top:8px" data-action="ger-print-invoice" data-id="'+o._docId+'">🖨️ Imprimer</button></div>').join(""));
+  } else if(v.tab==="livraisons"){
+    content='<h2 class="section-title">🛵 Livraisons ('+delivering.length+')</h2>'+(delivering.length===0?'<p class="empty">Aucune</p>':delivering.map(o=>{const assigned=livreurs.find(l=>l._docId===o.livreurId);return '<div class="card" style="margin-bottom:12px"><p class="card-title">'+esc(o.clientInfo?.name||"")+'</p><p class="card-sub">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-xs muted" style="margin-top:4px">📞 '+esc(o.clientInfo?.phone||"")+' · '+money(orderGrandTotal(o))+'</p><div style="margin-top:10px"><select class="input" data-action="ger-assign-livreur" data-id="'+o._docId+'"><option value="">— Non assignée —</option>'+livreurs.map(l=>'<option value="'+l._docId+'" '+(o.livreurId===l._docId?"selected":"")+'>'+esc(l.name)+'</option>').join("")+'</select></div>'+(assigned?'<p class="text-sm" style="margin-top:8px;color:var(--vert)"><strong>'+esc(assigned.name)+'</strong></p>':"")+'</div>';}).join(""));
+  } else if(v.tab==="affectation"){
+    const serveuses=DATA.staff.filter(s=>s.role==="serveuse");
+    content='<h2 class="section-title">Affectation</h2><p class="section-sub">'+new Date(today).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+'</p>'+(hasAffectation?'<p class="text-sm muted" style="margin-bottom:14px">Touchez une case pour assigner.</p>':'<div class="alert-banner" style="background:rgba(224,168,0,0.15);border-color:var(--jaune-fonce)"><strong>⚠️ Attribution obligatoire</strong></div>')+'<div class="table-wrap"><table><thead><tr><th>Table</th>'+serveuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+DATA.tables.map(t=>'<tr><td><strong>Table '+t.number+'</strong></td>'+serveuses.map(s=>{const checked=dayAffect[t._docId]===s._docId;return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir)":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'">'+(checked?"✓":"")+'</button></td>';}).join("")+'</tr>').join("")+'</tbody></table></div>'+(hasAffectation?'<button class="btn btn-accent btn-block" style="margin-top:20px" data-action="ger-home">Terminer</button>':"");
+  } else if(v.tab==="menuDuJour"){
+    const confirmed = todayMenu() !== null;
+    const ids = todayMenuDraft();
+    const cats = ["Entrées","Plats","Desserts","Boissons"];
+    content = '<h2 class="section-title">🍽️ Menu du jour</h2><p class="section-sub">'+(confirmed?'✅ Confirmé':'⚠️ À confirmer')+' — '+ids.length+' plats</p>'+
+      cats.map(cat=>{const dishes=DATA.menu.filter(d=>d.cat===cat && d.available);if(!dishes.length)return "";
+        return '<div class="cat-group"><div class="cat-group-title">'+esc(cat)+'</div>'+dishes.map(d=>{const on=ids.includes(d._docId);return '<div class="dish-row" style="cursor:pointer;'+(on?'border-color:var(--vert);background:rgba(45,122,62,0.04)':'opacity:0.55')+'" data-action="ger-toggle-menu" data-id="'+d._docId+'"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p><p class="dish-desc">'+money(d.price)+'</p></div><div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;'+(on?'background:var(--vert);color:white':'background:var(--sable);color:var(--gris)')+'">'+(on?'✓':'—')+'</div></div>';}).join("")+'</div>';}).join("")+
+      (confirmed?'<button class="btn btn-ghost btn-block" style="margin-top:20px" data-action="ger-reconfirm-menu">🔄 Reconfirmer</button>':'<button class="btn btn-accent btn-block" style="margin-top:20px;padding:14px" data-action="ger-confirm-menu">✓ Confirmer</button>');
+  } else if(v.tab==="bilan"){
+    const todayOrders=DATA.orders.filter(inCurrentBilan);
+    const served=todayOrders.filter(o=>o.status==="servie"||o.status==="livree");
+    const totalCA=served.reduce((s,o)=>s+orderGrandTotal(o),0);
+    const cash=served.filter(o=>o.paymentMethod==="cash").reduce((s,o)=>s+orderGrandTotal(o),0);
+    const momo=served.filter(o=>o.paymentMethod==="momo").reduce((s,o)=>s+orderGrandTotal(o),0);
+    const panier=served.length?Math.round(totalCA/served.length):0;
+    const dishStats={};served.forEach(o=>o.items.filter(i=>i.statut!=="Refusé").forEach(i=>{if(!dishStats[i.name])dishStats[i.name]={qty:0,ca:0};dishStats[i.name].qty+=i.qty;dishStats[i.name].ca+=i.qty*i.price;}));
+    const top=Object.entries(dishStats).sort((a,b)=>b[1].qty-a[1].qty).slice(0,5);
+    content='<h2 class="section-title">Bilan du jour</h2><div class="stats-grid" style="margin-bottom:20px"><div class="stat-card"><p class="stat-label">CA</p><p class="stat-value">'+money(totalCA)+'</p></div><div class="stat-card"><p class="stat-label">Cmd</p><p class="stat-value">'+served.length+'</p></div><div class="stat-card"><p class="stat-label">Panier</p><p class="stat-value">'+money(panier)+'</p></div><div class="stat-card"><p class="stat-label">Cash</p><p class="stat-value">'+money(cash)+'</p></div><div class="stat-card"><p class="stat-label">MoMo</p><p class="stat-value">'+money(momo)+'</p></div></div><div class="card"><p class="bold" style="margin-bottom:10px">📈 Top 5</p>'+(top.length===0?'<p class="empty">—</p>':top.map(([n,st])=>'<div class="flex between text-sm" style="margin-bottom:4px"><span>'+esc(n)+'</span><span class="mono muted">'+st.qty+' · '+money(st.ca)+'</span></div>').join(""))+'</div>';
+  }
+  const livBadge=delivering.filter(o=>!o.livreurId).length;const callBadge=cashIssues.length;const invBadge=invoicesToPrint.length;const claimBadge=openClaims.length;
+  return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="tabs-scroll">'+[
+    {k:"validation",l:"Validation"+((callBadge||pendingLiv.length)?' ⚠️'+(callBadge+pendingLiv.length):"")},
+    {k:"claims",l:"🚨 Réclamations"+(claimBadge?" ("+claimBadge+")":"")},
+    {k:"salle",l:"Salle"},
+    {k:"livraisons",l:"🛵 Livraisons"+(livBadge?" ("+livBadge+")":"")},
+    {k:"invoices",l:"🧾 Factures"+(invBadge?" ("+invBadge+")":"")},
+    {k:"affectation",l:"Tables"},
+    {k:"menuDuJour",l:"🍽️ Menu"+(todayMenu()===null?" ⚠️":"")},
+    {k:"bilan",l:"Bilan"}
+  ].map(t=>'<button class="tab '+(v.tab===t.k?"active":"")+'" data-action="ger-tab" data-tab="'+t.k+'">'+t.l+'</button>').join("")+'</div><div class="content">'+content+'</div></div>';
+}
+
+function screenCuisine(){
+  const active=DATA.orders.filter(o=>o.status==="payee"&&!o.readyAt);
+  const ready=DATA.orders.filter(o=>o.readyAt&&o.status==="payee");
+  const ticket=(o)=>{const t=orderTimerInfo(o);return '<div class="ticket '+(t.urgent||t.overdue?"urgent":"")+'"><div class="flex between" style="margin-bottom:12px"><div><p class="serif" style="font-size:19px;font-weight:bold;margin:0">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p><p class="text-xs muted">'+timeAgo(o.createdAt)+'</p></div><div class="timer '+(t.urgent||t.overdue?"urgent":"ok")+'">'+t.text+'</div></div><ul style="margin:0 0 14px 0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul><button class="btn btn-outline btn-block" data-action="cui-ready" data-id="'+o._docId+'">Marquer prêt</button></div>';};
+  return '<div class="app">'+topbar({role:"Cuisine",title:SESSION.name,homeAction:"cui-home"})+'<div class="content"><h2 class="section-title" style="font-size:17px">👨‍🍳 File ('+active.length+')</h2>'+(active.length===0?'<p class="empty">Aucune commande</p>':'<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+active.map(ticket).join("")+'</div>')+(ready.length>0?'<h2 class="section-title" style="font-size:17px;margin-top:24px">✅ Prêtes ('+ready.length+')</h2><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+ready.map(o=>'<div class="card" style="border:2px solid var(--vert)"><p class="bold">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p></div>').join("")+'</div>':"")+'</div></div>';
+}
+
+function screenLivreur(){
+  const me=DATA.staff.find(s=>s._docId===SESSION.uid&&s.role==="livreur");
+  const available=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.livreurId);
+  const mine=DATA.orders.filter(o=>o.livreurId===(me&&me._docId)&&o.status!=="livree"&&o.status!=="refusee"&&o.status!=="annulee");
+  const done=DATA.orders.filter(o=>o.livreurId===(me&&me._docId)&&o.status==="livree"&&o.date===nowDate());
+  const v=livS;let content="";
+  if(v.tab==="available"){content='<h2 class="section-title">Disponibles</h2><p class="section-sub">'+available.length+' dispo</p>'+(available.length===0?'<p class="empty">Aucune livraison disponible</p>':available.map(o=>'<div class="card" style="margin-bottom:12px"><p class="bold">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-xs muted">'+esc(o.clientInfo?.name||"")+' · '+esc(o.clientInfo?.phone||"")+'</p><p class="text-xs muted" style="margin-top:4px">Frais livraison : '+(o.deliveryKm?money(Math.round(o.deliveryKm*prixParKm())):"—")+' (payé en ligne)</p><div class="flex between center" style="margin-top:10px"><span class="mono bold">Total payé</span><button class="btn btn-accent btn-sm" data-action="liv-take" data-id="'+o._docId+'">Je prends</button></div></div>').join(""));}
+  else if(v.tab==="current"){content='<h2 class="section-title">Mes livraisons</h2>'+(mine.length===0?'<p class="empty">Aucune livraison en cours</p>':mine.map(o=>'<div class="card" style="border:2px solid var(--jaune);margin-bottom:14px"><p class="bold">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-sm" style="margin:4px 0 12px">'+esc(o.clientInfo?.name||"")+'</p><div class="grid-2" style="margin-bottom:12px"><a href="tel:'+(o.clientInfo?.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="text-decoration:none">📞 Appeler</a>'+(o.deliveryLat?'<a href="https://www.google.com/maps/dir/?api=1&destination='+o.deliveryLat+','+o.deliveryLon+'" target="_blank" class="btn btn-ghost" style="text-decoration:none">🧭 Itinéraire</a>':"")+'</div><div style="background:#faf8f2;padding:10px;border-radius:8px;margin-bottom:12px"><ul style="margin:0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul><p class="text-xs muted" style="margin-top:6px">Client a déjà payé en ligne — rien à encaisser</p></div>'+((!o.deliveryStatus||o.deliveryStatus==="prise")?'<button class="btn btn-primary btn-block" data-action="liv-enroute" data-id="'+o._docId+'">🧭 En route</button>':"")+(o.deliveryStatus==="en_route"?'<button class="btn btn-success btn-block" data-action="liv-done" data-id="'+o._docId+'">✅ Livrée</button>':"")+'</div>').join(""));}
+  else if(v.tab==="history"){content='<h2 class="section-title">Historique</h2><p class="section-sub">'+done.length+' livrée(s)</p>'+(done.length===0?'<p class="empty">Aucune</p>':done.map(o=>'<div class="card card-row" style="margin-bottom:8px"><div style="min-width:0"><p class="card-title">'+esc(o.clientInfo?.address||"")+'</p><p class="card-sub">'+(o.servedAt?new Date(o.servedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"")+'</p></div><span class="mono bold">'+money(Math.round((o.deliveryKm||0)*prixParKm()*LIVREUR_SHARE))+'</span></div>').join(""));}
+  return '<div class="app" style="max-width:520px;margin:0 auto">'+topbar({role:"Livreur",title:SESSION.name,homeAction:"liv-home"})+'<div class="content">'+content+'</div><div class="bottom-nav cols-3">'+[{key:"available",em:"📦",label:"Dispos",badge:available.length},{key:"current",em:"🧭",label:"En cours",badge:mine.length},{key:"history",em:"📋",label:"Historique"}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="liv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+'</div></div>';
+}
+
+// ============================================================
+// ADMIN
+// ============================================================
+function screenAdmin(){
+  const v=admS;
+  const sections=[
+    {key:"menu",em:"🍽️",label:"Menu"},
+    {key:"staff",em:"👥",label:"Personnel"},
+    {key:"tables",em:"📱",label:"Tables & QR"},
+    {key:"stock",em:"📦",label:"Stock"},
+    {key:"bilan",em:"📊",label:"Bilan"},
+    {key:"livrBilan",em:"🛵",label:"Livraisons"},
+    {key:"history",em:"📋",label:"Historique"},
+    {key:"settings",em:"⚙️",label:"Paramètres"},
+    {key:"maintenance",em:"🧹",label:"Maintenance"}
+  ];
+  let content="";
+  if(v.section==="menu"){
+    const cats=["Entrées","Plats","Desserts","Boissons"];const byCat={};cats.forEach(c=>byCat[c]=[]);DATA.menu.forEach(d=>{if(!byCat[d.cat])byCat[d.cat]=[];byCat[d.cat].push(d);});
+    content='<div class="flex between center" style="margin-bottom:16px"><h2 class="section-title" style="font-size:19px;margin:0">Menu</h2><button class="btn btn-primary btn-sm" data-action="admin-add-dish">+ Ajouter</button></div>';
+    Object.keys(byCat).forEach(cat=>{const dishes=byCat[cat];if(dishes.length===0&&!cats.includes(cat))return;content+='<div class="cat-group"><div class="cat-group-title">'+esc(cat)+' ('+dishes.length+')</div><div class="table-wrap"><table><thead><tr><th>Plat</th><th>Prix</th><th>Cuisson</th><th>Dispo</th><th></th></tr></thead><tbody>'+dishes.map(d=>v.editingDish===d._docId?'<tr><td><input class="input" data-input="dish-name" value="'+esc(d.name)+'" style="padding:6px;min-width:120px"><input class="input" data-input="dish-desc" value="'+esc(d.desc||"")+'" placeholder="Description" style="padding:6px;margin-top:4px;font-size:12px"></td><td><input class="input" type="number" data-input="dish-price" value="'+d.price+'" style="padding:6px;width:80px"></td><td><input class="input" type="number" data-input="dish-time" value="'+d.time+'" style="padding:6px;width:60px"></td><td><input type="checkbox" data-input="dish-avail" '+(d.available?"checked":"")+' style="width:20px;height:20px"></td><td style="white-space:nowrap"><select class="input" data-input="dish-cat" style="padding:6px;display:inline-block;width:auto">'+cats.map(c=>'<option '+(d.cat===c?"selected":"")+'>'+c+'</option>').join("")+'</select> <button class="btn btn-success btn-sm" data-action="admin-save-dish" data-id="'+d._docId+'">✓</button></td></tr>':'<tr><td><strong>'+esc(d.name)+'</strong></td><td class="mono">'+money(d.price)+'</td><td>'+d.time+' min</td><td><span class="badge '+(d.available?"badge-vert":"badge-rouge")+'">'+(d.available?"Oui":"Non")+'</span></td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost btn-sm" data-action="admin-edit-dish" data-id="'+d._docId+'">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-dish" data-id="'+d._docId+'">🗑️</button></td></tr>').join("")+'</tbody></table></div></div>';});
+  } else if(v.section==="staff"){
+    const nsMgr=(v.newStaff.role==="gerant"||v.newStaff.role==="admin");
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2><div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'"><select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select>'+(nsMgr?'<input class="input" type="email" placeholder="Email" data-input="new-staff-email" value="'+esc(v.newStaff.email||"")+'"><input class="input" type="password" placeholder="Mot de passe (8 car. min)" autocomplete="new-password" data-input="new-staff-pwd" value="'+esc(v.newStaff.password||"")+'">':'<input class="input mono" placeholder="PIN (6 chiffres)" maxlength="6" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'">')+'<button class="btn btn-primary" data-action="admin-add-staff">Ajouter</button></div></div><div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>{const isAg=p.role==="gerant"||p.role==="admin";const creds=isAg?'📧 '+esc(p.email||"—"):'PIN défini (non consultable)';return '<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+'</p><p class="mono text-xs" style="color:var(--jaune-fonce);margin-top:6px">'+creds+'</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+(isAg?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Lien MDP</button>':'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+'<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>';}).join("")+'</div>';
+  } else if(v.section==="tables"){
+    const adminUrl = SITE_URL + "?admin=1";
+    content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Tables & QR</h2><div class="flex gap-2" style="flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-action="admin-add-table">+ Table</button><button class="btn btn-accent btn-sm" data-action="admin-print-all-qr">🖨️ QR</button></div></div><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">'+DATA.tables.map(t=>{const url=SITE_URL+"?table="+t.number;return '<div class="qr-card"><p class="qr-resto">Restaurant D&S</p><img src="'+qrUrl(url,300)+'" alt="QR Table '+t.number+'"><p class="qr-table-num">Table '+t.number+'</p><button class="btn btn-ghost btn-sm" style="width:100%;color:var(--rouge);margin-top:8px" data-action="admin-del-table" data-id="'+t._docId+'">🗑️ Supprimer</button></div>';}).join("")+'</div>'+
+    '<h2 class="section-title" style="font-size:19px;margin:30px 0 16px">🔐 Lien Admin</h2><p class="section-sub">Ce lien est réservé à l\'administrateur. Ne le partagez pas.</p><div class="qr-card" style="max-width:340px;margin:0 auto"><p class="qr-resto">Restaurant D&S — Admin</p><img src="'+qrUrl(adminUrl,300)+'" alt="QR Admin"><p style="font-family:monospace;font-size:11px;word-break:break-all;margin-top:8px">'+esc(adminUrl)+'</p></div>';
+  } else if(v.section==="stock"){
+    if(!v.stockForm.stockId&&DATA.stock[0])v.stockForm.stockId=DATA.stock[0]._docId;
+    content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Stock</h2><button class="btn btn-primary btn-sm" data-action="admin-toggle-new-stock">'+(v.showNewStock?"✕ Annuler":"+ Ingrédient")+'</button></div>';
+    if(v.showNewStock){const ns=v.newStockItem;content+='<div class="card" style="margin-bottom:16px;border-left:4px solid var(--jaune)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-stock-name" value="'+esc(ns.name)+'"><input class="input" placeholder="Unité" data-input="new-stock-unit" value="'+esc(ns.unit)+'"><input class="input" type="number" placeholder="Qté init." data-input="new-stock-initial" value="'+(ns.initial||"")+'"><input class="input" type="number" placeholder="Seuil" data-input="new-stock-threshold" value="'+(ns.threshold||"")+'"><button class="btn btn-accent" data-action="admin-create-stock">Créer</button></div></div>';}
+    content+='<div class="table-wrap" style="margin-bottom:16px"><table><thead><tr><th>Ingrédient</th><th>Qté</th><th>Seuil</th><th>État</th><th></th></tr></thead><tbody>'+DATA.stock.map(s=>{const qty=stockQty(s._docId);const low=qty<=s.threshold;return '<tr><td><strong>'+esc(s.name)+'</strong></td><td class="mono">'+qty+' '+esc(s.unit)+'</td><td class="muted">'+s.threshold+'</td><td>'+(low?'<span class="badge badge-rouge">⚠</span>':'<span class="badge badge-vert">OK</span>')+'</td><td style="text-align:right"><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-stock" data-id="'+s._docId+'">🗑️</button></td></tr>';}).join("")+'</tbody></table></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">Mouvement</h3><div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><select class="input" data-input="stock-id">'+DATA.stock.map(s=>'<option value="'+s._docId+'" '+(v.stockForm.stockId===s._docId?"selected":"")+'>'+esc(s.name)+'</option>').join("")+'</select><select class="input" data-input="stock-type">'+["Entrée","Sortie"].map(t=>'<option '+(v.stockForm.type===t?"selected":"")+'>'+t+'</option>').join("")+'</select><input class="input" type="number" placeholder="Qté" data-input="stock-qty" value="'+(v.stockForm.qty||"")+'"><input class="input" placeholder="Motif" data-input="stock-motif" value="'+esc(v.stockForm.motif)+'"><button class="btn btn-primary" data-action="admin-add-move">OK</button></div></div>';
+  } else if(v.section==="bilan"){
+    const from=v.bilanFrom||nowDate();const to=v.bilanTo||nowDate();
+    const fromTs=new Date(from+"T00:00:00").getTime();const toTs=new Date(to+"T23:59:59").getTime();
+    const periodOrders=DATA.orders.filter(o=>o.createdAt>=fromTs&&o.createdAt<=toTs&&(o.status==="servie"||o.status==="livree"));
+    const totalCA=periodOrders.reduce((s,o)=>s+orderGrandTotal(o),0);
+    const deliveryFees=periodOrders.filter(o=>o.type==="livraison").reduce((s,o)=>s+deliveryFeeFor(o),0);
+    const restoShare=Math.round(deliveryFees*(1-LIVREUR_SHARE));
+    const livrShare=Math.round(deliveryFees*LIVREUR_SHARE);
+    const cash=periodOrders.filter(o=>o.paymentMethod==="cash").reduce((s,o)=>s+orderGrandTotal(o),0);
+    const momo=periodOrders.filter(o=>o.paymentMethod==="momo").reduce((s,o)=>s+orderGrandTotal(o),0);
+    content='<h2 class="section-title">Bilan & Ventes</h2><div class="card" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:end"><div style="flex:1;min-width:140px"><label class="text-xs muted bold">DU</label><input class="input" type="date" style="margin-top:4px" data-input="bilan-from" value="'+from+'"></div><div style="flex:1;min-width:140px"><label class="text-xs muted bold">AU</label><input class="input" type="date" style="margin-top:4px" data-input="bilan-to" value="'+to+'"></div><button class="btn btn-primary" data-action="admin-bilan-apply">Appliquer</button><button class="btn btn-ghost" data-action="admin-bilan-today">Auj.</button><button class="btn btn-ghost" data-action="admin-bilan-week">7j</button></div><div class="stats-grid"><div class="stat-card"><p class="stat-label">CA Total</p><p class="stat-value">'+money(totalCA)+'</p></div><div class="stat-card"><p class="stat-label">Cmd</p><p class="stat-value">'+periodOrders.length+'</p></div><div class="stat-card"><p class="stat-label">Cash</p><p class="stat-value">'+money(cash)+'</p></div><div class="stat-card"><p class="stat-label">MoMo</p><p class="stat-value">'+money(momo)+'</p></div><div class="stat-card" style="border-left-color:var(--vert)"><p class="stat-label">Frais livraison</p><p class="stat-value">'+money(deliveryFees)+'</p></div><div class="stat-card" style="border-left-color:var(--vert)"><p class="stat-label">Part resto (20%)</p><p class="stat-value">'+money(restoShare)+'</p></div><div class="stat-card" style="border-left-color:var(--jaune-fonce)"><p class="stat-label">Part livreurs (80%)</p><p class="stat-value">'+money(livrShare)+'</p></div></div>';
+  } else if(v.section==="livrBilan"){
+    const today=nowDate();
+    const servedLiv = DATA.orders.filter(o=>o.type==="livraison" && (o.status==="livree"||o.status==="servie"));
+    const todayLiv = servedLiv.filter(o=>o.date===today);
+    const totalFeesToday = todayLiv.reduce((s,o)=>s+deliveryFeeFor(o),0);
+    const restoToday = Math.round(totalFeesToday*(1-LIVREUR_SHARE));
+    const livreurToday = Math.round(totalFeesToday*LIVREUR_SHARE);
+    const byLivreur = {};
+    servedLiv.forEach(o=>{
+      const key = o.livreurName || "Non assigné";
+      if(!byLivreur[key]) byLivreur[key] = { count:0, fees:0, livreur:0, resto:0 };
+      const fee = deliveryFeeFor(o);
+      byLivreur[key].count++;
+      byLivreur[key].fees += fee;
+      byLivreur[key].livreur += Math.round(fee*LIVREUR_SHARE);
+      byLivreur[key].resto += Math.round(fee*(1-LIVREUR_SHARE));
+    });
+    content='<h2 class="section-title">🛵 Bilan Livraisons</h2><p class="section-sub">Frais perçus et répartition 20% / 80%</p>'+
+    '<div class="stats-grid" style="margin-bottom:20px"><div class="stat-card" style="border-left-color:var(--jaune-fonce)"><p class="stat-label">Frais aujourd\'hui</p><p class="stat-value">'+money(totalFeesToday)+'</p></div><div class="stat-card" style="border-left-color:var(--vert)"><p class="stat-label">Part resto (20%)</p><p class="stat-value">'+money(restoToday)+'</p></div><div class="stat-card" style="border-left-color:var(--noir)"><p class="stat-label">Part livreurs (80%)</p><p class="stat-value">'+money(livreurToday)+'</p></div></div>'+
+    '<h3 class="bold" style="margin:20px 0 10px;font-size:15px">Détail par livreur (total historique)</h3><div class="table-wrap"><table><thead><tr><th>Livreur</th><th>Cmd</th><th>Frais</th><th>Part livreur</th><th>Part resto</th></tr></thead><tbody>'+Object.entries(byLivreur).map(([name,st])=>'<tr><td><strong>'+esc(name)+'</strong></td><td>'+st.count+'</td><td class="mono">'+money(st.fees)+'</td><td class="mono" style="color:var(--jaune-fonce)">'+money(st.livreur)+'</td><td class="mono" style="color:var(--vert)">'+money(st.resto)+'</td></tr>').join("")+(Object.keys(byLivreur).length===0?'<tr><td colspan="5" class="empty">Aucune livraison</td></tr>':"")+'</tbody></table></div>';
+  } else if(v.section==="history"){
+    const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));
+    const filtered=paid.filter(o=>{
+      if(v.histFilter.type==="Sur place"&&o.type!=="sur_place")return false;
+      if(v.histFilter.type==="Livraison"&&o.type!=="livraison")return false;
+      if(v.histFilter.payment==="Cash"&&o.paymentMethod!=="cash")return false;
+      if(v.histFilter.payment==="Mobile Money"&&o.paymentMethod!=="momo")return false;
+      if(v.histFilter.query){const hay=(o.items.map(i=>i.name).join(" ")+" "+(o.tableNumber||"")+" "+(o.clientInfo?.name||"")+" "+(o.clientInfo?.address||"")).toLowerCase();if(!hay.includes(v.histFilter.query.toLowerCase()))return false;}
+      return true;
+    });
+    content='<div class="flex between center" style="margin-bottom:4px"><h2 class="section-title" style="font-size:19px;margin:0">Historique</h2><button class="btn btn-primary btn-sm" data-action="admin-export-csv">📥 CSV</button></div><p class="section-sub">'+filtered.length+' vente(s)</p><div class="card" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px"><input class="input" style="flex:1;min-width:150px" placeholder="Rechercher..." data-input="hist-query" value="'+esc(v.histFilter.query)+'"><select class="input" style="width:auto" data-input="hist-type">'+["Tous","Sur place","Livraison"].map(o=>'<option '+(v.histFilter.type===o?"selected":"")+'>'+o+'</option>').join("")+'</select></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Prix</th><th>Note</th></tr></thead><tbody>'+filtered.slice(0,150).map(o=>{const rating=o.rating?('L: '+o.rating.driver+'/5 R: '+o.rating.restaurant+'/5'):"—";const claim=o.claim?("⚠️ "+o.claim.type):"";return '<tr><td><strong>'+fmtDate(o.date)+'</strong></td><td>'+(o.type==="livraison"?"🛵":"🍽️")+'</td><td>'+esc(o.clientInfo?.name||o.tableNumber||"—")+'</td><td class="mono">'+money(orderGrandTotal(o))+'</td><td class="text-xs">'+rating+(claim?'<br>'+claim:"")+'</td></tr>';}).join("")+'</tbody></table></div>';
+  } else if(v.section==="settings"){
+    if(!v.settingsForm)v.settingsForm={...DATA.settings};
+    const f=v.settingsForm;
+    const graceActive=hasGraceActive();
+    const graceRemaining=getGraceRemainingMin();
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Paramètres</h2><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🆔 Identité</h3><div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">NUMÉRO MoMo du RESTAURANT</label><input class="input" style="margin-top:6px;font-family:monospace" data-input="set-momo" value="'+esc(f.momoNumber||"")+'" placeholder="01 XX XX XX XX"></div></div>'+
+'<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid var(--jaune-fonce)"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🕐 Horaires</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">OUVERTURE</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-open-hour" value="'+(f.openHour!=null?f.openHour:11)+'"></div><div><label class="text-xs muted bold">FERMETURE</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-close-hour" value="'+(f.closeHour!=null?f.closeHour:2)+'"></div></div></div>'+
+'<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid '+(graceActive?"var(--vert)":"var(--gris)")+'"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🔓 Dérogation temporaire</h3>'+(graceActive?'<div class="alert-banner" style="background:rgba(45,122,62,0.1);border-color:var(--vert);margin-bottom:12px"><strong style="color:var(--vert)">✅ Active — '+graceRemaining+' min</strong><p class="text-xs" style="margin-top:4px">Rôles : '+((DATA.settings.graceRoles||[]).join(", ")||"—")+'</p></div><button class="btn btn-danger btn-block" data-action="admin-cancel-grace">Annuler</button>':'<div style="margin-bottom:12px"><label class="text-xs muted bold">DURÉE</label><select class="input" style="margin-top:6px" data-input="grace-duration"><option value="30" '+(v.graceForm.duration===30?"selected":"")+'>30 min</option><option value="60" '+(v.graceForm.duration===60?"selected":"")+'>60 min</option><option value="120" '+(v.graceForm.duration===120?"selected":"")+'>120 min</option></select></div><div style="margin-bottom:12px"><label class="text-xs muted bold">RÔLES</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">'+["serveuse","cuisine","livreur","gerant","client"].map(r=>'<div class="role-chip '+(v.graceForm.roles.includes(r)?"on":"")+'" data-action="grace-toggle-role" data-role="'+r+'">'+r+'</div>').join("")+'</div></div><button class="btn btn-accent btn-block" data-action="admin-activate-grace">Activer</button>')+'</div>'+
+'<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📍 Localisation</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">LAT</label><input class="input" inputmode="decimal" style="margin-top:6px" data-input="set-resto-lat" value="'+esc(String(f.restoLat!=null?f.restoLat:DEFAULT_RESTO.lat))+'"></div><div><label class="text-xs muted bold">LON</label><input class="input" inputmode="decimal" style="margin-top:6px" data-input="set-resto-lon" value="'+esc(String(f.restoLon!=null?f.restoLon:DEFAULT_RESTO.lon))+'"></div></div></div>'+
+'<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">💰 Tarif livraison</h3><label class="text-xs muted bold">PRIX PAR KM (F)</label><input class="input" type="number" style="margin-top:6px" data-input="set-km-price" value="'+(f.prixKm||DEFAULT_PRIX_KM)+'"></div>'+
+'<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📧 Notifications</h3><label class="text-xs muted bold">EMAIL RAPPORTS</label><input class="input" type="email" style="margin-top:6px" data-input="set-email-rapport" value="'+esc(f.emailRapport||"")+'"><label class="text-xs muted bold" style="display:block;margin-top:12px">ONESIGNAL APP ID</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:12px" data-input="set-onesignal" value="'+esc(f.oneSignalAppId||"")+'"><label class="text-xs muted bold" style="display:block;margin-top:12px">URL WEBHOOK</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:11px" data-input="set-webhook-url" value="'+esc(f.webhookUrl||"")+'"><label class="text-xs muted bold" style="display:block;margin-top:12px">TOKEN WEBHOOK</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:12px" data-input="set-webhook-token" value="'+esc(f.webhookToken||"")+'"></div><button class="btn btn-accent btn-block" style="max-width:600px" data-action="admin-save-settings">Enregistrer</button>';
+  } else if(v.section==="maintenance"){
+    const totalOrders=DATA.orders.length;const todayOrders=DATA.orders.filter(o=>o.date===nowDate()).length;
+    const activeOrders=DATA.orders.filter(o=>o.status==="att_validation"||o.status==="att_verif_paiement"||o.status==="att_collect"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt)).length;
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:4px">🧹 Maintenance</h2><div class="stats-grid" style="margin-bottom:20px"><div class="stat-card"><p class="stat-label">Total</p><p class="stat-value">'+totalOrders+'</p></div><div class="stat-card"><p class="stat-label">Aujourd\'hui</p><p class="stat-value">'+todayOrders+'</p></div><div class="stat-card"><p class="stat-label">En cours</p><p class="stat-value">'+activeOrders+'</p></div></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">📱 Installer</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-primary btn-block" id="pwa-install-btn" data-action="admin-install-pwa">📥 Installer</button><p class="text-xs muted" style="margin-top:8px" id="pwa-status"></p></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">🔔 Test push</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-accent btn-block" data-action="admin-test-push">🔔 Test</button></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">💾 Sauvegarde</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-primary btn-block" data-action="admin-backup-now">💾 Télécharger</button></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">🔒 Traçabilité</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm muted">Les commandes ne peuvent plus être supprimées : une annulation est archivée pour garder une comptabilité fiable.</p></div>'+
+'<h3 class="bold" style="margin:20px 0 10px;font-size:15px">📜 Journal ('+DATA.resetLogs.length+')</h3>'+(DATA.resetLogs.length===0?'<p class="empty">Aucune tentative</p>':'<div class="card" style="padding:0;max-height:400px;overflow-y:auto">'+DATA.resetLogs.slice(0,50).map(l=>'<div class="log-row"><div style="flex:1"><div style="font-weight:600;font-size:12px">'+esc(l.action||"?")+'</div><div class="text-xs muted">'+esc(l.adminName||"?")+'</div></div><div style="text-align:right"><div class="text-xs">'+esc(l.result||"?")+'</div><div class="when">'+fmtDateTime(l.createdAt)+'</div></div></div>').join("")+'</div>');
+  }
+  return '<div class="app">'+topbar({role:"Admin D&S",title:SESSION.name,homeAction:"admin-home"})+'<div class="tabs-scroll">'+sections.map(s=>'<button class="tab '+(v.section===s.key?"active":"")+'" data-action="admin-section" data-section="'+s.key+'">'+s.em+' '+s.label+'</button>').join("")+'</div><div class="content">'+content+'</div></div>';
+}
+
+function screenPinModal(){
+  if(!pendingReset) return "";
+  const labels={today:"Effacer ventes du jour",all:"Effacer TOUTES les ventes",active:"Effacer commandes en cours",menu:"Reset menu",stock:"Reset stock",everything:"TOUT RÉINITIALISER","clear-logs":"Vider journal"};
+  return '<div class="modal-overlay"><div class="modal-card"><div style="font-size:48px;margin-bottom:12px">🔐</div><h2>Vérification</h2><p style="font-weight:700;color:var(--rouge);font-size:15px;margin-bottom:14px">'+esc(labels[pendingReset.action]||pendingReset.action)+'</p><p style="font-size:13px;margin-bottom:10px">Mot de passe admin :</p><input type="password" id="reset-pin-input" data-input="reset-pin" autocomplete="new-password" value="'+esc(pendingReset.pin||"")+'" class="pin-modal-input">'+(pendingReset.error?'<p style="color:var(--rouge);font-size:13px;font-weight:600">'+esc(pendingReset.error)+'</p>':'<div style="height:20px"></div>')+'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ghost" style="flex:1" data-action="reset-cancel">Annuler</button><button class="btn btn-danger" style="flex:1" data-action="reset-confirm">Confirmer</button></div></div></div>';
+}
+
+function render(){
+  const root=document.getElementById("root");
+  if(mapInstance && (!SESSION || SESSION.role!=="client" || (clientS.screen!=="deliveryInfo"))) destroyMap();
+
+  if(!SESSION){
+    if(!isAppAllowed(null)){ root.innerHTML = screenClosed(); return; }
+    root.innerHTML=screenLogin(); return;
+  }
+  if(!isAppAllowed(SESSION.role)){ SESSION=null; root.innerHTML = screenClosed(); return; }
+
+  const saved=preserveInput();
+  let html="";
+  if(SESSION.role==="client")html=screenClient();
+  else if(SESSION.role==="serveuse")html=screenServeuse();
+  else if(SESSION.role==="gerant")html=screenGerant();
+  else if(SESSION.role==="cuisine")html=screenCuisine();
+  else if(SESSION.role==="livreur")html=screenLivreur();
+  else if(SESSION.role==="admin")html=screenAdmin();
+  if(SESSION.role==="admin" && pendingReset) html+=screenPinModal();
+  root.innerHTML=html;
+  restoreInput(saved);
+  if(SESSION.role==="client" && clientS.screen==="deliveryInfo"){setTimeout(initLeafletMap,80);}
+  setTimeout(()=>{
+    const btn = document.getElementById("pwa-install-btn");
+    if(btn && window.__deferredPrompt){ btn.style.background = "var(--jaune)"; btn.style.color = "var(--noir)"; }
+  }, 200);
+  if(pendingReset){
+    setTimeout(()=>{ const el=document.getElementById("reset-pin-input"); if(el){ el.value=pendingReset.pin||""; el.focus(); } }, 60);
+  }
+}
+
+function pinAdd(d){if(loginBusy||loginPin.length>=6)return;loginPin+=d;loginError="";if(loginPin.length===6){attemptPinLogin();}else render();}
+function pinDel(){if(loginBusy)return;loginPin=loginPin.slice(0,-1);loginError="";render();}
+
+function printQrCodes(type){const printArea=document.createElement("div");printArea.id="qr-print-area";printArea.innerHTML=DATA.tables.map(t=>'<div class="qr-card"><p class="qr-resto">Restaurant D&S</p><img src="'+qrUrl(SITE_URL+"?table="+t.number,400)+'" alt="QR"><p class="qr-table-num">Table '+t.number+'</p></div>').join("");document.body.appendChild(printArea);setTimeout(()=>{window.print();setTimeout(()=>printArea.remove(),500);},300);}
+
+function printInvoice(orderId){
+  const o=DATA.orders.find(x=>x._docId===orderId);if(!o)return;
+  const items=o.items.filter(i=>i.statut!=="Refusé");const sub=orderTotal(o);const fee=deliveryFeeFor(o);const total=sub+fee;
+  const date=new Date(o.paidAt||o.createdAt);
+  let html='<div style="text-align:center"><div style="font-size:16px;font-weight:bold">'+esc(DATA.settings.restaurantName||"Restaurant D&S")+'</div></div><div class="inv-line"></div><div style="font-size:11px"><div>Ticket: '+o._docId.slice(-8).toUpperCase()+'</div><div>Date: '+date.toLocaleDateString("fr-FR")+'</div><div>Type: '+(o.type==="livraison"?"LIVRAISON":"SUR PLACE")+'</div></div><div class="inv-line"></div>';
+  items.forEach(it=>{html+='<div style="display:flex;justify-content:space-between;font-size:11px"><span>'+it.qty+'× '+esc(it.name)+'</span><span>'+money(it.price*it.qty)+'</span></div>';});
+  html+='<div class="inv-line"></div><div style="font-size:11px"><div style="display:flex;justify-content:space-between"><span>Sous-total</span><span>'+money(sub)+'</span></div>';
+  if(fee>0)html+='<div style="display:flex;justify-content:space-between"><span>Livraison</span><span>'+money(fee)+'</span></div>';
+  html+='<div style="display:flex;justify-content:space-between;font-weight:bold;margin-top:4px;border-top:1px dashed #000;padding-top:4px"><span>TOTAL</span><span>'+money(total)+'</span></div></div>';
+  const inv=document.getElementById("invoice-print");inv.innerHTML=html;inv.style.display="block";
+  setTimeout(()=>{window.print();inv.style.display="none";A.markPrinted(o._docId);},200);
+}
+
+// ==================== EVENTS ====================
+document.addEventListener("click",async function(e){
+  const el=e.target.closest("[data-action]");if(!el)return;
+  const action=el.dataset.action;const id=el.dataset.id;const idx=el.dataset.idx!==undefined?parseInt(el.dataset.idx):null;
+  const v=clientS;
+
+  if(action==="pick-role"){loginRole=el.dataset.role;loginStaffId=null;loginPin="";loginEmail="";loginPassword="";loginError="";loginRecovery=null;render();return;}
+  if(action==="pick-staff"){loginStaffId=id;loginPin="";loginError="";render();return;}
+  if(action==="pin-back-name"){loginStaffId=null;loginPin="";loginError="";render();return;}
+  if(action==="back-role"){loginRole=null;loginStaffId=null;loginPin="";loginEmail="";loginPassword="";loginError="";loginRecovery=null;render();return;}
+  if(action==="pin-digit"){pinAdd(el.dataset.digit);return;}
+  if(action==="pin-del"){pinDel();return;}
+
+  if(action==="client-mode-goto"){A.login("client","Client",null); clientS.mode="livraison"; clientS.screen="menu"; render();return;}
+
+  if(action==="login-submit"){
+    const email=loginEmail.trim().toLowerCase();const pwd=loginPassword;
+    if(!email||!pwd){loginError="Remplissez tous les champs";render();return;}
+    if(loginBusy)return; loginBusy=true;
+    try{ await signInWithEmailAndPassword(auth,email,pwd); await finishStaffLogin(loginRole); }
+    catch(err){ loginError=authErrorMessage(err,false); loginPassword=""; render(); }
+    loginBusy=false; return;
+  }
+  if(action==="login-forgot-pwd"){loginRecovery={stage:"form",email:loginEmail||"",error:""};render();return;}
+  if(action==="rec-cancel"){loginRecovery=null;render();return;}
+  if(action==="rec-done"){loginRecovery=null;loginEmail="";loginPassword="";loginError="";render();return;}
+  if(action==="rec-send"){
+    if(!loginRecovery) return;
+    const email=(loginRecovery.email||"").trim().toLowerCase();
+    if(!email){ loginRecovery.error="Saisissez votre e-mail"; render(); return; }
+    try{ await sendPasswordResetEmail(auth,email); loginRecovery.stage="sent"; }
+    catch(err){ const c=err&&err.code; if(c==="auth/invalid-email"){ loginRecovery.error="Adresse e-mail invalide"; } else if(c==="auth/too-many-requests"||c==="auth/network-request-failed"){ loginRecovery.error=authErrorMessage(err,false); } else { loginRecovery.stage="sent"; } }
+    render(); return;
+  }
+
+  if(action==="logout"){resetClient();destroyMap();pendingReset=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null};livS={tab:"available"};A.logout();return;}
+
+  if(action==="reset-cancel"){pendingReset=null;render();return;}
+  if(action==="reset-confirm"){
+    if(!pendingReset) return;
+    const cu=auth.currentUser;
+    if(!cu||!cu.email){pendingReset.error="Session invalide";render();return;}
+    if(!pendingReset.pin||pendingReset.pin.length<6){pendingReset.error="Mot de passe trop court";render();return;}
+    try{ await reauthenticateWithCredential(cu,EmailAuthProvider.credential(cu.email,pendingReset.pin)); }
+    catch(e){ pendingReset.error="Mot de passe incorrect"; pendingReset.pin=""; await A.logReset(pendingReset.action,"❌ Mot de passe incorrect",null); render(); return; }
+    const act=pendingReset.action;pendingReset=null;
+    try{
+      let resultMsg="";
+      if(act==="menu"){await A.resetMenu();resultMsg="Menu réinitialisé";}
+      else if(act==="stock"){await A.resetStock();resultMsg="Stock réinitialisé";}
+      else if(act==="clear-logs"){const n=DATA.resetLogs.length;await A.clearResetLogs();resultMsg=n+" entrée(s)";}
+      await A.logReset(act,"✅ Succès",null);
+      toast(resultMsg);
+    }catch(err){toast("Erreur : "+err.message);}
+    render();return;
+  }
+
+  if(action==="admin-test-push"){toast("Envoi…");sendPush("🔔 Test","Notification test ✅");toast("Envoyé");return;}
+  if(action==="admin-install-pwa"){if(window.__deferredPrompt){window.__deferredPrompt.prompt();const {outcome}=await window.__deferredPrompt.userChoice;if(outcome==="accepted"){toast("Installée !");window.__deferredPrompt=null;}}else{toast("Menu Chrome → Ajouter à l'écran");}return;}
+  if(action==="grace-toggle-role"){const r=el.dataset.role;const f=admS.graceForm;if(f.roles.includes(r))f.roles=f.roles.filter(x=>x!==r);else f.roles=[...f.roles,r];render();return;}
+  if(action==="admin-activate-grace"){const f=admS.graceForm;if(!f.roles.length){toast("Sélectionnez un rôle");return;}await A.activateGrace(f.duration, f.roles);toast("Dérogation activée");render();return;}
+  if(action==="admin-cancel-grace"){if(!confirm("Annuler ?"))return;await A.cancelGrace();toast("Annulée");render();return;}
+
+  // CLIENT
+  if(action==="client-cat"){v.cat=el.dataset.cat;render();return;}
+  if(action==="client-add"){v.cart[id]=(v.cart[id]||0)+1;render();return;}
+  if(action==="client-remove"){if(v.cart[id]>1)v.cart[id]--;else delete v.cart[id];render();return;}
+  if(action==="client-cart"){ if(v.mode==="sur_place")v.screen="cart"; else v.screen="cart"; render();return; }
+  if(action==="client-back"){
+    if(v.screen==="deliveryInfo")v.screen="cart";
+    else if(v.screen==="cart")v.screen="menu";
+    if(v.screen!=="deliveryInfo")destroyMap();
+    render();return;}
+  if(action==="client-use-gps"){if(!navigator.geolocation){toast("Indisponible");return;}toast("Localisation…");navigator.geolocation.getCurrentPosition(pos=>setClientPosition(pos.coords.latitude,pos.coords.longitude),err=>toast("Erreur"),{enableHighAccuracy:true,timeout:10000});return;}
+  if(action==="client-delivery-next"){
+    const nameOk=v.info.name && v.info.name.trim().length>1;const phoneOk=validPhoneBJ(v.info.phone);const locOk=v.deliveryLat!=null && v.deliveryLon!=null;
+    if(!nameOk){toast("Nom requis");return;}
+    if(!phoneOk){toast("Téléphone invalide");return;}
+    if(!locOk){toast("Position requise");return;}
+    v.screen="deliveryRecap";destroyMap();render();return;}
+  if(action==="client-cart-to-delivery"){ v.screen="deliveryInfo"; render(); return; }
+  if(action==="client-recap-back"){ v.screen="deliveryInfo"; render(); return; }
+  if(action==="client-go-payment"){ v.momoRefInput=""; v.screen="deliveryPayment"; render(); return; }
+  if(action==="client-payment-back"){ v.screen="deliveryRecap"; render(); return; }
+
+  if(action==="client-submit-livraison"){
+    const ref=(v.momoRefInput||"").trim();
+    if(ref.length < 8){ toast("Référence trop courte"); return; }
+    const items=DATA.menu.filter(m=>v.cart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:v.cart[d._docId],time:d.time}));
+    if(!items.length){toast("Panier vide");return;}
+    const orderData={
+      type:"livraison", items,
+      clientInfo:{name:v.info.name,phone:v.info.phone.replace(/\s/g,""),address:v.info.address||""},
+      deliveryLat:v.deliveryLat, deliveryLon:v.deliveryLon, deliveryKm:v.deliveryKm,
+      deliveryAddrText:v.info.address||"",
+      momoRef: ref
+    };
+    try{ v.orderId = await A.addOrder(orderData); watchClientOrder(v.orderId); localStorage.setItem("ds_client_order",v.orderId); v.screen="waiting"; render(); }
+    catch(err){ toast("Erreur : "+err.message); }
+    return;
+  }
+
+  if(action==="client-submit"){
+    const items=DATA.menu.filter(m=>v.cart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:v.cart[d._docId],time:d.time}));
+    if(!items.length){toast("Panier vide");return;}
+    const orderData={type:"sur_place",items};
+    const t=DATA.tables.find(x=>x._docId===v.tableId);
+    const day=DATA.affectation[nowDate()]||{};
+    const srvId=day[v.tableId]||null;
+    const srv=DATA.staff.find(s=>s._docId===srvId);
+    orderData.tableId=v.tableId;orderData.tableNumber=t?t.number:null;
+    orderData.serveuseId=srvId;orderData.serveuseName=srv?srv.name:null;
+    try{v.orderId=await A.addOrder(orderData);watchClientOrder(v.orderId);localStorage.setItem("ds_client_order",v.orderId);v.screen="waiting";render();}
+    catch(err){toast("Erreur : "+err.message);}
+    return;
+  }
+
+  if(action==="client-cancel-wait"){
+    const oid=v.orderId;
+    if(oid){ try{ await A.cancelOrder(oid); }catch(e){} }
+    localStorage.removeItem("ds_client_order");
+    watchClientOrder(null); v.orderId=null; v.cart={}; v.screen="menu"; v.refusedIdx=null;
+    toast("Commande annulée");render();return;
+  }
+
+  if(action==="client-remove-refused"){
+    const o=DATA.orders.find(o=>o._docId===v.orderId);
+    if(o){
+      const ni=o.items.filter((it,i)=>i!==v.refusedIdx);
+      const remainingValid=ni.filter(it=>it.statut!=="Refusé");
+      if(remainingValid.length===0){v.refusedIdx=null;v.editCart={};ni.filter(it=>it.statut!=="Refusé").forEach(it=>{v.editCart[it.id]=it.qty;});v.screen="editOrder";toast("Ajoutez d'autres plats");render();return;}
+      await A.updateOrder(o._docId,{items:ni});
+    }
+    v.refusedIdx=null;
+    v.screen=(o&&o.type==="livraison")?"waiting":"serving";
+    render();return;
+  }
+  if(action==="client-edit-from-refused"){
+    const o=DATA.orders.find(o=>o._docId===v.orderId);if(!o)return;
+    v.editCart={}; o.items.filter(it=>it.statut!=="Refusé").forEach(it=>{v.editCart[it.id]=it.qty;});
+    v.cat="Plats"; v.screen="editOrder";v.refusedIdx=null; render();return;
+  }
+  if(action==="client-cancel-order"){
+    if(!confirm("Annuler définitivement ?"))return;
+    const oid=v.orderId;
+    if(oid){const co=DATA.orders.find(x=>x._docId===oid);if(co&&["att_validation","att_collect","att_paiement"].includes(co.status)){try{await A.cancelOrder(oid);}catch(e){}}localStorage.removeItem("ds_client_order");watchClientOrder(null);}
+    resetClient();render();return;
+  }
+  if(action==="client-rescan"){
+    try{ history.replaceState({}, "", window.location.pathname); }catch(e){}
+    v.screen="rescan"; v.orderId=null; v.cart={}; v.tableId=null; v.mode="livraison";
+    localStorage.removeItem("ds_client_order"); render();return;
+  }
+  if(action==="client-switch-livraison"){
+    try{ history.replaceState({}, "", window.location.pathname); }catch(e){}
+    v.screen="menu"; v.mode="livraison"; v.tableId=null; v.orderId=null; v.cart={};
+    localStorage.removeItem("ds_client_order"); render();return;
+  }
+  if(action==="client-edit-cancel"){const eo=DATA.orders.find(x=>x._docId===v.orderId);v.screen=(eo&&eo.status==="att_validation")?"waiting":"serving";render();return;}
+  if(action==="client-edit-cat"){v.cat=el.dataset.cat;render();return;}
+  if(action==="client-edit-add"){v.editCart[id]=(v.editCart[id]||0)+1;render();return;}
+  if(action==="client-edit-remove"){if(v.editCart[id]>1)v.editCart[id]--;else delete v.editCart[id];render();return;}
+  if(action==="client-edit-save"){
+    const o=DATA.orders.find(o=>o._docId===v.orderId);if(!o)return;
+    const ni=Object.entries(v.editCart).map(([did,q])=>{const dish=DATA.menu.find(d=>d._docId===did);return dish?{id:did,name:dish.name,price:dish.price,qty:q,time:dish.time,statut:null,motif:null}:null;}).filter(Boolean);
+    if(!ni.length){toast("Ajoutez un plat");return;}
+    await A.updateOrder(o._docId,{items:ni,status:"att_validation",validatedAt:null,readyAt:null,servedAt:null,paidAt:null,paymentMethod:null,paymentRef:null,editedAt:Date.now()});
+    v.screen="waiting";v.editCart={};v.refusedIdx=null; toast("Envoyée"); render();return;
+  }
+  if(action==="client-call-serveuse"){const o=DATA.orders.find(o=>o._docId===v.orderId);if(!o)return;await A.callServeuse(o._docId);toast("Serveuse notifiée");render();return;}
+
+  // POST-LIVRAISON
+  if(action==="client-confirm-received"){ v.screen="rate"; render(); return; }
+  if(action==="client-confirm-issue"){
+    // Vérifier le délai 1h
+    const o=DATA.orders.find(x=>x._docId===v.orderId);
+    if(o && o.servedAt && (Date.now()-o.servedAt) > CLAIM_DELAY_MS){
+      toast("Délai dépassé (1h). Appelez le restaurant.");
+      return;
+    }
+    v.claimType=null; v.claimText=""; v.screen="claim"; render(); return;
+  }
+  if(action==="client-rate"){ const t=el.dataset.target; const val=parseInt(el.dataset.value)||0;
+    if(t==="driver") v.ratingDriver=val; else v.ratingResto=val;
+    render(); return;
+  }
+  if(action==="client-rate-send"){
+    await A.submitRating(v.orderId, {
+      driver: v.ratingDriver||0,
+      restaurant: v.ratingResto||0,
+      comment: (v.ratingComment||"").trim()
+    });
+    v.screen="thanks"; render(); return;
+  }
+  if(action==="client-rate-skip"){ v.screen="thanks"; render(); return; }
+  if(action==="client-claim-type"){ v.claimType=el.dataset.type; render(); return; }
+  if(action==="client-claim-send"){
+    if(!v.claimType){ toast("Choisissez un type"); return; }
+    await A.submitClaim(v.orderId, { type: v.claimType, description: (v.claimText||"").trim() });
+    v.screen="thanks"; render(); return;
+  }
+
+  // SERVEUSE
+  if(action==="srv-home"){srvS.tab="tables";srvS.orderStep="table";srvS.orderTable=null;srvS.orderCart={};srvS.collectMethod=null;srvS.collectRef="";srvS.collectOrderId=null;render();return;}
+  if(action==="srv-tab"){srvS.tab=el.dataset.tab;render();return;}
+  if(action==="srv-pick-table"){srvS.orderTable=id;srvS.orderStep="menu";render();return;}
+  if(action==="srv-back-table"){srvS.orderStep="table";srvS.orderTable=null;srvS.orderCart={};render();return;}
+  if(action==="srv-cat"){srvS.orderCat=el.dataset.cat;render();return;}
+  if(action==="srv-add"){srvS.orderCart[id]=(srvS.orderCart[id]||0)+1;render();return;}
+  if(action==="srv-remove"){if(srvS.orderCart[id]>1)srvS.orderCart[id]--;else delete srvS.orderCart[id];render();return;}
+  if(action==="srv-send"){const items=DATA.menu.filter(m=>srvS.orderCart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:srvS.orderCart[d._docId],time:d.time}));if(!items.length){toast("Panier vide");return;}const t=DATA.tables.find(x=>x._docId===srvS.orderTable);const me=DATA.staff.find(s=>s._docId===SESSION.uid&&s.role==="serveuse");await A.addOrder({type:"sur_place",tableId:srvS.orderTable,tableNumber:t?t.number:null,serveuseId:me?me._docId:null,serveuseName:SESSION.name,items,source:"serveuse"});srvS.orderCart={};srvS.orderTable=null;srvS.orderStep="table";toast("Envoyée");render();return;}
+  if(action==="srv-collect-method"){srvS.collectMethod=el.dataset.method;srvS.collectOrderId=id;srvS.collectRef="";render();return;}
+  if(action==="srv-collect-confirm"){if(!srvS.collectMethod){toast("Choisissez");return;}const ref=srvS.collectMethod==="momo"?(srvS.collectRef||"REF"+Math.floor(Math.random()*1000000)):null;await A.confirmCash(id,srvS.collectMethod,ref);srvS.collectMethod=null;srvS.collectRef="";srvS.collectOrderId=null;toast("Paiement confirmé");render();return;}
+  if(action==="srv-collect-issue"){if(!confirm("Signaler non reçu ?"))return;await A.reportCashIssue(id);srvS.collectMethod=null;toast("Signalé");render();return;}
+  if(action==="srv-served"){await A.markServed(id);toast("Servie !");render();return;}
+
+  // GÉRANT
+  if(action==="ger-home"){gerS.tab="validation";render();return;}
+  if(action==="ger-tab"){gerS.tab=el.dataset.tab;render();return;}
+  if(action==="ger-force-affect"){gerS.tab="affectation";render();return;}
+  if(action==="ger-force-menu"){gerS.tab="menuDuJour";render();return;}
+  if(action==="ger-toggle-menu"){await A.toggleMenuOfDay(id);return;}
+  if(action==="ger-confirm-menu"){const ids=todayMenuDraft();await A.confirmMenuOfDay(ids);toast("Confirmé");return;}
+  if(action==="ger-reconfirm-menu"){if(!confirm("Reconfirmer ?"))return;const ids=todayMenuDraft();await A.confirmMenuOfDay(ids);toast("Reconfirmé");return;}
+  if(action==="ger-item-valid"){await A.setItemStatut(id,idx,"Validé");return;}
+  if(action==="ger-item-refuse"){await A.setItemStatut(id,idx,"Refusé");return;}
+  if(action==="ger-motif"){await A.setItemMotif(id,idx,el.dataset.motif);return;}
+  if(action==="ger-validate"){await A.validateOrder(id);toast("Validée");return;}
+  if(action==="ger-validate-liv"){await A.validateDeliveryPayment(id);toast("Livraison validée");return;}
+  if(action==="ger-reject-liv"){
+    const motif = prompt("Motif du refus :", "Référence inexacte");
+    if(motif===null) return;
+    await A.rejectDeliveryPayment(id, motif||"Référence inexacte");
+    toast("Refusée");return;
+  }
+  if(action==="ger-delete"){if(!confirm("Annuler cette commande ?"))return;await A.cancelOrder(id);toast("Commande annulée");return;}
+  if(action==="ger-resolve-cash"){await A.resolveCashIssue(id);toast("Résolu");render();return;}
+  if(action==="ger-resolve-claim"){await A.resolveClaim(id);toast("Réclamation réglée");render();return;}
+  if(action==="ger-print-invoice"){printInvoice(id);return;}
+  if(action==="ger-affect"){const today=nowDate();const day=DATA.affectation[today]||{};const cur=day[el.dataset.table]===el.dataset.serveuse;await A.setAffectation(today,el.dataset.table,cur?null:el.dataset.serveuse);return;}
+
+  if(action==="cui-home"){render();return;}
+  if(action==="cui-ready"){await A.markReady(id);toast("Prêt !");render();return;}
+
+  if(action==="liv-home"){livS.tab="available";render();return;}
+  if(action==="liv-tab"){livS.tab=el.dataset.tab;render();return;}
+  if(action==="liv-take"){const me=DATA.staff.find(s=>s._docId===SESSION.uid&&s.role==="livreur");if(me)await A.takeDelivery(id,me._docId,me.name);livS.tab="current";render();return;}
+  if(action==="liv-enroute"){await A.setDeliveryStatus(id,"en_route");return;}
+  if(action==="liv-done"){await A.markDelivered(id);render();return;}
+
+  if(action==="admin-home"){admS.section="menu";admS.editingDish=null;render();return;}
+  if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;admS.showNewStock=false;if(el.dataset.section==="bilan"){const t=nowDate();if(!admS.bilanFrom)admS.bilanFrom=t;if(!admS.bilanTo)admS.bilanTo=t;}if(el.dataset.section==="settings"){admS.settingsForm={...DATA.settings};}render();return;}
+  if(action==="admin-add-dish"){await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:""});return;}
+  if(action==="admin-edit-dish"){admS.editingDish=id;render();return;}
+  if(action==="admin-save-dish"){const row=el.closest("tr");const name=row.querySelector('[data-input="dish-name"]').value;const desc=row.querySelector('[data-input="dish-desc"]').value;const cat=row.querySelector('[data-input="dish-cat"]').value;const price=parseInt(row.querySelector('[data-input="dish-price"]').value)||0;const time=parseInt(row.querySelector('[data-input="dish-time"]').value)||0;const avail=row.querySelector('[data-input="dish-avail"]').checked;await A.updateDish(id,{name,desc,cat,price,time,available:avail});admS.editingDish=null;return;}
+  if(action==="admin-del-dish"){if(confirm("Supprimer ?"))await A.removeDish(id);return;}
+  if(action==="admin-add-staff"){try{await A.createStaffAccount({...admS.newStaff});admS.newStaff={name:"",role:"serveuse",pin:"",email:"",password:""};toast("Compte créé");}catch(err){const c=err&&err.code;toast(c==="auth/email-already-in-use"?"Cet e-mail est déjà utilisé":c==="auth/invalid-email"?"E-mail invalide":c==="auth/weak-password"?"Mot de passe trop faible":(err.message||"Erreur"));}render();return;}
+  if(action==="admin-reset-pin"){if(!confirm("Créer un nouveau PIN pour ce compte ?"))return;try{const pin=await A.resetPin(id);alert("Nouveau PIN : "+pin+"\n\nNotez-le et transmettez-le à la personne. Il ne sera plus affiché.");}catch(err){toast(err.message||"Erreur");}return;}
+  if(action==="admin-reset-creds"){const u=DATA.staff.find(x=>x._docId===id);if(!u||!u.email){toast("E-mail introuvable");return;}if(!confirm("Envoyer un lien de réinitialisation à "+u.email+" ?"))return;try{await sendPasswordResetEmail(auth,u.email);toast("Lien envoyé");}catch(err){toast(authErrorMessage(err,false));}return;}
+  if(action==="admin-del-staff"){if(confirm("Supprimer ce compte ?")){try{await A.removeStaff(id);toast("Compte supprimé");}catch(err){toast(err.message||"Erreur");}}return;}
+  if(action==="admin-add-table"){try{const n=await A.addTable();toast("Table "+n+" créée");}catch(err){toast("Erreur : "+err.message);}return;}
+  if(action==="admin-del-table"){
+    const active=DATA.orders.filter(o=>o.tableId===id && (o.status==="att_validation"||o.status==="att_verif_paiement"||o.status==="att_collect"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt)));
+    if(active.length>0){ toast("❌ Commande en cours sur cette table"); return; }
+    if(confirm("Supprimer cette table ?")){ try{ await A.removeTable(id); toast("Supprimée"); }catch(err){toast(err.message);} }
+    return;
+  }
+  if(action==="admin-print-all-qr"){printQrCodes("all");return;}
+  if(action==="admin-toggle-new-stock"){admS.showNewStock=!admS.showNewStock;render();return;}
+  if(action==="admin-create-stock"){const ns=admS.newStockItem;if(!ns.name||!ns.unit){toast("Nom + unité");return;}await A.addStockItem({name:ns.name,unit:ns.unit,initial:ns.initial||0,threshold:ns.threshold||0});admS.newStockItem={name:"",unit:"kg",initial:0,threshold:0};admS.showNewStock=false;toast("Créé");return;}
+  if(action==="admin-del-stock"){if(confirm("Supprimer ?"))await A.removeStockItem(id);return;}
+  if(action==="admin-add-move"){if(!admS.stockForm.stockId||!admS.stockForm.qty)return;await A.addStockMove({...admS.stockForm});admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};toast("Enregistré");return;}
+  if(action==="admin-save-settings"){const f=admS.settingsForm;const lat=parseFloat(f.restoLat);const lon=parseFloat(f.restoLon);const km=parseInt(f.prixKm);if(isNaN(lat)||isNaN(lon)||isNaN(km)){toast("Valeurs invalides");return;}await A.updateSettings({restaurantName:f.restaurantName||"",phone:f.phone||"",momoNumber:f.momoNumber||"",bilanResetHour:parseInt(f.bilanResetHour)||6,waitMode:f.waitMode||"max",restoLat:lat,restoLon:lon,prixKm:km,emailRapport:f.emailRapport||"",oneSignalAppId:f.oneSignalAppId||"",webhookUrl:f.webhookUrl||"",webhookToken:f.webhookToken||"",openHour:parseInt(f.openHour)||11,closeHour:parseInt(f.closeHour)||2});admS.settingsForm=null;toast("Enregistré");loadOneSignal();render();return;}
+  if(action==="admin-bilan-apply"){render();return;}
+  if(action==="admin-bilan-today"){const t=nowDate();admS.bilanFrom=t;admS.bilanTo=t;render();return;}
+  if(action==="admin-bilan-week"){const to=new Date();const from=new Date();from.setDate(from.getDate()-6);admS.bilanFrom=from.toISOString().slice(0,10);admS.bilanTo=to.toISOString().slice(0,10);render();return;}
+  if(action==="admin-backup-now"){await A.downloadBackup();toast("Téléchargé");return;}
+  if(action==="admin-export-csv"){const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));const csv=["Date,Type,Client,Prix,Paiement"].concat(paid.map(o=>[o.date,o.type,(o.clientInfo?.name||o.tableNumber||""),orderGrandTotal(o),o.paymentMethod||""].join(","))).join("\n");const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="historique.csv";a.click();URL.revokeObjectURL(url);return;}
+});
+
+document.addEventListener("change",async function(e){
+  const el=e.target;const key=el.dataset.input;const action=el.dataset.action;
+  if(action==="ger-assign-livreur"){await A.assignLivreur(el.dataset.id,el.value||null);toast(el.value?"Assigné":"Retiré");return;}
+  if(!key)return;
+  if(key==="new-staff-role"){admS.newStaff.role=el.value;render();}
+  if(key==="stock-type")admS.stockForm.type=el.value;
+  if(key==="hist-type"){admS.histFilter.type=el.value;render();}
+  if(key==="grace-duration"){admS.graceForm.duration=parseInt(el.value)||60;render();}
+});
+
+document.addEventListener("input",function(e){
+  const el=e.target;const key=el.dataset.input;
+  if(key==="reset-pin"){if(pendingReset){pendingReset.pin=el.value;pendingReset.error="";}return;}
+  if(key==="login-email"){loginEmail=el.value;return;}
+  if(key==="login-password"){loginPassword=el.value;return;}
+  if(key==="rec-email"&&loginRecovery){loginRecovery.email=el.value;loginRecovery.error="";return;}
+  if(!key)return;
+  const v=clientS;
+  if(key==="info-name")v.info.name=el.value;
+  if(key==="info-phone"){const clean=el.value.replace(/[^\d]/g,"").slice(0,10);if(clean!==el.value)el.value=clean;v.info.phone=clean;}
+  if(key==="info-address")v.info.address=el.value;
+  if(key==="client-momo-ref")v.momoRefInput=el.value;
+  if(key==="client-rating-comment")v.ratingComment=el.value;
+  if(key==="client-claim-text")v.claimText=el.value;
+  if(key==="srv-collect-ref")srvS.collectRef=el.value;
+  if(key==="new-staff-name")admS.newStaff.name=el.value;
+  if(key==="new-staff-pin")admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,6);
+  if(key==="new-staff-email")admS.newStaff.email=el.value;
+  if(key==="new-staff-pwd")admS.newStaff.password=el.value;
+  if(key==="new-stock-name")admS.newStockItem.name=el.value;
+  if(key==="new-stock-unit")admS.newStockItem.unit=el.value;
+  if(key==="new-stock-initial")admS.newStockItem.initial=parseFloat(el.value)||0;
+  if(key==="new-stock-threshold")admS.newStockItem.threshold=parseFloat(el.value)||0;
+  if(key==="stock-id")admS.stockForm.stockId=el.value;
+  if(key==="stock-qty")admS.stockForm.qty=parseFloat(el.value)||0;
+  if(key==="stock-motif")admS.stockForm.motif=el.value;
+  if(key==="hist-query"){admS.histFilter.query=el.value;render();}
+  if(key==="set-name"&&admS.settingsForm)admS.settingsForm.restaurantName=el.value;
+  if(key==="set-phone"&&admS.settingsForm)admS.settingsForm.phone=el.value;
+  if(key==="set-momo"&&admS.settingsForm)admS.settingsForm.momoNumber=el.value;
+  if(key==="set-bilan-hour"&&admS.settingsForm)admS.settingsForm.bilanResetHour=parseInt(el.value)||6;
+  if(key==="set-open-hour"&&admS.settingsForm)admS.settingsForm.openHour=parseInt(el.value)||11;
+  if(key==="set-close-hour"&&admS.settingsForm)admS.settingsForm.closeHour=parseInt(el.value)||2;
+  if(key==="set-resto-lat"&&admS.settingsForm)admS.settingsForm.restoLat=el.value;
+  if(key==="set-resto-lon"&&admS.settingsForm)admS.settingsForm.restoLon=el.value;
+  if(key==="set-km-price"&&admS.settingsForm)admS.settingsForm.prixKm=parseInt(el.value)||0;
+  if(key==="set-email-rapport"&&admS.settingsForm)admS.settingsForm.emailRapport=el.value;
+  if(key==="set-onesignal"&&admS.settingsForm)admS.settingsForm.oneSignalAppId=el.value;
+  if(key==="set-webhook-url"&&admS.settingsForm)admS.settingsForm.webhookUrl=el.value;
+  if(key==="set-webhook-token"&&admS.settingsForm)admS.settingsForm.webhookToken=el.value;
+  if(key==="bilan-from")admS.bilanFrom=el.value;
+  if(key==="bilan-to")admS.bilanTo=el.value;
+});
+
+document.addEventListener("keydown",function(e){
+  if(pendingReset && document.activeElement && document.activeElement.dataset && document.activeElement.dataset.input==="reset-pin"){
+    if(e.key==="Enter"){e.preventDefault();document.querySelector('[data-action="reset-confirm"]')?.click();return;}
+    return;
+  }
+  if(SESSION)return;
+  if(!loginRole)return;
+  if(loginRole==="gerant"||loginRole==="admin"){
+    if(e.key==="Enter"){
+      if(loginRecovery){
+        if(loginRecovery.stage==="form" && document.activeElement && document.activeElement.dataset.input==="rec-email"){e.preventDefault();document.querySelector('[data-action="rec-send"]')?.click();}
+      } else if(document.activeElement && document.activeElement.dataset.input==="login-password"){
+        e.preventDefault(); document.querySelector('[data-action="login-submit"]')?.click();
+      }
+    }
+    return;
+  }
+  if(!loginStaffId)return;
+  if(/^\d$/.test(e.key)){pinAdd(e.key);e.preventDefault();return;}
+  if(e.key==="Backspace"){pinDel();e.preventDefault();return;}
+});
+
+setInterval(function(){
+  if(!SESSION){ if(!isAppAllowed(null)){ render(); return; } }
+  else if(!isAppAllowed(SESSION.role)){ SESSION=null; render(); return; }
+  if(!SESSION) return;
+  if(pendingReset) return;
+  if(SESSION.role==="cuisine"||SESSION.role==="serveuse"||SESSION.role==="gerant"){render();}
+  if(SESSION.role==="client"&&clientS.screen==="tracking"&&clientS.timerRemaining>0){clientS.timerRemaining--;render();}
+  if(SESSION.role==="admin"&&admS.section==="settings"&&hasGraceActive()){render();}
+},1000);
+
+if("Notification" in window && Notification.permission==="default"){setTimeout(()=>{try{Notification.requestPermission();}catch(e){}},3000);}
+
+// Restauration commande client (le client relit uniquement sa propre commande)
+function restoreClientOrder(){
+  const savedOrderId=localStorage.getItem("ds_client_order");
+  if(!savedOrderId) return;
+  if(SESSION && SESSION.role!=="client") return;
+  watchClientOrder(savedOrderId);
+  const ci=setInterval(()=>{
+    if(!DATA.orders.length) return;
+    const o=DATA.orders.find(x=>x._docId===savedOrderId);
+    if(o && o.status!=="refusee" && o.status!=="annulee"){
+      clientS.orderId=savedOrderId;
+      if(!SESSION || SESSION.role!=="client"){
+        SESSION = { role:"client", name:"Client", userId:DEVICE_ID, since:Date.now() };
+        applyRoleTag("client");
+      }
+      if(o.status==="att_validation" || o.status==="att_verif_paiement")clientS.screen="waiting";
+      else if(o.status==="att_collect")clientS.screen="serving";
+      else if(o.status==="att_paiement")clientS.screen="serving";
+      else if(o.status==="payee")clientS.screen="tracking";
+      else if(o.status==="servie") clientS.screen="done";
+      else if(o.status==="livree"){
+        clientS.screen = (o.rating || o.claim) ? "thanks" : "confirm_delivery";
+      }
+      clearInterval(ci); render();
+    }else{localStorage.removeItem("ds_client_order");watchClientOrder(null);clearInterval(ci);}
+  },500);
+  setTimeout(()=>clearInterval(ci),15000);
+}
+
+// Gestion URL
+let urlParamsHandled = false;
+function handleUrlParams(){
+  if(urlParamsHandled) return;
+  if(SESSION && SESSION.role!=="client"){ urlParamsHandled = true; return; }
+  if(!LOADED.menu || !LOADED.tables) return; // attendre menu ET tables (évite « Table introuvable » si le menu arrive avant)
+  urlParamsHandled = true;
+
+  const params = new URLSearchParams(window.location.search);
+  const t = params.get("table");
+  const staff = params.get("staff");
+  const admin = params.get("admin");
+
+  if(admin === "1"){ urlMode = "admin"; console.log("🔐 Lien ADMIN"); return; }
+  if(staff === "1"){ urlMode = "staff"; console.log("🔐 Lien STAFF"); return; }
+  if(t){
+    const num = parseInt(t);
+    if(num){
+      const f = DATA.tables.find(x => x.number === num);
+      if(f){
+        urlMode = "table";
+        SESSION = { role:"client", name:"Client (T"+num+")", userId:DEVICE_ID, since:Date.now(), fromTable:true };
+        setTimeout(loadOneSignal, 200); applyRoleTag("client");
+        clientS.mode = "sur_place"; clientS.tableId = f._docId; clientS.screen = "menu"; clientS.cart = {};
+        console.log("📱 QR table " + num);
+        return;
+      } else { console.warn("⚠️ Table " + num + " introuvable"); }
+    }
+  }
+  // Pas de params = lien général → direct livraison
+  urlMode = "default";
+  SESSION = { role:"client", name:"Client (Livraison)", userId:DEVICE_ID, since:Date.now(), isDelivery:true };
+  setTimeout(loadOneSignal, 200); applyRoleTag("client");
+  clientS.mode = "livraison"; clientS.screen = "menu"; clientS.cart = {};
+  console.log("🛵 Lien livraison général");
+}
+
+if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("service-worker.js").catch(e=>console.warn("SW:",e));});}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault(); window.__deferredPrompt = e;
+  const btn = document.getElementById("pwa-install-btn");
+  if(btn){ btn.style.background = "var(--jaune)"; btn.style.color = "var(--noir)"; }
+});
+
+window.addEventListener("appinstalled", (e) => { window.__deferredPrompt = null; toast("Application installée !"); });
+
+function withTimeout(p, ms, label){ return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error("délai dépassé : "+label)),ms))]); }
+(async function boot(){
+  try{
+    // 1) attendre l'état de connexion Firebase, 2) sinon connexion anonyme (client)
+    await withTimeout(new Promise(res=>{ const un=onAuthStateChanged(auth,()=>{ un(); res(); }); }),8000,"état de connexion Firebase");
+    if(!auth.currentUser) await withTimeout(signInAnonymously(auth),10000,"connexion anonyme Firebase");
+    startPublicSubs();
+    await withTimeout(restoreStaffSession(),10000,"reprise de session");
+    handleUrlParams();
+    render();
+    restoreClientOrder();
+    setTimeout(loadOneSignal, 2000);
+  }catch(e){
+    console.error(e);
+    const hint=(e&&e.code==="auth/operation-not-allowed")?"La connexion anonyme n'est pas activée dans Firebase Authentication.":(e&&e.code==="auth/unauthorized-domain")?"Ce domaine n'est pas autorisé dans Firebase Authentication.":"";
+    document.getElementById("root").innerHTML='<div class="loader"><div class="loader-logo">⚠️</div><p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">Erreur : '+esc(hint||e.message||e)+(e&&e.code?' ('+esc(e.code)+')':'')+'</p><button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#ffc107;color:#0a0a0a;border:none;border-radius:8px;font-weight:bold;cursor:pointer">Réessayer</button></div>';
+  }
+})();
+</script>
+</body>
+</html>
