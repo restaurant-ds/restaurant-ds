@@ -187,18 +187,31 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 <body>
 <div id="root"><div class="loader"><div class="loader-logo">D&S</div><h1 style="font-family:Georgia,serif;margin:0 0 20px;color:var(--jaune)">Restaurant D&S</h1><div class="spin"></div><p class="loader-text">Connexion…</p></div></div>
 <div id="invoice-print"></div>
+<script>
+(function(){
+  function show(msg){ var r=document.getElementById('root'); if(r && r.querySelector('.loader')){ r.innerHTML='<div class="loader"><div class="loader-logo">⚠️</div><p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">'+msg+'</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;border-radius:10px;border:none;background:#fdc400;font-weight:700">Réessayer</button></div>'; } }
+  window.addEventListener('error',function(e){ show('Erreur de chargement : '+(e.message||'inconnue')); });
+  window.addEventListener('unhandledrejection',function(e){ show('Erreur : '+((e.reason&&e.reason.message)||e.reason||'inconnue')); });
+  setTimeout(function(){ show('Connexion impossible. Ouvrez le lien directement dans Chrome (pas dans un aperçu) et vérifiez votre connexion internet.'); },12000);
+})();
+</script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, limit, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot, query, limit, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, sendPasswordResetEmail, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = { apiKey: "AIzaSyBeTQ0zrxdusKXdaoCMiI0zfxRqCZp7nN0", authDomain: "restaurant-ds-494a6.firebaseapp.com", projectId: "restaurant-ds-494a6", storageBucket: "restaurant-ds-494a6.firebasestorage.app", messagingSenderId: "1026668587499", appId: "1:1026668587499:web:7ed7b77fd623070007d1ae" };
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
+const auth = getAuth(fbApp);
+// 2e instance Firebase : sert uniquement à créer des comptes sans déconnecter l'admin
+let _secondaryAuth = null;
+function getSecondaryAuth(){ if(!_secondaryAuth) _secondaryAuth = getAuth(initializeApp(firebaseConfig, "secondary")); return _secondaryAuth; }
+const STAFF_EMAIL_DOMAIN = "staff.restaurant-ds.app";
 
 const DEFAULT_RESTO = { lat: 6.454877410013232, lon: 2.279816313097269 };
 const DEFAULT_PRIX_KM = 110;
 const SITE_URL = "https://restaurant-ds.github.io/restaurant-ds/";
-const MASTER_RECOVERY_CODE = "DS-RESET-2026";
 const DEFAULT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxS4EBYEyB54lALhoM01XJs2riGMZM7eWHCXtX7h5yd36YOFqwVUTNIp85W8J-hdU9E2Q/exec";
 const DEFAULT_WEBHOOK_TOKEN = "DS-PUSH-2026";
 const CLAIM_DELAY_MS = 60*60*1000; // 1h
@@ -208,14 +221,12 @@ let DEVICE_ID = localStorage.getItem("ds_device_id");
 if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); localStorage.setItem("ds_device_id", DEVICE_ID); }
 
 let SESSION = null;
-let DATA = { menu:[], staff:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{}, zones:[], resetLogs:[] };
+let DATA = { menu:[], staff:[], directory:[], users:[], tables:[], affectation:{}, orders:[], stock:[], stockMoves:[], settings:{}, zones:[], resetLogs:[] };
 
 function restoCoords(){ return { lat: (DATA.settings.restoLat != null) ? Number(DATA.settings.restoLat) : DEFAULT_RESTO.lat, lon: (DATA.settings.restoLon != null) ? Number(DATA.settings.restoLon) : DEFAULT_RESTO.lon }; }
 function prixParKm(){ return DATA.settings.prixKm != null ? Number(DATA.settings.prixKm) : DEFAULT_PRIX_KM; }
 function webhookUrl(){ return DATA.settings.webhookUrl || DEFAULT_WEBHOOK_URL; }
 function webhookToken(){ return DATA.settings.webhookToken || DEFAULT_WEBHOOK_TOKEN; }
-function masterCode(){ return DATA.settings.masterCode || MASTER_RECOVERY_CODE; }
-function genRecoveryCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const blk=()=>{let s="";for(let i=0;i<4;i++)s+=chars[Math.floor(Math.random()*chars.length)];return s;}; return "DS-"+blk()+"-"+blk(); }
 function restoMomoNumber(){ return DATA.settings.momoNumber || "01 97 00 00 00"; }
 
 // ============================================================
@@ -291,14 +302,6 @@ const SEED = {
     { id:"m9", name:"Jus de bissap", cat:"Boissons", price:1000, time:2, available:true, desc:"Hibiscus glacé" },
     { id:"m10", name:"Eau minérale", cat:"Boissons", price:500, time:1, available:true, desc:"" }
   ],
-  staff: [
-    { id:"s1", name:"Aïcha", role:"serveuse", pin:"4821" },
-    { id:"s2", name:"Fatou", role:"serveuse", pin:"3390" },
-    { id:"s3", name:"Moussa", role:"cuisine", pin:"1234" },
-    { id:"s4", name:"Ibrahim", role:"gerant", pin:"0000", email:"ibrahim@restaurant-ds.com", password:"Ibrahim2024!", recoveryCode:"", recoveryCodeCreatedAt:0 },
-    { id:"s5", name:"Salif", role:"livreur", pin:"5678" },
-    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999", email:"admin@restaurant-ds.com", password:"motdepass", recoveryCode:"", recoveryCodeCreatedAt:0 }
-  ],
   tables: Array.from({length:25},(_,i)=>({ id:"t"+(i+1), number:i+1, token:Math.random().toString(36).slice(2,8) })),
   stock: [
     { id:"st1", name:"Poulet", unit:"kg", initial:30, threshold:5 },
@@ -312,7 +315,6 @@ const SEED = {
     restoLat: DEFAULT_RESTO.lat, restoLon: DEFAULT_RESTO.lon, prixKm: DEFAULT_PRIX_KM,
     emailRapport:"", oneSignalAppId:"8fdaa67c-c57e-4794-b668-0373607cf39c",
     webhookUrl: DEFAULT_WEBHOOK_URL, webhookToken: DEFAULT_WEBHOOK_TOKEN,
-    masterCode: MASTER_RECOVERY_CODE,
     openHour: 11, closeHour: 2, graceUntil: 0, graceRoles: [], graceDuration: 60,
     momoNumber: "01 97 00 00 00"
   }
@@ -323,7 +325,6 @@ async function seedIfEmpty() {
   if (!check.empty) return;
   const batch = writeBatch(db);
   SEED.menu.forEach(m => batch.set(doc(db, "menu", m.id), m));
-  SEED.staff.forEach(s => batch.set(doc(db, "staff", s.id), s));
   SEED.tables.forEach(t => batch.set(doc(db, "tables", t.id), t));
   SEED.stock.forEach(s => batch.set(doc(db, "stock", s.id), s));
   batch.set(doc(db, "settings", "main"), SEED.settings);
@@ -352,21 +353,113 @@ async function calcRoadDistanceKm(clientLat, clientLon){
 }
 function orderTimerInfo(o){const items=o.items.filter(i=>i.statut!=="Refusé");const maxTime=Math.max(...items.map(i=>i.time),0);const start=o.paidAt||o.createdAt;const deadline=start+maxTime*60*1000;const remainingMs=deadline-Date.now();const remainingSec=Math.floor(remainingMs/1000);const abs=Math.abs(remainingSec);const mm=String(Math.floor(abs/60)).padStart(2,"0");const ss=String(abs%60).padStart(2,"0");return { remainingMs, overdue: remainingMs<=0, text:(remainingMs<=0?"+":"")+mm+":"+ss, maxTime, urgent: remainingMs>0 && remainingMs<maxTime*60*1000*0.25 };}
 function deliveryFeeFor(o){if(!o||o.type!=="livraison")return 0;if(o.deliveryKm!=null)return Math.round(o.deliveryKm*prixParKm());return 0;}
+function repriceItems(items){return items.map(i=>{const d=DATA.menu.find(m=>m._docId===i.id);return d?{...i,price:d.price,time:d.time}:i;});}
 function orderTotal(o){return o.items.filter(i=>i.statut!=="Refusé").reduce((s,i)=>s+i.price*i.qty,0);}
 function orderGrandTotal(o){return orderTotal(o) + deliveryFeeFor(o);}
-function orderIsFinal(o){ return o && (o.status==="servie" || o.status==="livree" || o.status==="refusee"); }
+function orderIsFinal(o){ return o && (o.status==="servie" || o.status==="livree" || o.status==="refusee" || o.status==="annulee"); }
 
 function preserveInput(){const a=document.activeElement;if(!a||!a.dataset||!a.dataset.input)return null;return { key:a.dataset.input, start:a.selectionStart, end:a.selectionEnd };}
 function restoreInput(saved){if(!saved)return;const el=document.querySelector('[data-input="'+saved.key+'"]');if(el){el.focus();try{el.setSelectionRange(saved.start,saved.end);}catch(e){}}}
 
-function subscribeAll(onUpdate) {
-  const sub = (col, key, tr) => onSnapshot(collection(db, col), snap => {const arr=[];snap.forEach(d=>arr.push({...d.data(),_docId:d.id}));DATA[key]=tr?tr(arr):arr;onUpdate();});
-  sub("menu","menu"); sub("staff","staff"); sub("tables","tables",arr=>arr.sort((a,b)=>a.number-b.number));
-  sub("stock","stock"); sub("stockMoves","stockMoves",arr=>arr.sort((a,b)=>(b._ts||0)-(a._ts||0)));
-  sub("orders","orders",arr=>arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
-  sub("zones","zones"); sub("resetLogs","resetLogs",arr=>arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
-  onSnapshot(collection(db,"affectation"),snap=>{const obj={};snap.forEach(d=>obj[d.id]=d.data());DATA.affectation=obj;onUpdate();});
-  onSnapshot(doc(db,"settings","main"),snap=>{if(snap.exists())DATA.settings=snap.data();onUpdate();});
+let UNSUB_PUBLIC=[], UNSUB_STAFF=[], UNSUB_CLIENT=null;
+const LOADED={}; // collections publiques déjà reçues au moins une fois
+function onSubError(name){ return err => console.warn("Lecture refusée ("+name+") :", (err && err.code) ? err.code : err); }
+function dataChanged(){ handleUrlParams(); render(); }
+function recomputeStaff(){ DATA.staff = DATA.users.length ? DATA.users : DATA.directory; }
+function subCol(list, col, key, tr, afterSet){
+  list.push(onSnapshot(collection(db,col), snap=>{
+    const arr=[]; snap.forEach(d=>arr.push({...d.data(),_docId:d.id}));
+    DATA[key]=tr?tr(arr):arr; LOADED[col]=true; if(afterSet)afterSet(); dataChanged();
+  }, onSubError(col)));
+}
+// Données publiques (tout utilisateur connecté, y compris client anonyme)
+function startPublicSubs(){
+  stopPublicSubs();
+  subCol(UNSUB_PUBLIC,"menu","menu");
+  subCol(UNSUB_PUBLIC,"tables","tables",arr=>arr.sort((a,b)=>a.number-b.number));
+  subCol(UNSUB_PUBLIC,"staffDirectory","directory",null,recomputeStaff);
+  UNSUB_PUBLIC.push(onSnapshot(collection(db,"affectation"),snap=>{const obj={};snap.forEach(d=>obj[d.id]=d.data());DATA.affectation=obj;dataChanged();},onSubError("affectation")));
+  UNSUB_PUBLIC.push(onSnapshot(doc(db,"settings","main"),snap=>{if(snap.exists())DATA.settings=snap.data();dataChanged();},onSubError("settings")));
+}
+function stopPublicSubs(){ UNSUB_PUBLIC.forEach(u=>{try{u();}catch(e){}}); UNSUB_PUBLIC=[]; }
+// Données réservées au personnel, selon le rôle
+function startStaffSubs(role){
+  stopStaffSubs();
+  subCol(UNSUB_STAFF,"orders","orders",arr=>arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+  if(role==="gerant"||role==="admin"){
+    subCol(UNSUB_STAFF,"stock","stock");
+    subCol(UNSUB_STAFF,"stockMoves","stockMoves",arr=>arr.sort((a,b)=>(b._ts||0)-(a._ts||0)));
+  }
+  if(role==="admin"){
+    subCol(UNSUB_STAFF,"users","users",arr=>arr.sort((a,b)=>String(a.name).localeCompare(String(b.name))),recomputeStaff);
+    subCol(UNSUB_STAFF,"zones","zones");
+    subCol(UNSUB_STAFF,"resetLogs","resetLogs",arr=>arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+  }
+}
+function stopStaffSubs(){
+  UNSUB_STAFF.forEach(u=>{try{u();}catch(e){}}); UNSUB_STAFF=[];
+  DATA.orders=[]; DATA.stock=[]; DATA.stockMoves=[]; DATA.users=[]; DATA.zones=[]; DATA.resetLogs=[]; recomputeStaff();
+}
+// Un client ne lit QUE sa propre commande
+function watchClientOrder(orderId){
+  if(UNSUB_CLIENT){try{UNSUB_CLIENT();}catch(e){} UNSUB_CLIENT=null;}
+  if(!orderId) return;
+  UNSUB_CLIENT=onSnapshot(doc(db,"orders",orderId), snap=>{ DATA.orders = snap.exists()?[{...snap.data(),_docId:snap.id}]:[]; dataChanged(); }, onSubError("order"));
+}
+function stopClientOrder(){ if(UNSUB_CLIENT){try{UNSUB_CLIENT();}catch(e){} UNSUB_CLIENT=null;} DATA.orders=[]; }
+
+// ---------- Authentification ----------
+async function resetToAnonymous(){
+  stopPublicSubs();
+  try{ await signOut(auth); }catch(e){}
+  try{ await signInAnonymously(auth); }catch(e){ console.warn("Connexion anonyme impossible :", e); }
+  startPublicSubs();
+}
+function authErrorMessage(e, pinMode){
+  const c=(e && e.code) ? String(e.code) : "";
+  if(c==="ds/role-mismatch") return "Accès refusé pour ce rôle";
+  if(c==="auth/too-many-requests") return "Trop de tentatives. Réessayez dans quelques minutes.";
+  if(c==="auth/network-request-failed") return "Pas de connexion internet";
+  if(c.startsWith("auth/")) return pinMode ? "PIN incorrect" : "Identifiants incorrects";
+  return "Erreur : "+((e && e.message) || c || "inconnue");
+}
+async function adminMigrations(){
+  try{ if(DATA.settings && DATA.settings.masterCode!==undefined) await setDoc(doc(db,"settings","main"),{masterCode:deleteField()},{merge:true}); }catch(e){ console.warn(e); }
+  try{ await seedIfEmpty(); }catch(e){ console.warn(e); }
+}
+async function finishStaffLogin(expectedRole){
+  const user=auth.currentUser;
+  const snap=await getDoc(doc(db,"users",user.uid));
+  const prof=snap.exists()?snap.data():null;
+  if(!prof || prof.role!==expectedRole){ await resetToAnonymous(); throw {code:"ds/role-mismatch"}; }
+  startStaffSubs(prof.role);
+  loginRole=null; loginStaffId=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null;
+  A.login(prof.role,prof.name,user.uid);
+  if(prof.role==="gerant"||prof.role==="admin") A.logAuth(prof.role,prof.email||"","✅ Connexion réussie");
+  if(prof.role==="admin") adminMigrations();
+}
+async function restoreStaffSession(){
+  const u=auth.currentUser; if(!u||u.isAnonymous) return;
+  try{
+    const snap=await getDoc(doc(db,"users",u.uid));
+    if(snap.exists()){
+      const p=snap.data();
+      startStaffSubs(p.role);
+      SESSION={role:p.role,name:p.name,uid:u.uid,userId:DEVICE_ID,since:Date.now()};
+      setTimeout(loadOneSignal,200); applyRoleTag(p.role);
+      if(p.role==="admin") adminMigrations();
+      return;
+    }
+  }catch(e){ console.warn(e); }
+  await resetToAnonymous();
+}
+async function attemptPinLogin(){
+  const u=DATA.staff.find(x=>x._docId===loginStaffId);
+  if(!u||!u.alias){ loginError="Compte introuvable"; loginPin=""; render(); return; }
+  loginBusy=true; render();
+  try{ await signInWithEmailAndPassword(auth,u.alias,loginPin); await finishStaffLogin(loginRole); }
+  catch(e){ loginPin=""; loginError=authErrorMessage(e,true); }
+  loginBusy=false; render();
 }
 
 function notify(title,body,urgent){try{if("Notification" in window && Notification.permission==="granted"){new Notification(title,{body,tag:"ds-"+Date.now(),requireInteraction:!!urgent});}}catch(e){}if(urgent&&navigator.vibrate){try{navigator.vibrate([200,100,200]);}catch(e){}}}
@@ -393,13 +486,13 @@ function loadOneSignal(){
 function randomDeletePercent(pct){const all=DATA.orders.slice();if(all.length===0)return [];const n=Math.max(1,Math.round(all.length*(pct/100)));const idxs=all.map((_,i)=>i);for(let i=idxs.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[idxs[i],idxs[j]]=[idxs[j],idxs[i]];}return idxs.slice(0,n).map(i=>all[i]._docId);}
 
 const A = {
-  login(role,name){ SESSION={role,name,userId:DEVICE_ID,since:Date.now()}; setTimeout(loadOneSignal,200); applyRoleTag(role); render(); },
-  logout(){ SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; clearRoleTag(); render(); },
+  login(role,name,uid){ SESSION={role,name,uid:uid||(auth.currentUser&&auth.currentUser.uid)||null,userId:DEVICE_ID,since:Date.now()}; setTimeout(loadOneSignal,200); applyRoleTag(role); render(); },
+  logout(){ SESSION=null; loginRole=null; loginStaffId=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; clearRoleTag(); stopStaffSubs(); stopClientOrder(); resetToAnonymous().then(()=>render()); render(); },
 
   async addOrder(order){
     const isLivraison = order.type === "livraison";
     const newOrder={
-      createdAt:Date.now(), date:nowDate(),
+      createdAt:Date.now(), date:nowDate(), ownerUid:(auth.currentUser?auth.currentUser.uid:null),
       status: isLivraison ? "att_verif_paiement" : "att_validation",
       type:order.type||"sur_place",
       tableId:order.tableId||null, tableNumber:order.tableNumber||null,
@@ -427,7 +520,8 @@ const A = {
   },
 
   async updateOrder(id,patch){ await updateDoc(doc(db,"orders",id),patch); },
-  async deleteOrder(id){ await deleteDoc(doc(db,"orders",id)); },
+  // Plus aucune suppression de commande : une annulation est archivée (traçabilité comptable)
+  async cancelOrder(id){ await updateDoc(doc(db,"orders",id),{status:"annulee",cancelledAt:Date.now(),cancelledBy:(SESSION?(SESSION.name||SESSION.role):"client")}); },
 
   async setItemStatut(orderId,idx,statut,motif){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const items=o.items.map((it,i)=>i===idx?{...it,statut,motif:statut==="Refusé"?(motif||it.motif):null}:it);await updateDoc(doc(db,"orders",orderId),{items});},
   async setItemMotif(orderId,idx,motif){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const items=o.items.map((it,i)=>i===idx?{...it,motif}:it);await updateDoc(doc(db,"orders",orderId),{items});},
@@ -440,8 +534,9 @@ const A = {
       await updateDoc(doc(db,"orders",id),{status:"refusee",validatedAt:Date.now()});
       return;
     }
-    await updateDoc(doc(db,"orders",id),{status:"att_collect",validatedAt:Date.now()});
-    sendPush("💰 À encaisser", "Table "+(o.tableNumber||"")+" — "+money(orderTotal(o)), "serveuse");
+    const repriced=repriceItems(o.items); // prix relus dans le menu par le gérant (le client ne peut pas fixer ses prix)
+    await updateDoc(doc(db,"orders",id),{status:"att_collect",validatedAt:Date.now(),items:repriced});
+    sendPush("💰 À encaisser", "Table "+(o.tableNumber||"")+" — "+money(orderTotal({...o,items:repriced})), "serveuse");
   },
 
   // Gérant valide une livraison après vérif MoMo (att_verif_paiement → payee)
@@ -452,14 +547,15 @@ const A = {
       await updateDoc(doc(db,"orders",id),{status:"refusee",validatedAt:Date.now()});
       return;
     }
+    const rp=repriceItems(o.items);
     await updateDoc(doc(db,"orders",id),{
-      status:"payee", validatedAt:Date.now(), paidAt:Date.now(),
+      status:"payee", items:rp, validatedAt:Date.now(), paidAt:Date.now(),
       paymentMethod:"momo", paymentRef: o.momoRef||null,
       momoRefStatus:"ok"
     });
     const label = "Livraison "+(o.clientInfo?.name||"");
-    sendPush("👨‍🍳 Nouvelle préparation", label+" — MoMo vérifié — "+money(orderGrandTotal(o)), "cuisine");
-    sendPush("🛵 Livraison prête à dispatcher", label+" — "+money(orderGrandTotal(o)), "gerant");
+    sendPush("👨‍🍳 Nouvelle préparation", label+" — MoMo vérifié — "+money(orderGrandTotal({...o,items:rp})), "cuisine");
+    sendPush("🛵 Livraison prête à dispatcher", label+" — "+money(orderGrandTotal({...o,items:rp})), "gerant");
   },
 
   // Gérant refuse la livraison (réf bidon)
@@ -502,10 +598,42 @@ const A = {
   async addDish(d){await addDoc(collection(db,"menu"),d);},
   async updateDish(id,patch){await updateDoc(doc(db,"menu",id),patch);},
   async removeDish(id){await deleteDoc(doc(db,"menu",id));},
-  async addStaff(s){await addDoc(collection(db,"staff"),s);},
-  async updateStaff(id,patch){await updateDoc(doc(db,"staff",id),patch);},
-  async removeStaff(id){await deleteDoc(doc(db,"staff",id));},
-  async resetPin(id){const pin=String(Math.floor(1000+Math.random()*9000));await updateDoc(doc(db,"staff",id),{pin});return pin;},
+  // Création d'un compte : PIN (6 chiffres) pour serveuse/cuisine/livreur, e-mail + mot de passe pour gérant/admin.
+  async createStaffAccount(st){
+    const name=(st.name||"").trim(); if(!name) throw new Error("Nom requis");
+    const isMgr=(st.role==="gerant"||st.role==="admin");
+    let email, password;
+    if(isMgr){
+      email=(st.email||"").trim().toLowerCase(); password=st.password||"";
+      if(!email||password.length<8) throw new Error("E-mail et mot de passe (8 caractères min) requis");
+    } else {
+      if(!/^\d{6}$/.test(st.pin||"")) throw new Error("PIN de 6 chiffres requis");
+      password=st.pin; email="s"+Date.now().toString(36)+Math.random().toString(36).slice(2,8)+"@"+STAFF_EMAIL_DOMAIN;
+    }
+    const secondaryAuth=getSecondaryAuth();
+    const cred=await createUserWithEmailAndPassword(secondaryAuth,email,password);
+    const uid=cred.user.uid;
+    try{ await signOut(secondaryAuth); }catch(e){}
+    const batch=writeBatch(db);
+    batch.set(doc(db,"users",uid),{name,role:st.role,email,createdAt:Date.now()});
+    if(!isMgr) batch.set(doc(db,"staffDirectory",uid),{name,role:st.role,alias:email});
+    await batch.commit();
+    return uid;
+  },
+  async removeStaff(id){
+    if(auth.currentUser && id===auth.currentUser.uid) throw new Error("Vous ne pouvez pas supprimer votre propre compte");
+    const batch=writeBatch(db); batch.delete(doc(db,"users",id)); batch.delete(doc(db,"staffDirectory",id)); await batch.commit();
+  },
+  // Réinitialiser un PIN = nouveau compte avec nouveau PIN (l'ancien compte perd tous ses droits)
+  async resetPin(id){
+    const u=DATA.staff.find(x=>x._docId===id); if(!u) throw new Error("Compte introuvable");
+    const pin=String(100000+(crypto.getRandomValues(new Uint32Array(1))[0]%900000));
+    const newId=await A.createStaffAccount({name:u.name,role:u.role,pin});
+    const today=nowDate(); const day=DATA.affectation[today];
+    if(day){ const patch={}; let changed=false; Object.entries(day).forEach(([t,sid])=>{ if(sid===id){patch[t]=newId;changed=true;} else patch[t]=sid; }); if(changed) await setDoc(doc(db,"affectation",today),patch); }
+    await A.removeStaff(id);
+    return pin;
+  },
 
   // Table : numérotation intelligente (plus petit trou sinon max+1)
   async addTable(){
@@ -526,7 +654,7 @@ const A = {
   async addStockMove(m){await addDoc(collection(db,"stockMoves"),{...m,date:nowDate(),_ts:Date.now()});},
   async addStockItem(item){await addDoc(collection(db,"stock"),item);},
   async removeStockItem(id){await deleteDoc(doc(db,"stock",id));},
-  async updateSettings(patch){await setDoc(doc(db,"settings","main"),{...DATA.settings,...patch},{merge:true});},
+  async updateSettings(patch){await setDoc(doc(db,"settings","main"),patch,{merge:true});},
 
   async activateGrace(durationMin, roles){
     const until = Date.now() + durationMin*60*1000;
@@ -537,17 +665,11 @@ const A = {
 
   async callServeuse(orderId){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const nc=(o.callCount||0)+1;const p={callCount:nc,lastCall:Date.now()};if(nc>=3)p.escalated=true;await updateDoc(doc(db,"orders",orderId),p);if(nc < 3){sendPush("🔔 Client appelle", "Table "+(o.tableNumber||""), "serveuse");}else{sendPush("🚨 Client appelle (3x)", "Table "+(o.tableNumber||""), "gerant");}},
 
-  async resetTodayOrders(){const today=nowDate();const toDelete=DATA.orders.filter(o=>o.date===today);const batch=writeBatch(db);toDelete.forEach(o=>batch.delete(doc(db,"orders",o._docId)));await batch.commit();return toDelete.length;},
-  async resetAllOrders(){const all=DATA.orders;const batch=writeBatch(db);all.forEach(o=>batch.delete(doc(db,"orders",o._docId)));await batch.commit();return all.length;},
-  async resetActiveOrders(){const act=DATA.orders.filter(o=>o.status==="att_validation"||o.status==="att_verif_paiement"||o.status==="att_collect"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt));const batch=writeBatch(db);act.forEach(o=>batch.delete(doc(db,"orders",o._docId)));await batch.commit();return act.length;},
   async resetMenu(){const batch=writeBatch(db);DATA.menu.forEach(m=>batch.delete(doc(db,"menu",m._docId)));SEED.menu.forEach(m=>batch.set(doc(db,"menu",m.id),m));await batch.commit();},
   async resetStock(){const batch=writeBatch(db);DATA.stock.forEach(s=>batch.delete(doc(db,"stock",s._docId)));DATA.stockMoves.forEach(m=>batch.delete(doc(db,"stockMoves",m._docId)));SEED.stock.forEach(s=>batch.set(doc(db,"stock",s.id),s));await batch.commit();},
-  async resetEverything(){const batch=writeBatch(db);DATA.orders.forEach(o=>batch.delete(doc(db,"orders",o._docId)));DATA.menu.forEach(m=>batch.delete(doc(db,"menu",m._docId)));DATA.staff.forEach(s=>batch.delete(doc(db,"staff",s._docId)));DATA.tables.forEach(t=>batch.delete(doc(db,"tables",t._docId)));DATA.stock.forEach(s=>batch.delete(doc(db,"stock",s._docId)));DATA.stockMoves.forEach(m=>batch.delete(doc(db,"stockMoves",m._docId)));DATA.zones.forEach(z=>batch.delete(doc(db,"zones",z._docId)));Object.keys(DATA.affectation).forEach(date=>batch.delete(doc(db,"affectation",date)));SEED.menu.forEach(m=>batch.set(doc(db,"menu",m.id),m));SEED.staff.forEach(s=>batch.set(doc(db,"staff",s.id),s));SEED.tables.forEach(t=>batch.set(doc(db,"tables",t.id),t));SEED.stock.forEach(s=>batch.set(doc(db,"stock",s.id),s));batch.set(doc(db,"settings","main"),SEED.settings);await batch.commit();},
   async logReset(action,result,pinTried){const masked=pinTried?"••"+String(pinTried).slice(-2):"";await addDoc(collection(db,"resetLogs"),{createdAt:Date.now(),adminName:SESSION?SESSION.name:"?",action,result,pinTried:masked});},
   async clearResetLogs(){const batch=writeBatch(db);DATA.resetLogs.forEach(l=>batch.delete(doc(db,"resetLogs",l._docId)));await batch.commit();},
-  async logAuth(role,email,result){await addDoc(collection(db,"resetLogs"),{createdAt:Date.now(),adminName:email||"?",action:"Connexion "+(role==="admin"?"Admin":role==="gerant"?"Gérant":"?"),result,pinTried:""});},
-  async generateRecoveryCode(staffId){const code=genRecoveryCode();await updateDoc(doc(db,"staff",staffId),{recoveryCode:code,recoveryCodeCreatedAt:Date.now()});return code;},
-  async resetPasswordWithRecovery(staffId,newPassword){const code=genRecoveryCode();await updateDoc(doc(db,"staff",staffId),{password:newPassword,recoveryCode:code,recoveryCodeCreatedAt:Date.now()});return code;},
+  async logAuth(role,email,result){try{await addDoc(collection(db,"resetLogs"),{createdAt:Date.now(),adminName:email||"?",action:"Connexion "+(role==="admin"?"Admin":role==="gerant"?"Gérant":"?"),result,pinTried:""});}catch(e){}},
   async toggleMenuOfDay(dishId){
     const m = DATA.settings.menuOfDay;
     const isToday = m && m.date === nowDate();
@@ -561,6 +683,7 @@ const A = {
 
 function stockQty(id){const item=DATA.stock.find(x=>x._docId===id);if(!item)return 0;return DATA.stockMoves.filter(m=>m.stockId===id).reduce((a,m)=>a+(m.type==="Entrée"?m.qty:-m.qty),item.initial);}
 function statusBadge(o){
+  if(o.status==="annulee")return '<span class="badge badge-neutre">Annulée</span>';
   if(o.status==="servie")return '<span class="badge badge-vert">Servie</span>';
   if(o.status==="livree")return '<span class="badge badge-vert">Livrée</span>';
   if(o.status==="refusee")return '<span class="badge badge-rouge">Refusée</span>';
@@ -571,7 +694,7 @@ function statusBadge(o){
   return '<span class="badge badge-rouge">À valider</span>';
 }
 
-let loginRole=null, loginPin="", loginEmail="", loginPassword="", loginError="", loginRecovery=null;
+let loginRole=null, loginStaffId=null, loginBusy=false, loginPin="", loginEmail="", loginPassword="", loginError="", loginRecovery=null;
 let urlMode="default"; // "default" | "staff" | "admin" | "table"
 let clientS={screen:"menu",mode:"livraison",cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{},momoRefInput:"",claimType:null,claimText:"",ratingDriver:0,ratingResto:0,ratingComment:""};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};
@@ -623,29 +746,26 @@ function screenLogin(){
   if(loginRecovery) return screenRecovery();
   if(loginRole==="gerant"||loginRole==="admin"){
     const labels={gerant:"Gérant",admin:"Administrateur"};
-    const demo={gerant:"ibrahim@restaurant-ds.com / Ibrahim2024!",admin:"admin@restaurant-ds.com / motdepass"};
-    return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Identifiez-vous</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="login-email" value="'+esc(loginEmail)+'" autocomplete="username" autocapitalize="none"></div><div><label class="text-xs" style="color:#aaa;font-weight:600">MOT DE PASSE</label><input class="auth-input" type="password" data-input="login-password" value="'+esc(loginPassword)+'" autocomplete="current-password"></div>'+(loginError?'<p class="pin-error" style="margin:0">'+esc(loginError)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="login-submit">Se connecter</button><button class="btn btn-ghost btn-block" style="padding:10px;font-size:13px" data-action="login-forgot-pwd">🔑 Mot de passe oublié ?</button><button class="pin-back" data-action="back-role">← Changer de rôle</button><p class="pin-hint">Démo : '+demo[loginRole]+'</p></div></div></div>';
+    return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Identifiez-vous</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="login-email" value="'+esc(loginEmail)+'" autocomplete="username" autocapitalize="none"></div><div><label class="text-xs" style="color:#aaa;font-weight:600">MOT DE PASSE</label><input class="auth-input" type="password" data-input="login-password" value="'+esc(loginPassword)+'" autocomplete="current-password"></div>'+(loginError?'<p class="pin-error" style="margin:0">'+esc(loginError)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="login-submit">Se connecter</button><button class="btn btn-ghost btn-block" style="padding:10px;font-size:13px" data-action="login-forgot-pwd">🔑 Mot de passe oublié ?</button><button class="pin-back" data-action="back-role">← Changer de rôle</button></div></div></div>';
   }
   const labels={serveuse:"Serveuse",cuisine:"Cuisine",livreur:"Livreur"};
-  const dots=[0,1,2,3].map(i=>'<div class="pin-dot '+(i<loginPin.length?"filled":"")+'"></div>').join("");
+  if(!loginStaffId){
+    const names=DATA.staff.filter(x=>x.role===loginRole);
+    return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 16px">Qui êtes-vous ?</p><div style="display:flex;flex-direction:column;gap:10px">'+(names.length===0?'<p class="pin-hint">Aucun compte pour ce rôle. Demandez à l\'administrateur d\'en créer un.</p>':names.map(n=>'<button class="role-btn" data-action="pick-staff" data-id="'+n._docId+'"><p class="lab">'+esc(n.name)+'</p></button>').join(""))+'</div><button class="pin-back" data-action="back-role">← Changer de rôle</button></div></div>';
+  }
+  const who=DATA.staff.find(x=>x._docId===loginStaffId);
+  const dots=[0,1,2,3,4,5].map(i=>'<div class="pin-dot '+(i<loginPin.length?"filled":"")+'"></div>').join("");
   const keypad=[1,2,3,4,5,6,7,8,9].map(n=>'<button class="pin-key" data-action="pin-digit" data-digit="'+n+'">'+n+'</button>').join("");
-  const hint={serveuse:"PIN démo : 4821 (Aïcha)",cuisine:"PIN démo : 1234 (Moussa)",livreur:"PIN démo : 5678 (Salif)"}[loginRole]||"";
-  return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0">Entrez votre code PIN</p><div class="pin-display">'+dots+'</div><div class="pin-pad">'+keypad+'<button class="pin-key blank" disabled></button><button class="pin-key" data-action="pin-digit" data-digit="0">0</button><button class="pin-key del" data-action="pin-del">⌫</button></div>'+(loginError?'<p class="pin-error">'+esc(loginError)+'</p>':"")+'<button class="pin-back" data-action="back-role">← Changer de rôle</button><p class="pin-hint">'+hint+'</p></div></div>';
+  return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+esc(who?who.name:labels[loginRole])+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0">'+(loginBusy?"Vérification…":"Entrez votre PIN (6 chiffres)")+'</p><div class="pin-display">'+dots+'</div><div class="pin-pad">'+keypad+'<button class="pin-key blank" disabled></button><button class="pin-key" data-action="pin-digit" data-digit="0">0</button><button class="pin-key del" data-action="pin-del">⌫</button></div>'+(loginError?'<p class="pin-error">'+esc(loginError)+'</p>':"")+'<button class="pin-back" data-action="pin-back-name">← Changer de nom</button></div></div>';
 }
 
 function screenRecovery(){
   const r=loginRecovery; if(!r) return "";
   const roleLabel=loginRole==="admin"?"Administrateur":"Gérant";
-  if(r.stage==="form"){
-    return '<div class="login"><div class="login-logo">🔑</div><h1 class="serif">Mot de passe oublié</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Compte '+roleLabel+'</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="rec-email" value="'+esc(r.email||"")+'"></div><div><label class="text-xs" style="color:#aaa;font-weight:600">CODE DE RÉCUPÉRATION</label><input class="auth-input" type="text" data-input="rec-code" value="'+esc(r.code||"")+'" placeholder="DS-XXXX-XXXX" style="font-family:monospace"></div>'+(r.error?'<p class="pin-error">'+esc(r.error)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-verify">Vérifier</button><button class="pin-back" data-action="rec-cancel">← Retour</button></div></div></div>';
+  if(r.stage==="sent"){
+    return '<div class="login"><div class="login-logo">✉️</div><h1 class="serif">Vérifiez vos e-mails</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Si un compte existe pour cette adresse, un lien de réinitialisation vient d\'être envoyé. Pensez à regarder les courriers indésirables.</p><button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-done">Retour</button></div></div>';
   }
-  if(r.stage==="newPwd"){
-    return '<div class="login"><div class="login-logo">🔐</div><h1 class="serif">Nouveau mot de passe</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Compte : <strong style="color:var(--jaune)">'+esc(r.matchedName||"")+'</strong></p><div style="display:flex;flex-direction:column;gap:14px"><input class="auth-input" type="password" data-input="rec-newpwd" value="'+esc(r.newPwd||"")+'" placeholder="Nouveau mot de passe"><input class="auth-input" type="password" data-input="rec-newpwd2" value="'+esc(r.newPwd2||"")+'" placeholder="Confirmer">'+(r.error?'<p class="pin-error">'+esc(r.error)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-save">Enregistrer</button><button class="pin-back" data-action="rec-cancel">← Annuler</button></div></div></div>';
-  }
-  if(r.stage==="success"){
-    return '<div class="login"><div class="login-logo">✅</div><h1 class="serif">Mot de passe modifié</h1><div class="pin-wrap"><div class="recovery-code" style="background:var(--noir);color:var(--jaune);border-color:var(--jaune)">'+esc(r.generatedCode||"")+'</div><button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-done">J\'ai noté — Retour</button></div></div>';
-  }
-  return "";
+  return '<div class="login"><div class="login-logo">🔑</div><h1 class="serif">Mot de passe oublié</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Compte '+roleLabel+'</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="rec-email" value="'+esc(r.email||"")+'"></div>'+(r.error?'<p class="pin-error">'+esc(r.error)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-send">Envoyer le lien</button><button class="pin-back" data-action="rec-cancel">← Retour</button></div></div></div>';
 }
 
 // ============================================================
@@ -672,7 +792,7 @@ function screenClient(){
   if(order && order.status!=="refusee" && order.status!=="livree" && order.status!=="servie"){
     if(order.status==="att_verif_paiement" && v.screen==="waiting"){ /* reste sur waiting */ }
     if(order.status==="att_collect" && v.screen==="waiting")v.screen="serving";
-    if(order.status==="att_paiement" && v.screen==="waiting")v.screen="payment";
+    if(order.status==="att_paiement" && v.screen==="waiting")v.screen="serving";
     if(order.status==="payee" && (v.screen==="payment"||v.screen==="serving")){v.screen="tracking";v.timerTotal=0;}
     const refIdx=order.items.findIndex((it,i)=>it.statut==="Refusé"&&v.refusedIdx!==i);
     if(refIdx>=0 && v.screen!=="refused" && v.screen!=="fully_refused" && v.screen!=="editOrder"){v.refusedIdx=refIdx;v.screen="refused";}
@@ -739,7 +859,7 @@ function screenClient(){
     const isLiv = order.type==="livraison";
     const title = isLiv ? "Vérification du paiement" : "En attente validation";
     const txt = isLiv ? "Le gérant vérifie votre paiement MoMo…" : "Le gérant examine votre commande…";
-    return '<div class="login"><div class="spin" style="border-color:#222;border-top-color:var(--jaune)"></div><p class="login-sub" style="margin-top:20px">Envoyée</p><h1 class="serif" style="text-align:center">'+title+'</h1><p style="color:#aaa;text-align:center;margin:0 0 24px">'+txt+'</p><button class="btn btn-ghost btn-block" style="max-width:280px" data-action="client-cancel-wait">Annuler</button></div>';
+    return '<div class="login"><div class="spin" style="border-color:#222;border-top-color:var(--jaune)"></div><p class="login-sub" style="margin-top:20px">Envoyée</p><h1 class="serif" style="text-align:center">'+title+'</h1><p style="color:#aaa;text-align:center;margin:0 0 24px">'+txt+'</p>'+(isLiv?'<p class="text-xs" style="color:#888;text-align:center;max-width:280px">Paiement envoyé : pour annuler, appelez le restaurant.</p>':'<button class="btn btn-ghost btn-block" style="max-width:280px" data-action="client-cancel-wait">Annuler</button>')+'</div>';
   }
 
   // SERVING (sur place en attente encaissement)
@@ -759,12 +879,6 @@ function screenClient(){
   // FULLY REFUSED
   if(v.screen==="fully_refused" && order){
     return '<div class="app">'+topbar({title:"Commande refusée",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:20px"><div style="font-size:56px;margin-bottom:16px">😔</div><h2 class="section-title">Commande refusée</h2><p class="muted" style="margin-bottom:14px">Tous vos plats sont indisponibles.</p><div class="card" style="text-align:left;margin-bottom:14px">'+order.items.map(it=>'<div class="flex between" style="font-size:13px;margin-bottom:4px;text-decoration:line-through;color:var(--gris)"><span>'+it.qty+'× '+esc(it.name)+'</span><span class="text-xs">'+esc(it.motif||"")+'</span></div>').join("")+'</div><button class="btn btn-accent btn-block" style="padding:14px;margin-bottom:8px" data-action="client-edit-from-refused">✏️ Choisir d\'autres plats</button><button class="btn btn-ghost btn-block" data-action="client-cancel-order">Annuler</button></div></div>';
-  }
-
-  // PAIEMENT (sur place en attente serveuse - ancien att_paiement livraison)
-  if(v.screen==="payment" && order){
-    const total=orderGrandTotal(order);
-    return '<div class="app">'+topbar({title:"Paiement",homeAction:"client-home"})+'<div class="content content-narrow"><p class="section-sub">Choisissez votre paiement.</p><div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px"><button class="card card-row" data-action="client-pay" data-method="momo" style="text-align:left"><div><p class="card-title">📱 Mobile Money</p></div></button><button class="card card-row" data-action="client-pay" data-method="cash" style="text-align:left"><div><p class="card-title">💵 Cash</p></div></button></div><div class="card" style="display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--jaune)"><span class="bold">Total</span><span class="mono" style="font-size:22px;font-weight:bold">'+money(total)+'</span></div></div></div>';
   }
 
   // EDIT ORDER
@@ -840,7 +954,7 @@ function destroyMap(){if(mapInstance){try{mapInstance.remove();}catch(e){}mapIns
 // SERVEUSE
 // ============================================================
 function screenServeuse(){
-  const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");
+  const me=DATA.staff.find(s=>s._docId===SESSION.uid&&s.role==="serveuse");
   const today=nowDate();const day=DATA.affectation[today]||{};
   const tableIds=me?Object.entries(day).filter(([tid,sid])=>sid===me._docId).map(([tid])=>tid):[];
   const myTables=DATA.tables.filter(t=>tableIds.includes(t._docId));
@@ -951,9 +1065,9 @@ function screenCuisine(){
 }
 
 function screenLivreur(){
-  const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");
+  const me=DATA.staff.find(s=>s._docId===SESSION.uid&&s.role==="livreur");
   const available=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.livreurId);
-  const mine=DATA.orders.filter(o=>o.livreurId===(me&&me._docId)&&o.status!=="livree"&&o.status!=="refusee");
+  const mine=DATA.orders.filter(o=>o.livreurId===(me&&me._docId)&&o.status!=="livree"&&o.status!=="refusee"&&o.status!=="annulee");
   const done=DATA.orders.filter(o=>o.livreurId===(me&&me._docId)&&o.status==="livree"&&o.date===nowDate());
   const v=livS;let content="";
   if(v.tab==="available"){content='<h2 class="section-title">Disponibles</h2><p class="section-sub">'+available.length+' dispo</p>'+(available.length===0?'<p class="empty">Aucune livraison disponible</p>':available.map(o=>'<div class="card" style="margin-bottom:12px"><p class="bold">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-xs muted">'+esc(o.clientInfo?.name||"")+' · '+esc(o.clientInfo?.phone||"")+'</p><p class="text-xs muted" style="margin-top:4px">Frais livraison : '+(o.deliveryKm?money(Math.round(o.deliveryKm*prixParKm())):"—")+' (payé en ligne)</p><div class="flex between center" style="margin-top:10px"><span class="mono bold">Total payé</span><button class="btn btn-accent btn-sm" data-action="liv-take" data-id="'+o._docId+'">Je prends</button></div></div>').join(""));}
@@ -984,7 +1098,8 @@ function screenAdmin(){
     content='<div class="flex between center" style="margin-bottom:16px"><h2 class="section-title" style="font-size:19px;margin:0">Menu</h2><button class="btn btn-primary btn-sm" data-action="admin-add-dish">+ Ajouter</button></div>';
     Object.keys(byCat).forEach(cat=>{const dishes=byCat[cat];if(dishes.length===0&&!cats.includes(cat))return;content+='<div class="cat-group"><div class="cat-group-title">'+esc(cat)+' ('+dishes.length+')</div><div class="table-wrap"><table><thead><tr><th>Plat</th><th>Prix</th><th>Cuisson</th><th>Dispo</th><th></th></tr></thead><tbody>'+dishes.map(d=>v.editingDish===d._docId?'<tr><td><input class="input" data-input="dish-name" value="'+esc(d.name)+'" style="padding:6px;min-width:120px"><input class="input" data-input="dish-desc" value="'+esc(d.desc||"")+'" placeholder="Description" style="padding:6px;margin-top:4px;font-size:12px"></td><td><input class="input" type="number" data-input="dish-price" value="'+d.price+'" style="padding:6px;width:80px"></td><td><input class="input" type="number" data-input="dish-time" value="'+d.time+'" style="padding:6px;width:60px"></td><td><input type="checkbox" data-input="dish-avail" '+(d.available?"checked":"")+' style="width:20px;height:20px"></td><td style="white-space:nowrap"><select class="input" data-input="dish-cat" style="padding:6px;display:inline-block;width:auto">'+cats.map(c=>'<option '+(d.cat===c?"selected":"")+'>'+c+'</option>').join("")+'</select> <button class="btn btn-success btn-sm" data-action="admin-save-dish" data-id="'+d._docId+'">✓</button></td></tr>':'<tr><td><strong>'+esc(d.name)+'</strong></td><td class="mono">'+money(d.price)+'</td><td>'+d.time+' min</td><td><span class="badge '+(d.available?"badge-vert":"badge-rouge")+'">'+(d.available?"Oui":"Non")+'</span></td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost btn-sm" data-action="admin-edit-dish" data-id="'+d._docId+'">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-dish" data-id="'+d._docId+'">🗑️</button></td></tr>').join("")+'</tbody></table></div></div>';});
   } else if(v.section==="staff"){
-    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2><div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'"><select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select><input class="input mono" placeholder="PIN" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'"><input class="input" placeholder="Email" data-input="new-staff-email" value="'+esc(v.newStaff.email||"")+'"><input class="input" placeholder="Mot de passe" data-input="new-staff-pwd" value="'+esc(v.newStaff.password||"")+'"><button class="btn btn-primary" data-action="admin-add-staff">Ajouter</button></div></div><div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>{const isAg=p.role==="gerant"||p.role==="admin";const creds=isAg?'📧 '+esc(p.email||"—"):'PIN '+esc(p.pin||"—");return '<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+'</p><p class="mono text-xs" style="color:var(--jaune-fonce);margin-top:6px">'+creds+'</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+(isAg?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Réinit MDP</button>':'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+'<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>';}).join("")+'</div>';
+    const nsMgr=(v.newStaff.role==="gerant"||v.newStaff.role==="admin");
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2><div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'"><select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select>'+(nsMgr?'<input class="input" type="email" placeholder="Email" data-input="new-staff-email" value="'+esc(v.newStaff.email||"")+'"><input class="input" type="password" placeholder="Mot de passe (8 car. min)" autocomplete="new-password" data-input="new-staff-pwd" value="'+esc(v.newStaff.password||"")+'">':'<input class="input mono" placeholder="PIN (6 chiffres)" maxlength="6" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'">')+'<button class="btn btn-primary" data-action="admin-add-staff">Ajouter</button></div></div><div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>{const isAg=p.role==="gerant"||p.role==="admin";const creds=isAg?'📧 '+esc(p.email||"—"):'PIN défini (non consultable)';return '<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+'</p><p class="mono text-xs" style="color:var(--jaune-fonce);margin-top:6px">'+creds+'</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+(isAg?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Lien MDP</button>':'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+'<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>';}).join("")+'</div>';
   } else if(v.section==="tables"){
     const adminUrl = SITE_URL + "?admin=1";
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Tables & QR</h2><div class="flex gap-2" style="flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-action="admin-add-table">+ Table</button><button class="btn btn-accent btn-sm" data-action="admin-print-all-qr">🖨️ QR</button></div></div><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">'+DATA.tables.map(t=>{const url=SITE_URL+"?table="+t.number;return '<div class="qr-card"><p class="qr-resto">Restaurant D&S</p><img src="'+qrUrl(url,300)+'" alt="QR Table '+t.number+'"><p class="qr-table-num">Table '+t.number+'</p><button class="btn btn-ghost btn-sm" style="width:100%;color:var(--rouge);margin-top:8px" data-action="admin-del-table" data-id="'+t._docId+'">🗑️ Supprimer</button></div>';}).join("")+'</div>'+
@@ -1046,7 +1161,6 @@ function screenAdmin(){
 '<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid '+(graceActive?"var(--vert)":"var(--gris)")+'"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🔓 Dérogation temporaire</h3>'+(graceActive?'<div class="alert-banner" style="background:rgba(45,122,62,0.1);border-color:var(--vert);margin-bottom:12px"><strong style="color:var(--vert)">✅ Active — '+graceRemaining+' min</strong><p class="text-xs" style="margin-top:4px">Rôles : '+((DATA.settings.graceRoles||[]).join(", ")||"—")+'</p></div><button class="btn btn-danger btn-block" data-action="admin-cancel-grace">Annuler</button>':'<div style="margin-bottom:12px"><label class="text-xs muted bold">DURÉE</label><select class="input" style="margin-top:6px" data-input="grace-duration"><option value="30" '+(v.graceForm.duration===30?"selected":"")+'>30 min</option><option value="60" '+(v.graceForm.duration===60?"selected":"")+'>60 min</option><option value="120" '+(v.graceForm.duration===120?"selected":"")+'>120 min</option></select></div><div style="margin-bottom:12px"><label class="text-xs muted bold">RÔLES</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">'+["serveuse","cuisine","livreur","gerant","client"].map(r=>'<div class="role-chip '+(v.graceForm.roles.includes(r)?"on":"")+'" data-action="grace-toggle-role" data-role="'+r+'">'+r+'</div>').join("")+'</div></div><button class="btn btn-accent btn-block" data-action="admin-activate-grace">Activer</button>')+'</div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📍 Localisation</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">LAT</label><input class="input" inputmode="decimal" style="margin-top:6px" data-input="set-resto-lat" value="'+esc(String(f.restoLat!=null?f.restoLat:DEFAULT_RESTO.lat))+'"></div><div><label class="text-xs muted bold">LON</label><input class="input" inputmode="decimal" style="margin-top:6px" data-input="set-resto-lon" value="'+esc(String(f.restoLon!=null?f.restoLon:DEFAULT_RESTO.lon))+'"></div></div></div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">💰 Tarif livraison</h3><label class="text-xs muted bold">PRIX PAR KM (F)</label><input class="input" type="number" style="margin-top:6px" data-input="set-km-price" value="'+(f.prixKm||DEFAULT_PRIX_KM)+'"></div>'+
-'<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🔐 Sécurité</h3><label class="text-xs muted bold">CODE MASTER</label><input class="input" style="margin-top:6px;font-family:monospace" data-input="set-master-code" value="'+esc(f.masterCode||MASTER_RECOVERY_CODE)+'"></div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📧 Notifications</h3><label class="text-xs muted bold">EMAIL RAPPORTS</label><input class="input" type="email" style="margin-top:6px" data-input="set-email-rapport" value="'+esc(f.emailRapport||"")+'"><label class="text-xs muted bold" style="display:block;margin-top:12px">ONESIGNAL APP ID</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:12px" data-input="set-onesignal" value="'+esc(f.oneSignalAppId||"")+'"><label class="text-xs muted bold" style="display:block;margin-top:12px">URL WEBHOOK</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:11px" data-input="set-webhook-url" value="'+esc(f.webhookUrl||"")+'"><label class="text-xs muted bold" style="display:block;margin-top:12px">TOKEN WEBHOOK</label><input class="input" style="margin-top:6px;font-family:monospace;font-size:12px" data-input="set-webhook-token" value="'+esc(f.webhookToken||"")+'"></div><button class="btn btn-accent btn-block" style="max-width:600px" data-action="admin-save-settings">Enregistrer</button>';
   } else if(v.section==="maintenance"){
     const totalOrders=DATA.orders.length;const todayOrders=DATA.orders.filter(o=>o.date===nowDate()).length;
@@ -1055,7 +1169,7 @@ function screenAdmin(){
 '<h3 class="bold" style="margin-bottom:10px;font-size:15px">📱 Installer</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-primary btn-block" id="pwa-install-btn" data-action="admin-install-pwa">📥 Installer</button><p class="text-xs muted" style="margin-top:8px" id="pwa-status"></p></div>'+
 '<h3 class="bold" style="margin-bottom:10px;font-size:15px">🔔 Test push</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-accent btn-block" data-action="admin-test-push">🔔 Test</button></div>'+
 '<h3 class="bold" style="margin-bottom:10px;font-size:15px">💾 Sauvegarde</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-primary btn-block" data-action="admin-backup-now">💾 Télécharger</button></div>'+
-'<h3 class="bold" style="margin-bottom:10px;font-size:15px;color:var(--rouge)">⚠️ Zone dangereuse</h3><div class="card" style="max-width:600px;border-left:4px solid var(--rouge)"><button class="btn btn-danger btn-block" style="margin-bottom:8px" data-action="admin-reset-today">Effacer ventes jour ('+todayOrders+')</button><button class="btn btn-danger btn-block" style="margin-bottom:8px" data-action="admin-reset-active">Effacer en cours ('+activeOrders+')</button><button class="btn btn-danger btn-block" data-action="admin-reset-all">Effacer TOUT ('+totalOrders+')</button><button class="btn btn-danger btn-block" style="margin-top:8px" data-action="admin-reset-everything">🔥 Reset complet</button></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">🔒 Traçabilité</h3><div class="card" style="max-width:600px;margin-bottom:20px"><p class="text-sm muted">Les commandes ne peuvent plus être supprimées : une annulation est archivée pour garder une comptabilité fiable.</p></div>'+
 '<h3 class="bold" style="margin:20px 0 10px;font-size:15px">📜 Journal ('+DATA.resetLogs.length+')</h3>'+(DATA.resetLogs.length===0?'<p class="empty">Aucune tentative</p>':'<div class="card" style="padding:0;max-height:400px;overflow-y:auto">'+DATA.resetLogs.slice(0,50).map(l=>'<div class="log-row"><div style="flex:1"><div style="font-weight:600;font-size:12px">'+esc(l.action||"?")+'</div><div class="text-xs muted">'+esc(l.adminName||"?")+'</div></div><div style="text-align:right"><div class="text-xs">'+esc(l.result||"?")+'</div><div class="when">'+fmtDateTime(l.createdAt)+'</div></div></div>').join("")+'</div>');
   }
   return '<div class="app">'+topbar({role:"Admin D&S",title:SESSION.name,homeAction:"admin-home"})+'<div class="tabs-scroll">'+sections.map(s=>'<button class="tab '+(v.section===s.key?"active":"")+'" data-action="admin-section" data-section="'+s.key+'">'+s.em+' '+s.label+'</button>').join("")+'</div><div class="content">'+content+'</div></div>';
@@ -1098,8 +1212,8 @@ function render(){
   }
 }
 
-function pinAdd(d){if(loginPin.length>=4)return;loginPin+=d;loginError="";if(loginPin.length===4){setTimeout(()=>{const u=DATA.staff.find(s=>s.role===loginRole&&s.pin===loginPin);if(u){A.login(loginRole,u.name);loginRole=null;loginPin="";loginError="";}else{loginError="PIN incorrect";loginPin="";render();}},150);}else render();}
-function pinDel(){loginPin=loginPin.slice(0,-1);loginError="";render();}
+function pinAdd(d){if(loginBusy||loginPin.length>=6)return;loginPin+=d;loginError="";if(loginPin.length===6){attemptPinLogin();}else render();}
+function pinDel(){if(loginBusy)return;loginPin=loginPin.slice(0,-1);loginError="";render();}
 
 function printQrCodes(type){const printArea=document.createElement("div");printArea.id="qr-print-area";printArea.innerHTML=DATA.tables.map(t=>'<div class="qr-card"><p class="qr-resto">Restaurant D&S</p><img src="'+qrUrl(SITE_URL+"?table="+t.number,400)+'" alt="QR"><p class="qr-table-num">Table '+t.number+'</p></div>').join("");document.body.appendChild(printArea);setTimeout(()=>{window.print();setTimeout(()=>printArea.remove(),500);},300);}
 
@@ -1122,43 +1236,33 @@ document.addEventListener("click",async function(e){
   const action=el.dataset.action;const id=el.dataset.id;const idx=el.dataset.idx!==undefined?parseInt(el.dataset.idx):null;
   const v=clientS;
 
-  if(action==="pick-role"){loginRole=el.dataset.role;loginPin="";loginEmail="";loginPassword="";loginError="";loginRecovery=null;render();return;}
-  if(action==="back-role"){loginRole=null;loginPin="";loginEmail="";loginPassword="";loginError="";loginRecovery=null;render();return;}
+  if(action==="pick-role"){loginRole=el.dataset.role;loginStaffId=null;loginPin="";loginEmail="";loginPassword="";loginError="";loginRecovery=null;render();return;}
+  if(action==="pick-staff"){loginStaffId=id;loginPin="";loginError="";render();return;}
+  if(action==="pin-back-name"){loginStaffId=null;loginPin="";loginError="";render();return;}
+  if(action==="back-role"){loginRole=null;loginStaffId=null;loginPin="";loginEmail="";loginPassword="";loginError="";loginRecovery=null;render();return;}
   if(action==="pin-digit"){pinAdd(el.dataset.digit);return;}
   if(action==="pin-del"){pinDel();return;}
 
-  if(action==="client-mode-goto"){A.login("client","Client"); clientS.mode="livraison"; clientS.screen="menu"; render();return;}
+  if(action==="client-mode-goto"){A.login("client","Client",null); clientS.mode="livraison"; clientS.screen="menu"; render();return;}
 
   if(action==="login-submit"){
     const email=loginEmail.trim().toLowerCase();const pwd=loginPassword;
     if(!email||!pwd){loginError="Remplissez tous les champs";render();return;}
-    const user=DATA.staff.find(s=>s.role===loginRole && s.email && s.email.toLowerCase()===email && s.password===pwd);
-    if(user){A.login(loginRole,user.name);loginRole=null;loginEmail="";loginPassword="";loginError="";A.logAuth(user.role,user.email,"✅ Connexion réussie");}
-    else{loginError="Identifiants incorrects";loginPassword="";A.logAuth(loginRole,email,"❌ Échec connexion");render();}
-    return;
+    if(loginBusy)return; loginBusy=true;
+    try{ await signInWithEmailAndPassword(auth,email,pwd); await finishStaffLogin(loginRole); }
+    catch(err){ loginError=authErrorMessage(err,false); loginPassword=""; render(); }
+    loginBusy=false; return;
   }
-  if(action==="login-forgot-pwd"){loginRecovery={stage:"form",email:"",code:"",error:""};render();return;}
+  if(action==="login-forgot-pwd"){loginRecovery={stage:"form",email:loginEmail||"",error:""};render();return;}
   if(action==="rec-cancel"){loginRecovery=null;render();return;}
   if(action==="rec-done"){loginRecovery=null;loginEmail="";loginPassword="";loginError="";render();return;}
-  if(action==="rec-verify"){
+  if(action==="rec-send"){
     if(!loginRecovery) return;
     const email=(loginRecovery.email||"").trim().toLowerCase();
-    const code=(loginRecovery.code||"").trim().toUpperCase();
-    if(!email||!code){ loginRecovery.error="Remplissez les deux champs"; render(); return; }
-    let user;
-    if(code === masterCode().toUpperCase()){ user = DATA.staff.find(s => s.role===loginRole && s.email && s.email.toLowerCase()===email); }
-    else { user = DATA.staff.find(s => s.role===loginRole && s.email && s.email.toLowerCase()===email && s.recoveryCode && s.recoveryCode.toUpperCase()===code); }
-    if(user){loginRecovery.stage="newPwd";loginRecovery.matchedId=user._docId;loginRecovery.matchedName=user.name;loginRecovery.newPwd="";loginRecovery.newPwd2="";loginRecovery.error="";}
-    else{loginRecovery.error="Email ou code invalide";}
+    if(!email){ loginRecovery.error="Saisissez votre e-mail"; render(); return; }
+    try{ await sendPasswordResetEmail(auth,email); loginRecovery.stage="sent"; }
+    catch(err){ const c=err&&err.code; if(c==="auth/invalid-email"){ loginRecovery.error="Adresse e-mail invalide"; } else if(c==="auth/too-many-requests"||c==="auth/network-request-failed"){ loginRecovery.error=authErrorMessage(err,false); } else { loginRecovery.stage="sent"; } }
     render(); return;
-  }
-  if(action==="rec-save"){
-    if(!loginRecovery) return;
-    const p1=loginRecovery.newPwd||"";const p2=loginRecovery.newPwd2||"";
-    if(p1.length<6){loginRecovery.error="Minimum 6 caractères";render();return;}
-    if(p1!==p2){loginRecovery.error="Les mots de passe ne correspondent pas";render();return;}
-    try{const newCode=await A.resetPasswordWithRecovery(loginRecovery.matchedId, p1);loginRecovery.stage="success";loginRecovery.generatedCode=newCode;render();}catch(err){loginRecovery.error="Erreur : "+err.message;render();}
-    return;
   }
 
   if(action==="logout"){resetClient();destroyMap();pendingReset=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null};livS={tab:"available"};A.logout();return;}
@@ -1166,20 +1270,16 @@ document.addEventListener("click",async function(e){
   if(action==="reset-cancel"){pendingReset=null;render();return;}
   if(action==="reset-confirm"){
     if(!pendingReset) return;
-    const admin=DATA.staff.find(s=>s.role==="admin");
-    if(!admin){pendingReset.error="Aucun admin";render();return;}
-    if(!pendingReset.pin||pendingReset.pin.length<4){pendingReset.error="Mot de passe trop court";render();return;}
-    const okPwd=admin.password && admin.password===pendingReset.pin;
-    if(!okPwd){const wrong=pendingReset.pin;pendingReset.error="Mot de passe incorrect";pendingReset.pin="";await A.logReset(pendingReset.action,"❌ Mot de passe incorrect",wrong);render();return;}
+    const cu=auth.currentUser;
+    if(!cu||!cu.email){pendingReset.error="Session invalide";render();return;}
+    if(!pendingReset.pin||pendingReset.pin.length<6){pendingReset.error="Mot de passe trop court";render();return;}
+    try{ await reauthenticateWithCredential(cu,EmailAuthProvider.credential(cu.email,pendingReset.pin)); }
+    catch(e){ pendingReset.error="Mot de passe incorrect"; pendingReset.pin=""; await A.logReset(pendingReset.action,"❌ Mot de passe incorrect",null); render(); return; }
     const act=pendingReset.action;pendingReset=null;
     try{
       let resultMsg="";
-      if(act==="today"){const n=await A.resetTodayOrders();resultMsg=n+" supprimée(s)";}
-      else if(act==="all"){const n=await A.resetAllOrders();resultMsg=n+" supprimée(s)";}
-      else if(act==="active"){const n=await A.resetActiveOrders();resultMsg=n+" supprimée(s)";}
-      else if(act==="menu"){await A.resetMenu();resultMsg="Menu réinitialisé";}
+      if(act==="menu"){await A.resetMenu();resultMsg="Menu réinitialisé";}
       else if(act==="stock"){await A.resetStock();resultMsg="Stock réinitialisé";}
-      else if(act==="everything"){await A.resetEverything();resultMsg="Remise à zéro effectuée";}
       else if(act==="clear-logs"){const n=DATA.resetLogs.length;await A.clearResetLogs();resultMsg=n+" entrée(s)";}
       await A.logReset(act,"✅ Succès",null);
       toast(resultMsg);
@@ -1227,7 +1327,7 @@ document.addEventListener("click",async function(e){
       deliveryAddrText:v.info.address||"",
       momoRef: ref
     };
-    try{ v.orderId = await A.addOrder(orderData); localStorage.setItem("ds_client_order",v.orderId); v.screen="waiting"; render(); }
+    try{ v.orderId = await A.addOrder(orderData); watchClientOrder(v.orderId); localStorage.setItem("ds_client_order",v.orderId); v.screen="waiting"; render(); }
     catch(err){ toast("Erreur : "+err.message); }
     return;
   }
@@ -1242,16 +1342,16 @@ document.addEventListener("click",async function(e){
     const srv=DATA.staff.find(s=>s._docId===srvId);
     orderData.tableId=v.tableId;orderData.tableNumber=t?t.number:null;
     orderData.serveuseId=srvId;orderData.serveuseName=srv?srv.name:null;
-    try{v.orderId=await A.addOrder(orderData);localStorage.setItem("ds_client_order",v.orderId);v.screen="waiting";render();}
+    try{v.orderId=await A.addOrder(orderData);watchClientOrder(v.orderId);localStorage.setItem("ds_client_order",v.orderId);v.screen="waiting";render();}
     catch(err){toast("Erreur : "+err.message);}
     return;
   }
 
   if(action==="client-cancel-wait"){
     const oid=v.orderId;
-    if(oid){ try{ await A.deleteOrder(oid); }catch(e){} }
+    if(oid){ try{ await A.cancelOrder(oid); }catch(e){} }
     localStorage.removeItem("ds_client_order");
-    v.orderId=null; v.cart={}; v.screen="menu"; v.refusedIdx=null;
+    watchClientOrder(null); v.orderId=null; v.cart={}; v.screen="menu"; v.refusedIdx=null;
     toast("Commande annulée");render();return;
   }
 
@@ -1264,7 +1364,7 @@ document.addEventListener("click",async function(e){
       await A.updateOrder(o._docId,{items:ni});
     }
     v.refusedIdx=null;
-    if(o&&o.type==="livraison")v.screen="payment";else v.screen="serving";
+    v.screen=(o&&o.type==="livraison")?"waiting":"serving";
     render();return;
   }
   if(action==="client-edit-from-refused"){
@@ -1275,7 +1375,7 @@ document.addEventListener("click",async function(e){
   if(action==="client-cancel-order"){
     if(!confirm("Annuler définitivement ?"))return;
     const oid=v.orderId;
-    if(oid){await A.deleteOrder(oid);localStorage.removeItem("ds_client_order");}
+    if(oid){const co=DATA.orders.find(x=>x._docId===oid);if(co&&["att_validation","att_collect","att_paiement"].includes(co.status)){try{await A.cancelOrder(oid);}catch(e){}}localStorage.removeItem("ds_client_order");watchClientOrder(null);}
     resetClient();render();return;
   }
   if(action==="client-rescan"){
@@ -1288,8 +1388,7 @@ document.addEventListener("click",async function(e){
     v.screen="menu"; v.mode="livraison"; v.tableId=null; v.orderId=null; v.cart={};
     localStorage.removeItem("ds_client_order"); render();return;
   }
-  if(action==="client-pay"){const method=el.dataset.method;const ref=method==="momo"?"REF"+Math.floor(Math.random()*1000000):null;await A.markOrderPaid(v.orderId,method,ref);v.timerTotal=0;v.timerRemaining=0;render();return;}
-  if(action==="client-edit-cancel"){v.screen="payment";render();return;}
+  if(action==="client-edit-cancel"){const eo=DATA.orders.find(x=>x._docId===v.orderId);v.screen=(eo&&eo.status==="att_validation")?"waiting":"serving";render();return;}
   if(action==="client-edit-cat"){v.cat=el.dataset.cat;render();return;}
   if(action==="client-edit-add"){v.editCart[id]=(v.editCart[id]||0)+1;render();return;}
   if(action==="client-edit-remove"){if(v.editCart[id]>1)v.editCart[id]--;else delete v.editCart[id];render();return;}
@@ -1341,7 +1440,7 @@ document.addEventListener("click",async function(e){
   if(action==="srv-cat"){srvS.orderCat=el.dataset.cat;render();return;}
   if(action==="srv-add"){srvS.orderCart[id]=(srvS.orderCart[id]||0)+1;render();return;}
   if(action==="srv-remove"){if(srvS.orderCart[id]>1)srvS.orderCart[id]--;else delete srvS.orderCart[id];render();return;}
-  if(action==="srv-send"){const items=DATA.menu.filter(m=>srvS.orderCart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:srvS.orderCart[d._docId],time:d.time}));if(!items.length){toast("Panier vide");return;}const t=DATA.tables.find(x=>x._docId===srvS.orderTable);const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse");await A.addOrder({type:"sur_place",tableId:srvS.orderTable,tableNumber:t?t.number:null,serveuseId:me?me._docId:null,serveuseName:SESSION.name,items,source:"serveuse"});srvS.orderCart={};srvS.orderTable=null;srvS.orderStep="table";toast("Envoyée");render();return;}
+  if(action==="srv-send"){const items=DATA.menu.filter(m=>srvS.orderCart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:srvS.orderCart[d._docId],time:d.time}));if(!items.length){toast("Panier vide");return;}const t=DATA.tables.find(x=>x._docId===srvS.orderTable);const me=DATA.staff.find(s=>s._docId===SESSION.uid&&s.role==="serveuse");await A.addOrder({type:"sur_place",tableId:srvS.orderTable,tableNumber:t?t.number:null,serveuseId:me?me._docId:null,serveuseName:SESSION.name,items,source:"serveuse"});srvS.orderCart={};srvS.orderTable=null;srvS.orderStep="table";toast("Envoyée");render();return;}
   if(action==="srv-collect-method"){srvS.collectMethod=el.dataset.method;srvS.collectOrderId=id;srvS.collectRef="";render();return;}
   if(action==="srv-collect-confirm"){if(!srvS.collectMethod){toast("Choisissez");return;}const ref=srvS.collectMethod==="momo"?(srvS.collectRef||"REF"+Math.floor(Math.random()*1000000)):null;await A.confirmCash(id,srvS.collectMethod,ref);srvS.collectMethod=null;srvS.collectRef="";srvS.collectOrderId=null;toast("Paiement confirmé");render();return;}
   if(action==="srv-collect-issue"){if(!confirm("Signaler non reçu ?"))return;await A.reportCashIssue(id);srvS.collectMethod=null;toast("Signalé");render();return;}
@@ -1366,7 +1465,7 @@ document.addEventListener("click",async function(e){
     await A.rejectDeliveryPayment(id, motif||"Référence inexacte");
     toast("Refusée");return;
   }
-  if(action==="ger-delete"){if(!confirm("Supprimer ?"))return;await A.deleteOrder(id);toast("Supprimée");return;}
+  if(action==="ger-delete"){if(!confirm("Annuler cette commande ?"))return;await A.cancelOrder(id);toast("Commande annulée");return;}
   if(action==="ger-resolve-cash"){await A.resolveCashIssue(id);toast("Résolu");render();return;}
   if(action==="ger-resolve-claim"){await A.resolveClaim(id);toast("Réclamation réglée");render();return;}
   if(action==="ger-print-invoice"){printInvoice(id);return;}
@@ -1377,7 +1476,7 @@ document.addEventListener("click",async function(e){
 
   if(action==="liv-home"){livS.tab="available";render();return;}
   if(action==="liv-tab"){livS.tab=el.dataset.tab;render();return;}
-  if(action==="liv-take"){const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");if(me)await A.takeDelivery(id,me._docId,me.name);livS.tab="current";render();return;}
+  if(action==="liv-take"){const me=DATA.staff.find(s=>s._docId===SESSION.uid&&s.role==="livreur");if(me)await A.takeDelivery(id,me._docId,me.name);livS.tab="current";render();return;}
   if(action==="liv-enroute"){await A.setDeliveryStatus(id,"en_route");return;}
   if(action==="liv-done"){await A.markDelivered(id);render();return;}
 
@@ -1387,10 +1486,10 @@ document.addEventListener("click",async function(e){
   if(action==="admin-edit-dish"){admS.editingDish=id;render();return;}
   if(action==="admin-save-dish"){const row=el.closest("tr");const name=row.querySelector('[data-input="dish-name"]').value;const desc=row.querySelector('[data-input="dish-desc"]').value;const cat=row.querySelector('[data-input="dish-cat"]').value;const price=parseInt(row.querySelector('[data-input="dish-price"]').value)||0;const time=parseInt(row.querySelector('[data-input="dish-time"]').value)||0;const avail=row.querySelector('[data-input="dish-avail"]').checked;await A.updateDish(id,{name,desc,cat,price,time,available:avail});admS.editingDish=null;return;}
   if(action==="admin-del-dish"){if(confirm("Supprimer ?"))await A.removeDish(id);return;}
-  if(action==="admin-add-staff"){const s={...admS.newStaff};if((s.role==="gerant"||s.role==="admin")){if(!s.email||!s.password){toast("Email + MDP requis");return;}}else{if(!s.pin||s.pin.length<4){toast("PIN 4 chiffres");return;}s.email="";s.password="";}if(!s.name){toast("Nom requis");return;}await A.addStaff(s);admS.newStaff={name:"",role:"serveuse",pin:"",email:"",password:""};toast("Ajouté");render();return;}
-  if(action==="admin-reset-pin"){const pin=await A.resetPin(id);toast("PIN: "+pin);return;}
-  if(action==="admin-reset-creds"){const pwd=prompt("Nouveau MDP (min 6)");if(!pwd||pwd.length<6){toast("Min 6");return;}await A.updateStaff(id,{password:pwd});toast("MDP mis à jour");return;}
-  if(action==="admin-del-staff"){if(confirm("Supprimer ?"))await A.removeStaff(id);return;}
+  if(action==="admin-add-staff"){try{await A.createStaffAccount({...admS.newStaff});admS.newStaff={name:"",role:"serveuse",pin:"",email:"",password:""};toast("Compte créé");}catch(err){const c=err&&err.code;toast(c==="auth/email-already-in-use"?"Cet e-mail est déjà utilisé":c==="auth/invalid-email"?"E-mail invalide":c==="auth/weak-password"?"Mot de passe trop faible":(err.message||"Erreur"));}render();return;}
+  if(action==="admin-reset-pin"){if(!confirm("Créer un nouveau PIN pour ce compte ?"))return;try{const pin=await A.resetPin(id);alert("Nouveau PIN : "+pin+"\n\nNotez-le et transmettez-le à la personne. Il ne sera plus affiché.");}catch(err){toast(err.message||"Erreur");}return;}
+  if(action==="admin-reset-creds"){const u=DATA.staff.find(x=>x._docId===id);if(!u||!u.email){toast("E-mail introuvable");return;}if(!confirm("Envoyer un lien de réinitialisation à "+u.email+" ?"))return;try{await sendPasswordResetEmail(auth,u.email);toast("Lien envoyé");}catch(err){toast(authErrorMessage(err,false));}return;}
+  if(action==="admin-del-staff"){if(confirm("Supprimer ce compte ?")){try{await A.removeStaff(id);toast("Compte supprimé");}catch(err){toast(err.message||"Erreur");}}return;}
   if(action==="admin-add-table"){try{const n=await A.addTable();toast("Table "+n+" créée");}catch(err){toast("Erreur : "+err.message);}return;}
   if(action==="admin-del-table"){
     const active=DATA.orders.filter(o=>o.tableId===id && (o.status==="att_validation"||o.status==="att_verif_paiement"||o.status==="att_collect"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt)));
@@ -1403,14 +1502,10 @@ document.addEventListener("click",async function(e){
   if(action==="admin-create-stock"){const ns=admS.newStockItem;if(!ns.name||!ns.unit){toast("Nom + unité");return;}await A.addStockItem({name:ns.name,unit:ns.unit,initial:ns.initial||0,threshold:ns.threshold||0});admS.newStockItem={name:"",unit:"kg",initial:0,threshold:0};admS.showNewStock=false;toast("Créé");return;}
   if(action==="admin-del-stock"){if(confirm("Supprimer ?"))await A.removeStockItem(id);return;}
   if(action==="admin-add-move"){if(!admS.stockForm.stockId||!admS.stockForm.qty)return;await A.addStockMove({...admS.stockForm});admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};toast("Enregistré");return;}
-  if(action==="admin-save-settings"){const f=admS.settingsForm;const lat=parseFloat(f.restoLat);const lon=parseFloat(f.restoLon);const km=parseInt(f.prixKm);if(isNaN(lat)||isNaN(lon)||isNaN(km)){toast("Valeurs invalides");return;}await A.updateSettings({restaurantName:f.restaurantName||"",phone:f.phone||"",momoNumber:f.momoNumber||"",bilanResetHour:parseInt(f.bilanResetHour)||6,waitMode:f.waitMode||"max",restoLat:lat,restoLon:lon,prixKm:km,emailRapport:f.emailRapport||"",oneSignalAppId:f.oneSignalAppId||"",webhookUrl:f.webhookUrl||"",webhookToken:f.webhookToken||"",masterCode:f.masterCode||MASTER_RECOVERY_CODE,openHour:parseInt(f.openHour)||11,closeHour:parseInt(f.closeHour)||2});admS.settingsForm=null;toast("Enregistré");loadOneSignal();render();return;}
+  if(action==="admin-save-settings"){const f=admS.settingsForm;const lat=parseFloat(f.restoLat);const lon=parseFloat(f.restoLon);const km=parseInt(f.prixKm);if(isNaN(lat)||isNaN(lon)||isNaN(km)){toast("Valeurs invalides");return;}await A.updateSettings({restaurantName:f.restaurantName||"",phone:f.phone||"",momoNumber:f.momoNumber||"",bilanResetHour:parseInt(f.bilanResetHour)||6,waitMode:f.waitMode||"max",restoLat:lat,restoLon:lon,prixKm:km,emailRapport:f.emailRapport||"",oneSignalAppId:f.oneSignalAppId||"",webhookUrl:f.webhookUrl||"",webhookToken:f.webhookToken||"",openHour:parseInt(f.openHour)||11,closeHour:parseInt(f.closeHour)||2});admS.settingsForm=null;toast("Enregistré");loadOneSignal();render();return;}
   if(action==="admin-bilan-apply"){render();return;}
   if(action==="admin-bilan-today"){const t=nowDate();admS.bilanFrom=t;admS.bilanTo=t;render();return;}
   if(action==="admin-bilan-week"){const to=new Date();const from=new Date();from.setDate(from.getDate()-6);admS.bilanFrom=from.toISOString().slice(0,10);admS.bilanTo=to.toISOString().slice(0,10);render();return;}
-  if(action==="admin-reset-today"){pendingReset={action:"today",pin:"",error:""};render();return;}
-  if(action==="admin-reset-all"){pendingReset={action:"all",pin:"",error:""};render();return;}
-  if(action==="admin-reset-active"){pendingReset={action:"active",pin:"",error:""};render();return;}
-  if(action==="admin-reset-everything"){pendingReset={action:"everything",pin:"",error:""};render();return;}
   if(action==="admin-backup-now"){await A.downloadBackup();toast("Téléchargé");return;}
   if(action==="admin-export-csv"){const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));const csv=["Date,Type,Client,Prix,Paiement"].concat(paid.map(o=>[o.date,o.type,(o.clientInfo?.name||o.tableNumber||""),orderGrandTotal(o),o.paymentMethod||""].join(","))).join("\n");const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="historique.csv";a.click();URL.revokeObjectURL(url);return;}
 });
@@ -1431,9 +1526,6 @@ document.addEventListener("input",function(e){
   if(key==="login-email"){loginEmail=el.value;return;}
   if(key==="login-password"){loginPassword=el.value;return;}
   if(key==="rec-email"&&loginRecovery){loginRecovery.email=el.value;loginRecovery.error="";return;}
-  if(key==="rec-code"&&loginRecovery){loginRecovery.code=el.value.toUpperCase();loginRecovery.error="";return;}
-  if(key==="rec-newpwd"&&loginRecovery){loginRecovery.newPwd=el.value;loginRecovery.error="";return;}
-  if(key==="rec-newpwd2"&&loginRecovery){loginRecovery.newPwd2=el.value;loginRecovery.error="";return;}
   if(!key)return;
   const v=clientS;
   if(key==="info-name")v.info.name=el.value;
@@ -1444,7 +1536,7 @@ document.addEventListener("input",function(e){
   if(key==="client-claim-text")v.claimText=el.value;
   if(key==="srv-collect-ref")srvS.collectRef=el.value;
   if(key==="new-staff-name")admS.newStaff.name=el.value;
-  if(key==="new-staff-pin")admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);
+  if(key==="new-staff-pin")admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,6);
   if(key==="new-staff-email")admS.newStaff.email=el.value;
   if(key==="new-staff-pwd")admS.newStaff.password=el.value;
   if(key==="new-stock-name")admS.newStockItem.name=el.value;
@@ -1468,7 +1560,6 @@ document.addEventListener("input",function(e){
   if(key==="set-onesignal"&&admS.settingsForm)admS.settingsForm.oneSignalAppId=el.value;
   if(key==="set-webhook-url"&&admS.settingsForm)admS.settingsForm.webhookUrl=el.value;
   if(key==="set-webhook-token"&&admS.settingsForm)admS.settingsForm.webhookToken=el.value;
-  if(key==="set-master-code"&&admS.settingsForm)admS.settingsForm.masterCode=el.value;
   if(key==="bilan-from")admS.bilanFrom=el.value;
   if(key==="bilan-to")admS.bilanTo=el.value;
 });
@@ -1483,14 +1574,14 @@ document.addEventListener("keydown",function(e){
   if(loginRole==="gerant"||loginRole==="admin"){
     if(e.key==="Enter"){
       if(loginRecovery){
-        if(loginRecovery.stage==="form" && document.activeElement && document.activeElement.dataset.input==="rec-code"){e.preventDefault();document.querySelector('[data-action="rec-verify"]')?.click();}
-        else if(loginRecovery.stage==="newPwd" && document.activeElement && document.activeElement.dataset.input==="rec-newpwd2"){e.preventDefault();document.querySelector('[data-action="rec-save"]')?.click();}
+        if(loginRecovery.stage==="form" && document.activeElement && document.activeElement.dataset.input==="rec-email"){e.preventDefault();document.querySelector('[data-action="rec-send"]')?.click();}
       } else if(document.activeElement && document.activeElement.dataset.input==="login-password"){
         e.preventDefault(); document.querySelector('[data-action="login-submit"]')?.click();
       }
     }
     return;
   }
+  if(!loginStaffId)return;
   if(/^\d$/.test(e.key)){pinAdd(e.key);e.preventDefault();return;}
   if(e.key==="Backspace"){pinDel();e.preventDefault();return;}
 });
@@ -1507,14 +1598,16 @@ setInterval(function(){
 
 if("Notification" in window && Notification.permission==="default"){setTimeout(()=>{try{Notification.requestPermission();}catch(e){}},3000);}
 
-// Restauration commande client
-(function restoreClientOrder(){
+// Restauration commande client (le client relit uniquement sa propre commande)
+function restoreClientOrder(){
   const savedOrderId=localStorage.getItem("ds_client_order");
   if(!savedOrderId) return;
+  if(SESSION && SESSION.role!=="client") return;
+  watchClientOrder(savedOrderId);
   const ci=setInterval(()=>{
-    if(!DATA.orders.length && !DATA.menu.length) return;
+    if(!DATA.orders.length) return;
     const o=DATA.orders.find(x=>x._docId===savedOrderId);
-    if(o && o.status!=="refusee"){
+    if(o && o.status!=="refusee" && o.status!=="annulee"){
       clientS.orderId=savedOrderId;
       if(!SESSION || SESSION.role!=="client"){
         SESSION = { role:"client", name:"Client", userId:DEVICE_ID, since:Date.now() };
@@ -1522,24 +1615,24 @@ if("Notification" in window && Notification.permission==="default"){setTimeout((
       }
       if(o.status==="att_validation" || o.status==="att_verif_paiement")clientS.screen="waiting";
       else if(o.status==="att_collect")clientS.screen="serving";
-      else if(o.status==="att_paiement")clientS.screen="payment";
+      else if(o.status==="att_paiement")clientS.screen="serving";
       else if(o.status==="payee")clientS.screen="tracking";
       else if(o.status==="servie") clientS.screen="done";
       else if(o.status==="livree"){
-        // Si pas encore noté → écran de confirmation ; sinon merci
         clientS.screen = (o.rating || o.claim) ? "thanks" : "confirm_delivery";
       }
       clearInterval(ci); render();
-    }else{localStorage.removeItem("ds_client_order");clearInterval(ci);}
+    }else{localStorage.removeItem("ds_client_order");watchClientOrder(null);clearInterval(ci);}
   },500);
   setTimeout(()=>clearInterval(ci),15000);
-})();
+}
 
 // Gestion URL
 let urlParamsHandled = false;
 function handleUrlParams(){
   if(urlParamsHandled) return;
-  if(!DATA.tables.length && !DATA.menu.length) return;
+  if(SESSION && SESSION.role!=="client"){ urlParamsHandled = true; return; }
+  if(!LOADED.menu || !LOADED.tables) return; // attendre menu ET tables (évite « Table introuvable » si le menu arrive avant)
   urlParamsHandled = true;
 
   const params = new URLSearchParams(window.location.search);
@@ -1581,16 +1674,22 @@ window.addEventListener("beforeinstallprompt", (e) => {
 
 window.addEventListener("appinstalled", (e) => { window.__deferredPrompt = null; toast("Application installée !"); });
 
+function withTimeout(p, ms, label){ return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error("délai dépassé : "+label)),ms))]); }
 (async function boot(){
   try{
-    await seedIfEmpty();
-    subscribeAll(() => { handleUrlParams(); render(); });
+    // 1) attendre l'état de connexion Firebase, 2) sinon connexion anonyme (client)
+    await withTimeout(new Promise(res=>{ const un=onAuthStateChanged(auth,()=>{ un(); res(); }); }),8000,"état de connexion Firebase");
+    if(!auth.currentUser) await withTimeout(signInAnonymously(auth),10000,"connexion anonyme Firebase");
+    startPublicSubs();
+    await withTimeout(restoreStaffSession(),10000,"reprise de session");
     handleUrlParams();
     render();
+    restoreClientOrder();
     setTimeout(loadOneSignal, 2000);
   }catch(e){
     console.error(e);
-    document.getElementById("root").innerHTML='<div class="loader"><div class="loader-logo">⚠️</div><p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">Erreur : '+esc(e.message||e)+'</p><button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#ffc107;color:#0a0a0a;border:none;border-radius:8px;font-weight:bold;cursor:pointer">Réessayer</button></div>';
+    const hint=(e&&e.code==="auth/operation-not-allowed")?"La connexion anonyme n'est pas activée dans Firebase Authentication.":(e&&e.code==="auth/unauthorized-domain")?"Ce domaine n'est pas autorisé dans Firebase Authentication.":"";
+    document.getElementById("root").innerHTML='<div class="loader"><div class="loader-logo">⚠️</div><p class="loader-text" style="color:#ff7066;max-width:300px;text-align:center">Erreur : '+esc(hint||e.message||e)+(e&&e.code?' ('+esc(e.code)+')':'')+'</p><button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#ffc107;color:#0a0a0a;border:none;border-radius:8px;font-weight:bold;cursor:pointer">Réessayer</button></div>';
   }
 })();
 </script>
