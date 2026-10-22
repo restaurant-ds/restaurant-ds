@@ -1009,8 +1009,51 @@ function screenGerant(){
   } else if(v.tab==="livraisons"){
     content='<h2 class="section-title">🛵 Livraisons ('+delivering.length+')</h2>'+(delivering.length===0?'<p class="empty">Aucune</p>':delivering.map(o=>{const assigned=livreurs.find(l=>l._docId===o.livreurId);return '<div class="card" style="margin-bottom:12px"><p class="card-title">'+esc(o.clientInfo?.name||"")+'</p><p class="card-sub">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-xs muted" style="margin-top:4px">📞 '+esc(o.clientInfo?.phone||"")+' · '+money(orderGrandTotal(o))+'</p><div style="margin-top:10px"><select class="input" data-action="ger-assign-livreur" data-id="'+o._docId+'"><option value="">— Non assignée —</option>'+livreurs.map(l=>'<option value="'+l._docId+'" '+(o.livreurId===l._docId?"selected":"")+'>'+esc(l.name)+'</option>').join("")+'</select></div>'+(assigned?'<p class="text-sm" style="margin-top:8px;color:var(--vert)"><strong>'+esc(assigned.name)+'</strong></p>':"")+'</div>';}).join(""));
   } else if(v.tab==="affectation"){
-    const serveuses=DATA.staff.filter(s=>s.role==="serveuse");
-    content='<h2 class="section-title">Affectation</h2><p class="section-sub">'+new Date(today).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+'</p>'+(hasAffectation?'<p class="text-sm muted" style="margin-bottom:14px">Touchez une case pour assigner.</p>':'<div class="alert-banner" style="background:rgba(224,168,0,0.15);border-color:var(--jaune-fonce)"><strong>⚠️ Attribution obligatoire</strong></div>')+'<div class="table-wrap"><table><thead><tr><th>Table</th>'+serveuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+DATA.tables.map(t=>'<tr><td><strong>Table '+t.number+'</strong></td>'+serveuses.map(s=>{const checked=dayAffect[t._docId]===s._docId;return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir)":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'">'+(checked?"✓":"")+'</button></td>';}).join("")+'</tr>').join("")+'</tbody></table></div>'+(hasAffectation?'<button class="btn btn-accent btn-block" style="margin-top:20px" data-action="ger-home">Terminer</button>':"");
+  const myStaff = DATA.staff.find(s=>s.name===SESSION.name && s.role==="gerant");
+  const myComp = getCompOfStaff(myStaff);
+  const myCompId = myComp?._docId;
+  const myTables = myCompId ? DATA.tables.filter(t => t.compartmentId === myCompId) : DATA.tables;
+  const allServeuses = DATA.staff.filter(s => s.role === "serveuse");
+  const serveuseTableMap = {};
+  Object.entries(dayAffect).forEach(([tid, sid]) => { serveuseTableMap[sid] = tid; });
+  const availableServeuses = allServeuses.filter(s => {
+    const tId = serveuseTableMap[s._docId];
+    if (!tId) return true;
+    const t = DATA.tables.find(t => t._docId === tId);
+    return t && t.compartmentId === myCompId;
+  });
+  const blockedServeuses = allServeuses.filter(s => {
+    const tId = serveuseTableMap[s._docId];
+    if (!tId) return false;
+    const t = DATA.tables.find(t => t._docId === tId);
+    return t && t.compartmentId !== myCompId;
+  });
+  const compLabel = myComp ? (myComp.emoji + " " + myComp.name) : "—";
+  let tableHtml;
+  if(!myCompId){
+    tableHtml = '<div class="alert-banner" style="background:rgba(192,57,43,0.1);border-color:var(--rouge)"><strong>⚠️ Aucun compartiment assigné</strong><p class="text-xs" style="margin-top:4px">Contactez l\'admin.</p></div>';
+  } else if(availableServeuses.length === 0){
+    tableHtml = '<p class="empty">Aucune serveuse disponible</p>';
+  } else if(myTables.length === 0){
+    tableHtml = '<p class="empty">Aucune table dans ce compartiment</p>';
+  } else {
+    tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTables.map(t=>{
+      return '<tr><td><strong>Table '+t.number+'</strong></td>'+availableServeuses.map(s=>{
+        const checked = dayAffect[t._docId] === s._docId;
+        const assignedTid = serveuseTableMap[s._docId];
+        const assignedElsewhere = assignedTid && assignedTid !== t._docId;
+        const disabled = assignedElsewhere && !checked;
+        return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir);":"")+(disabled?"opacity:0.25;cursor:not-allowed;":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'" '+(disabled?"disabled":"")+'>'+(checked?"✓":"")+'</button></td>';
+      }).join("")+'</tr>';
+    }).join("")+'</tbody></table></div>';
+  }
+  const blockedHtml = blockedServeuses.length > 0 ? '<div class="card" style="margin-top:16px;border-left:4px solid var(--gris)"><p class="text-xs muted bold">🔒 INDISPONIBLES AUJOURD\'HUI</p>'+blockedServeuses.map(s=>{
+    const tId = serveuseTableMap[s._docId];
+    const t = DATA.tables.find(x => x._docId === tId);
+    const c = t ? getCompById(t.compartmentId) : null;
+    return '<p class="text-sm" style="margin-top:6px">'+esc(s.name)+' — Table '+(t?.number||"?")+' ('+(c?.name||"—")+')</p>';
+  }).join("")+'</div>' : '';
+  content='<h2 class="section-title">Affectation — '+esc(compLabel)+'</h2><p class="section-sub">'+new Date(today).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+' · '+myTables.length+' table(s)</p>'+(hasAffectation?'<p class="text-sm muted" style="margin-bottom:14px">Touchez une case pour assigner.</p>':'<div class="alert-banner" style="background:rgba(224,168,0,0.15);border-color:var(--jaune-fonce)"><strong>⚠️ Attribution obligatoire</strong></div>')+tableHtml+blockedHtml+(hasAffectation?'<button class="btn btn-accent btn-block" style="margin-top:20px" data-action="ger-home">Terminer</button>':"");
   } else if(v.tab==="menuDuJour"){
     const confirmed = todayMenu() !== null;
     const ids = todayMenuDraft();
@@ -1481,8 +1524,25 @@ document.addEventListener("click",async function(e){
   if(action==="ger-resolve-cash"){await A.resolveCashIssue(id);toast("Résolu");render();return;}
   if(action==="ger-resolve-claim"){await A.resolveClaim(id);toast("Réclamation réglée");render();return;}
   if(action==="ger-print-invoice"){printInvoice(id);return;}
-  if(action==="ger-affect"){const today=nowDate();const day=DATA.affectation[today]||{};const cur=day[el.dataset.table]===el.dataset.serveuse;await A.setAffectation(today,el.dataset.table,cur?null:el.dataset.serveuse);return;}
-
+  if(action==="ger-affect"){
+  const today = nowDate();
+  const day = DATA.affectation[today] || {};
+  const tableId = el.dataset.table;
+  const serveuseId = el.dataset.serveuse;
+  const cur = day[tableId] === serveuseId;
+  if(!cur){
+    const existingTid = Object.entries(day).find(([tid, sid]) => sid === serveuseId)?.[0];
+    if(existingTid && existingTid !== tableId){
+      const t = DATA.tables.find(x => x._docId === existingTid);
+      const comp = t ? getCompById(t.compartmentId) : null;
+      const sName = DATA.staff.find(s=>s._docId===serveuseId)?.name || "Serveuse";
+      toast(`❌ ${sName} déjà sur Table ${t?.number||"?"} (${comp?.name||"—"})`);
+      return;
+    }
+  }
+  await A.setAffectation(today, tableId, cur?null:serveuseId);
+  return;
+}
   if(action==="cui-home"){render();return;}
   if(action==="cui-ready"){await A.markReady(id);toast("Prêt !");render();return;}
 
