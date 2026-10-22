@@ -398,7 +398,7 @@ async function seedIfEmpty() {
   await batch.commit();
 }
 
-// Migration P2a — ajoute compartmentId aux données existantes + crée les 3 comps
+// Migration P2a
 async function migrateToMultiComp() {
   if (DATA.settings && DATA.settings.migrationMultiCompDone) return;
   if (!DATA.menu.length || !DATA.tables.length) {
@@ -409,23 +409,19 @@ async function migrateToMultiComp() {
   console.log("🔄 Migration multi-comp en cours…");
   try {
     const batch = writeBatch(db);
-    // Créer les 3 comps (merge pour ne pas écraser un state existant)
     SEED.compartments.forEach(c => batch.set(doc(db, "compartments", c.id), c, { merge: true }));
-    // Migrer les plats
     DATA.menu.forEach(d => {
       if (!d.compartmentId) {
         const compId = d.cat === "Desserts" ? "dessert" : "comp2";
         batch.update(doc(db, "menu", d._docId), { compartmentId: compId });
       }
     });
-    // Migrer les tables (1-12 → comp1, 13+ → comp2)
     DATA.tables.forEach(t => {
       if (!t.compartmentId) {
         const compId = t.number <= 12 ? "comp1" : "comp2";
         batch.update(doc(db, "tables", t._docId), { compartmentId: compId });
       }
     });
-    // Migrer les staff : cuisine → comp1, gérant → comp1, autres → null
     DATA.staff.forEach(s => {
       if (s.compartmentId === undefined) {
         let compId = null;
@@ -434,7 +430,6 @@ async function migrateToMultiComp() {
         batch.update(doc(db, "staff", s._docId), { compartmentId: compId });
       }
     });
-    // Créer les 3 nouveaux staff s7/s8/s9 si absents
     const existingIds = DATA.staff.map(s => s._docId);
     ["s7","s8","s9"].forEach(id => {
       if (!existingIds.includes(id)) {
@@ -442,7 +437,6 @@ async function migrateToMultiComp() {
         if (st) { const { id: _id, ...rest } = st; batch.set(doc(db, "staff", id), rest); }
       }
     });
-    // Marquer la migration comme faite
     batch.set(doc(db, "settings", "main"), { migrationMultiCompDone: true }, { merge: true });
     await batch.commit();
     console.log("✅ Migration multi-comp terminée");
@@ -686,6 +680,64 @@ function dishesForComp(compId){ return DATA.menu.filter(d=>d.compartmentId===com
 function dishesForSaleInComp(compId){ if(!isCompOpen(compId)) return []; return DATA.menu.filter(d=> (d.compartmentId===compId || d.compartmentId==="dessert") && isDishAvailableToday(d)); }
 function allCompsOpen(){ return DATA.compartments.every(c=>c.open); }
 
+// ============================================================
+// P2b-1 : helpers de filtrage par comp
+// ============================================================
+function getMyCompId(role){
+  if(!SESSION) return null;
+  const me = DATA.staff.find(s => s.name === SESSION.name && s.role === role);
+  if(!me) return null;
+  if(me.compartmentId) return me.compartmentId;
+  const byRole = DATA.compartments.find(c => c.managerId === me._docId || c.kitchenId === me._docId);
+  return byRole?._docId || null;
+}
+function isCashierComp(compId){
+  const c = getCompById(compId);
+  return !!(c && c.isCashier);
+}
+function orderHasCompItems(o, compId){
+  if(!compId) return true;
+  return o.items.some(it => {
+    if(it.statut === "Refusé") return false;
+    const d = DATA.menu.find(x => x._docId === it.id);
+    return d && d.compartmentId === compId;
+  });
+}
+function orderHasDessertItems(o){
+  return o.items.some(it => {
+    if(it.statut === "Refusé") return false;
+    const d = DATA.menu.find(x => x._docId === it.id);
+    return d && d.compartmentId === "dessert";
+  });
+}
+function gerantShouldSeeOrder(o, myCompId){
+  if(!myCompId) return true;
+  if(o.type === "livraison"){
+    if(isCashierComp(myCompId)) return true;
+    return orderHasCompItems(o, myCompId) || orderHasDessertItems(o);
+  }
+  if(o.type === "sur_place"){
+    const t = DATA.tables.find(x => x._docId === o.tableId);
+    return t && t.compartmentId === myCompId;
+  }
+  return true;
+}
+function cuisineShouldSeeOrder(o, myCompId){
+  if(!myCompId) return true;
+  if(myCompId === "dessert") return orderHasDessertItems(o);
+  return orderHasCompItems(o, myCompId);
+}
+function decorateItems(o, myCompId){
+  return o.items.map((it, idx) => {
+    const d = DATA.menu.find(x => x._docId === it.id);
+    const comp = d ? d.compartmentId : null;
+    let mine = true;
+    if(myCompId === "dessert") mine = comp === "dessert";
+    else if(myCompId) mine = comp === myCompId || comp === "dessert";
+    return { it, idx, mine, comp };
+  });
+}
+
 function stockQty(id){const item=DATA.stock.find(x=>x._docId===id);if(!item)return 0;return DATA.stockMoves.filter(m=>m.stockId===id).reduce((a,m)=>a+(m.type==="Entrée"?m.qty:-m.qty),item.initial);}
 function statusBadge(o){
   if(o.status==="servie")return '<span class="badge badge-vert">Servie</span>';
@@ -782,6 +834,14 @@ function screenClient(){
   const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables;
   const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
 
+  // P2b-1 : si client sur place et comp fermé → blocage
+  if(v.mode === "sur_place" && v.tableId){
+    const myComp = getCompOfTable(v.tableId);
+    if(myComp && !myComp.open){
+      return '<div class="login"><div class="login-logo">⏳</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Service pas encore ouvert</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Le compartiment <strong>'+esc(myComp.name)+'</strong> n\'a pas encore ouvert aujourd\'hui.</p><div style="max-width:300px;width:100%"><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444;margin-bottom:8px">🛵 Commander en livraison</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-block" style="text-decoration:none;color:white;border-color:#444">📞 Appeler le restaurant</a></div></div>';
+    }
+  }
+
   if(order && orderIsFinal(order)){
     if(order.status==="refusee" && v.screen!=="fully_refused"){ v.screen="fully_refused"; }
     if(order.status==="livree"){
@@ -806,9 +866,16 @@ function screenClient(){
 
   if(v.screen==="menu"){
     const cats=["Entrées","Plats","Desserts","Boissons"];
-    const dishes=menu.filter(d=>d.cat===v.cat&&isDishAvailableToday(d));
+    const myCompId = v.mode === "sur_place" && v.tableId ? (getCompOfTable(v.tableId)?.compartmentId || null) : null;
+    const isDishVisible = (d) => {
+      if(!isDishAvailableToday(d)) return false;
+      if(v.mode === "livraison") return true;
+      if(!myCompId) return true;
+      return d.compartmentId === myCompId || d.compartmentId === "dessert";
+    };
+    const dishes=menu.filter(d=>d.cat===v.cat&&isDishVisible(d));
     const count=Object.values(v.cart).reduce((a,b)=>a+b,0);
-    const total=menu.filter(isDishAvailableToday).reduce((sum,d)=>sum+(v.cart[d._docId]||0)*d.price,0);
+    const total=menu.filter(isDishVisible).reduce((sum,d)=>sum+(v.cart[d._docId]||0)*d.price,0);
     const isSurPlace=v.mode==="sur_place";
     const t=isSurPlace?tables.find(t=>t._docId===v.tableId):null;
     const tableName=isSurPlace&&t?("Table "+t.number):"Livraison";
@@ -826,7 +893,14 @@ function screenClient(){
   }
 
   if(v.screen==="cart"){
-    const items=menu.filter(m=>v.cart[m._docId]>0 && isDishAvailableToday(m));
+    const myCompIdCart = v.mode === "sur_place" && v.tableId ? (getCompOfTable(v.tableId)?.compartmentId || null) : null;
+    const cartVisible = (m) => {
+      if(!isDishAvailableToday(m)) return false;
+      if(v.mode === "livraison") return true;
+      if(!myCompIdCart) return true;
+      return m.compartmentId === myCompIdCart || m.compartmentId === "dessert";
+    };
+    const items=menu.filter(m=>v.cart[m._docId]>0 && cartVisible(m));
     const total=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
     const fee=v.mode==="livraison"&&v.deliveryKm!=null?Math.round(v.deliveryKm*prixParKm()):0;
     const wait=items.length?(s.waitMode==="sum"?items.reduce((a,d)=>a+d.time,0):Math.max(...items.map(d=>d.time))):0;
@@ -981,16 +1055,18 @@ function screenGerant(){
     const act = stepAffect ? "ger-force-affect" : "ger-force-menu";
     return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content"><div class="modal-overlay" style="position:fixed"><div class="modal-card"><div style="font-size:48px;margin-bottom:12px">'+emoji+'</div><h2>'+title+'</h2><p>'+txt+'</p><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="'+act+'">'+cta+'</button></div></div></div></div>';
   }
-  const pending=DATA.orders.filter(o=>o.status==="att_validation");
-  const pendingLiv=DATA.orders.filter(o=>o.status==="att_verif_paiement");
-  const awaitingCollect=DATA.orders.filter(o=>o.status==="att_collect");
-  const awaitingPay=DATA.orders.filter(o=>o.status==="att_paiement");
-  const live=DATA.orders.filter(o=>o.status==="payee"&&!o.servedAt&&o.type!=="livraison");
-  const delivering=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.servedAt);
+  const myCompId = getMyCompId("gerant");
+  const seeOrder = (o) => gerantShouldSeeOrder(o, myCompId);
+  const pending=DATA.orders.filter(o=>o.status==="att_validation" && seeOrder(o));
+  const pendingLiv=DATA.orders.filter(o=>o.status==="att_verif_paiement" && seeOrder(o));
+  const awaitingCollect=DATA.orders.filter(o=>o.status==="att_collect" && seeOrder(o));
+  const awaitingPay=DATA.orders.filter(o=>o.status==="att_paiement" && seeOrder(o));
+  const live=DATA.orders.filter(o=>o.status==="payee"&&!o.servedAt&&o.type!=="livraison" && seeOrder(o));
+  const delivering=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.servedAt && seeOrder(o));
   const livreurs=DATA.staff.filter(s=>s.role==="livreur");
-  const cashIssues=DATA.orders.filter(o=>o.cashIssue==="non_recu"&&!o.servedAt);
-  const invoicesToPrint=DATA.orders.filter(o=>o.status==="payee"&&o.paymentMethod&&!o.printedAt&&inCurrentBilan(o));
-  const openClaims=DATA.orders.filter(o=>o.claim && !o.claim.resolvedAt);
+  const cashIssues=DATA.orders.filter(o=>o.cashIssue==="non_recu"&&!o.servedAt && seeOrder(o));
+  const invoicesToPrint=DATA.orders.filter(o=>o.status==="payee"&&o.paymentMethod&&!o.printedAt&&inCurrentBilan(o) && seeOrder(o));
+  const openClaims=DATA.orders.filter(o=>o.claim && !o.claim.resolvedAt && seeOrder(o));
   let content="";
   if(v.tab==="validation"){
     let alertHtml="";
@@ -1009,61 +1085,65 @@ function screenGerant(){
   } else if(v.tab==="livraisons"){
     content='<h2 class="section-title">🛵 Livraisons ('+delivering.length+')</h2>'+(delivering.length===0?'<p class="empty">Aucune</p>':delivering.map(o=>{const assigned=livreurs.find(l=>l._docId===o.livreurId);return '<div class="card" style="margin-bottom:12px"><p class="card-title">'+esc(o.clientInfo?.name||"")+'</p><p class="card-sub">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-xs muted" style="margin-top:4px">📞 '+esc(o.clientInfo?.phone||"")+' · '+money(orderGrandTotal(o))+'</p><div style="margin-top:10px"><select class="input" data-action="ger-assign-livreur" data-id="'+o._docId+'"><option value="">— Non assignée —</option>'+livreurs.map(l=>'<option value="'+l._docId+'" '+(o.livreurId===l._docId?"selected":"")+'>'+esc(l.name)+'</option>').join("")+'</select></div>'+(assigned?'<p class="text-sm" style="margin-top:8px;color:var(--vert)"><strong>'+esc(assigned.name)+'</strong></p>':"")+'</div>';}).join(""));
   } else if(v.tab==="affectation"){
-  const myStaff = DATA.staff.find(s=>s.name===SESSION.name && s.role==="gerant");
-  const myComp = getCompOfStaff(myStaff);
-  const myCompId = myComp?._docId;
-  const myTables = myCompId ? DATA.tables.filter(t => t.compartmentId === myCompId) : DATA.tables;
-  const allServeuses = DATA.staff.filter(s => s.role === "serveuse");
-  const serveuseTableMap = {};
-  Object.entries(dayAffect).forEach(([tid, sid]) => { serveuseTableMap[sid] = tid; });
-  const availableServeuses = allServeuses.filter(s => {
-    const tId = serveuseTableMap[s._docId];
-    if (!tId) return true;
-    const t = DATA.tables.find(t => t._docId === tId);
-    return t && t.compartmentId === myCompId;
-  });
-  const blockedServeuses = allServeuses.filter(s => {
-    const tId = serveuseTableMap[s._docId];
-    if (!tId) return false;
-    const t = DATA.tables.find(t => t._docId === tId);
-    return t && t.compartmentId !== myCompId;
-  });
-  const compLabel = myComp ? (myComp.emoji + " " + myComp.name) : "—";
-  let tableHtml;
-  if(!myCompId){
-    tableHtml = '<div class="alert-banner" style="background:rgba(192,57,43,0.1);border-color:var(--rouge)"><strong>⚠️ Aucun compartiment assigné</strong><p class="text-xs" style="margin-top:4px">Contactez l\'admin.</p></div>';
-  } else if(availableServeuses.length === 0){
-    tableHtml = '<p class="empty">Aucune serveuse disponible</p>';
-  } else if(myTables.length === 0){
-    tableHtml = '<p class="empty">Aucune table dans ce compartiment</p>';
-  } else {
-    tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTables.map(t=>{
-      return '<tr><td><strong>Table '+t.number+'</strong></td>'+availableServeuses.map(s=>{
-        const checked = dayAffect[t._docId] === s._docId;
-        const assignedTid = serveuseTableMap[s._docId];
-        const assignedElsewhere = assignedTid && assignedTid !== t._docId;
-        const disabled = assignedElsewhere && !checked;
-        return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir);":"")+(disabled?"opacity:0.25;cursor:not-allowed;":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'" '+(disabled?"disabled":"")+'>'+(checked?"✓":"")+'</button></td>';
-      }).join("")+'</tr>';
-    }).join("")+'</tbody></table></div>';
-  }
-  const blockedHtml = blockedServeuses.length > 0 ? '<div class="card" style="margin-top:16px;border-left:4px solid var(--gris)"><p class="text-xs muted bold">🔒 INDISPONIBLES AUJOURD\'HUI</p>'+blockedServeuses.map(s=>{
-    const tId = serveuseTableMap[s._docId];
-    const t = DATA.tables.find(x => x._docId === tId);
-    const c = t ? getCompById(t.compartmentId) : null;
-    return '<p class="text-sm" style="margin-top:6px">'+esc(s.name)+' — Table '+(t?.number||"?")+' ('+(c?.name||"—")+')</p>';
-  }).join("")+'</div>' : '';
-  content='<h2 class="section-title">Affectation — '+esc(compLabel)+'</h2><p class="section-sub">'+new Date(today).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+' · '+myTables.length+' table(s)</p>'+(hasAffectation?'<p class="text-sm muted" style="margin-bottom:14px">Touchez une case pour assigner.</p>':'<div class="alert-banner" style="background:rgba(224,168,0,0.15);border-color:var(--jaune-fonce)"><strong>⚠️ Attribution obligatoire</strong></div>')+tableHtml+blockedHtml+(hasAffectation?'<button class="btn btn-accent btn-block" style="margin-top:20px" data-action="ger-home">Terminer</button>':"");
+    const myStaff = DATA.staff.find(s=>s.name===SESSION.name && s.role==="gerant");
+    const myComp = getCompOfStaff(myStaff);
+    const myCompIdAff = myComp?._docId;
+    const myTables = myCompIdAff ? DATA.tables.filter(t => t.compartmentId === myCompIdAff) : DATA.tables;
+    const allServeuses = DATA.staff.filter(s => s.role === "serveuse");
+    const serveuseTableMap = {};
+    Object.entries(dayAffect).forEach(([tid, sid]) => { serveuseTableMap[sid] = tid; });
+    const availableServeuses = allServeuses.filter(s => {
+      const tId = serveuseTableMap[s._docId];
+      if (!tId) return true;
+      const t = DATA.tables.find(t => t._docId === tId);
+      return t && t.compartmentId === myCompIdAff;
+    });
+    const blockedServeuses = allServeuses.filter(s => {
+      const tId = serveuseTableMap[s._docId];
+      if (!tId) return false;
+      const t = DATA.tables.find(t => t._docId === tId);
+      return t && t.compartmentId !== myCompIdAff;
+    });
+    const compLabel = myComp ? (myComp.emoji + " " + myComp.name) : "—";
+    let tableHtml;
+    if(!myCompIdAff){
+      tableHtml = '<div class="alert-banner" style="background:rgba(192,57,43,0.1);border-color:var(--rouge)"><strong>⚠️ Aucun compartiment assigné</strong><p class="text-xs" style="margin-top:4px">Contactez l\'admin.</p></div>';
+    } else if(availableServeuses.length === 0){
+      tableHtml = '<p class="empty">Aucune serveuse disponible</p>';
+    } else if(myTables.length === 0){
+      tableHtml = '<p class="empty">Aucune table dans ce compartiment</p>';
+    } else {
+      tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTables.map(t=>{
+        return '<tr><td><strong>Table '+t.number+'</strong></td>'+availableServeuses.map(s=>{
+          const checked = dayAffect[t._docId] === s._docId;
+          const assignedTid = serveuseTableMap[s._docId];
+          const assignedElsewhere = assignedTid && assignedTid !== t._docId;
+          const disabled = assignedElsewhere && !checked;
+          return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir);":"")+(disabled?"opacity:0.25;cursor:not-allowed;":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'" '+(disabled?"disabled":"")+'>'+(checked?"✓":"")+'</button></td>';
+        }).join("")+'</tr>';
+      }).join("")+'</tbody></table></div>';
+    }
+    const blockedHtml = blockedServeuses.length > 0 ? '<div class="card" style="margin-top:16px;border-left:4px solid var(--gris)"><p class="text-xs muted bold">🔒 INDISPONIBLES AUJOURD\'HUI</p>'+blockedServeuses.map(s=>{
+      const tId = serveuseTableMap[s._docId];
+      const t = DATA.tables.find(x => x._docId === tId);
+      const c = t ? getCompById(t.compartmentId) : null;
+      return '<p class="text-sm" style="margin-top:6px">'+esc(s.name)+' — Table '+(t?.number||"?")+' ('+(c?.name||"—")+')</p>';
+    }).join("")+'</div>' : '';
+    content='<h2 class="section-title">Affectation — '+esc(compLabel)+'</h2><p class="section-sub">'+new Date(today).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+' · '+myTables.length+' table(s)</p>'+(hasAffectation?'<p class="text-sm muted" style="margin-bottom:14px">Touchez une case pour assigner.</p>':'<div class="alert-banner" style="background:rgba(224,168,0,0.15);border-color:var(--jaune-fonce)"><strong>⚠️ Attribution obligatoire</strong></div>')+tableHtml+blockedHtml+(hasAffectation?'<button class="btn btn-accent btn-block" style="margin-top:20px" data-action="ger-home">Terminer</button>':"");
   } else if(v.tab==="menuDuJour"){
     const confirmed = todayMenu() !== null;
     const ids = todayMenuDraft();
     const cats = ["Entrées","Plats","Desserts","Boissons"];
-    content = '<h2 class="section-title">🍽️ Menu du jour</h2><p class="section-sub">'+(confirmed?'✅ Confirmé':'⚠️ À confirmer')+' — '+ids.length+' plats</p>'+
-      cats.map(cat=>{const dishes=DATA.menu.filter(d=>d.cat===cat && d.available);if(!dishes.length)return "";
+    const myCompIdMenu = getMyCompId("gerant");
+    const dishInMyComp = (d) => !myCompIdMenu || d.compartmentId === myCompIdMenu || (myCompIdMenu !== "dessert" && d.compartmentId === "dessert");
+    const myDishesCount = DATA.menu.filter(d => d.available && dishInMyComp(d) && ids.includes(d._docId)).length;
+    const myDishesTotal = DATA.menu.filter(d => d.available && dishInMyComp(d)).length;
+    content = '<h2 class="section-title">🍽️ Menu du jour</h2><p class="section-sub">'+(confirmed?'✅ Confirmé':'⚠️ À confirmer')+' — '+myDishesCount+'/'+myDishesTotal+' plats de votre compartiment</p>'+
+      cats.map(cat=>{const dishes=DATA.menu.filter(d=>d.cat===cat && d.available && dishInMyComp(d));if(!dishes.length)return "";
         return '<div class="cat-group"><div class="cat-group-title">'+esc(cat)+'</div>'+dishes.map(d=>{const on=ids.includes(d._docId);return '<div class="dish-row" style="cursor:pointer;'+(on?'border-color:var(--vert);background:rgba(45,122,62,0.04)':'opacity:0.55')+'" data-action="ger-toggle-menu" data-id="'+d._docId+'"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p><p class="dish-desc">'+money(d.price)+'</p></div><div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;'+(on?'background:var(--vert);color:white':'background:var(--sable);color:var(--gris)')+'">'+(on?'✓':'—')+'</div></div>';}).join("")+'</div>';}).join("")+
-      (confirmed?'<button class="btn btn-ghost btn-block" style="margin-top:20px" data-action="ger-reconfirm-menu">🔄 Reconfirmer</button>':'<button class="btn btn-accent btn-block" style="margin-top:20px;padding:14px" data-action="ger-confirm-menu">✓ Confirmer</button>');
+      (confirmed?'<button class="btn btn-ghost btn-block" style="margin-top:20px" data-action="ger-reconfirm-menu">🔄 Reconfirmer</button>':'<button class="btn btn-accent btn-block" style="margin-top:20px;padding:14px" data-action="ger-confirm-menu">✓ Confirmer mes plats</button>');
   } else if(v.tab==="bilan"){
-    const todayOrders=DATA.orders.filter(inCurrentBilan);
+    const todayOrders=DATA.orders.filter(inCurrentBilan).filter(o=>seeOrder(o));
     const served=todayOrders.filter(o=>o.status==="servie"||o.status==="livree");
     const totalCA=served.reduce((s,o)=>s+orderGrandTotal(o),0);
     const cash=served.filter(o=>o.paymentMethod==="cash").reduce((s,o)=>s+orderGrandTotal(o),0);
@@ -1087,9 +1167,20 @@ function screenGerant(){
 }
 
 function screenCuisine(){
-  const active=DATA.orders.filter(o=>o.status==="payee"&&!o.readyAt);
-  const ready=DATA.orders.filter(o=>o.readyAt&&o.status==="payee");
-  const ticket=(o)=>{const t=orderTimerInfo(o);return '<div class="ticket '+(t.urgent||t.overdue?"urgent":"")+'"><div class="flex between" style="margin-bottom:12px"><div><p class="serif" style="font-size:19px;font-weight:bold;margin:0">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p><p class="text-xs muted">'+timeAgo(o.createdAt)+'</p></div><div class="timer '+(t.urgent||t.overdue?"urgent":"ok")+'">'+t.text+'</div></div><ul style="margin:0 0 14px 0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul><button class="btn btn-outline btn-block" data-action="cui-ready" data-id="'+o._docId+'">Marquer prêt</button></div>';};
+  const myCompId = getMyCompId("cuisine");
+  const seeOrder = (o) => cuisineShouldSeeOrder(o, myCompId);
+  const active=DATA.orders.filter(o=>o.status==="payee"&&!o.readyAt && seeOrder(o));
+  const ready=DATA.orders.filter(o=>o.readyAt&&o.status==="payee" && seeOrder(o));
+  const ticket=(o)=>{
+    const t=orderTimerInfo(o);
+    const decorated = decorateItems(o, myCompId);
+    const itemsHtml = decorated.map(({it, mine}) => {
+      if(it.statut === "Refusé") return '';
+      if(mine) return '<li>'+it.qty+'× '+esc(it.name)+'</li>';
+      return '<li style="text-decoration:line-through;color:#bbb">'+it.qty+'× '+esc(it.name)+'</li>';
+    }).join("");
+    return '<div class="ticket '+(t.urgent||t.overdue?"urgent":"")+'"><div class="flex between" style="margin-bottom:12px"><div><p class="serif" style="font-size:19px;font-weight:bold;margin:0">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p><p class="text-xs muted">'+timeAgo(o.createdAt)+'</p></div><div class="timer '+(t.urgent||t.overdue?"urgent":"ok")+'">'+t.text+'</div></div><ul style="margin:0 0 14px 0;padding-left:20px;font-size:14px">'+itemsHtml+'</ul><button class="btn btn-outline btn-block" data-action="cui-ready" data-id="'+o._docId+'">Marquer prêt</button></div>';
+  };
   return '<div class="app">'+topbar({role:"Cuisine",title:SESSION.name,homeAction:"cui-home"})+'<div class="content"><h2 class="section-title" style="font-size:17px">👨‍🍳 File ('+active.length+')</h2>'+(active.length===0?'<p class="empty">Aucune commande</p>':'<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+active.map(ticket).join("")+'</div>')+(ready.length>0?'<h2 class="section-title" style="font-size:17px;margin-top:24px">✅ Prêtes ('+ready.length+')</h2><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+ready.map(o=>'<div class="card" style="border:2px solid var(--vert)"><p class="bold">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p></div>').join("")+'</div>':"")+'</div></div>';
 }
 
@@ -1525,24 +1616,25 @@ document.addEventListener("click",async function(e){
   if(action==="ger-resolve-claim"){await A.resolveClaim(id);toast("Réclamation réglée");render();return;}
   if(action==="ger-print-invoice"){printInvoice(id);return;}
   if(action==="ger-affect"){
-  const today = nowDate();
-  const day = DATA.affectation[today] || {};
-  const tableId = el.dataset.table;
-  const serveuseId = el.dataset.serveuse;
-  const cur = day[tableId] === serveuseId;
-  if(!cur){
-    const existingTid = Object.entries(day).find(([tid, sid]) => sid === serveuseId)?.[0];
-    if(existingTid && existingTid !== tableId){
-      const t = DATA.tables.find(x => x._docId === existingTid);
-      const comp = t ? getCompById(t.compartmentId) : null;
-      const sName = DATA.staff.find(s=>s._docId===serveuseId)?.name || "Serveuse";
-      toast(`❌ ${sName} déjà sur Table ${t?.number||"?"} (${comp?.name||"—"})`);
-      return;
+    const today = nowDate();
+    const day = DATA.affectation[today] || {};
+    const tableId = el.dataset.table;
+    const serveuseId = el.dataset.serveuse;
+    const cur = day[tableId] === serveuseId;
+    if(!cur){
+      const existingTid = Object.entries(day).find(([tid, sid]) => sid === serveuseId)?.[0];
+      if(existingTid && existingTid !== tableId){
+        const t = DATA.tables.find(x => x._docId === existingTid);
+        const comp = t ? getCompById(t.compartmentId) : null;
+        const sName = DATA.staff.find(s=>s._docId===serveuseId)?.name || "Serveuse";
+        toast(`❌ ${sName} déjà sur Table ${t?.number||"?"} (${comp?.name||"—"})`);
+        return;
+      }
     }
+    await A.setAffectation(today, tableId, cur?null:serveuseId);
+    return;
   }
-  await A.setAffectation(today, tableId, cur?null:serveuseId);
-  return;
-}
+
   if(action==="cui-home"){render();return;}
   if(action==="cui-ready"){await A.markReady(id);toast("Prêt !");render();return;}
 
