@@ -302,9 +302,41 @@ function isAppAllowed(role){
   return false;
 }
 
-function todayMenu(){ const m=DATA.settings.menuOfDay; if(!m||m.date!==nowDate()||!m.confirmedAt) return null; return m.dishIds||[]; }
-function todayMenuDraft(){ const m=DATA.settings.menuOfDay; if(m && m.date===nowDate() && m.dishIds) return m.dishIds; return DATA.menu.filter(d=>d.available).map(d=>d._docId); }
-function isDishAvailableToday(d){ if(!d.available) return false; const ids=todayMenu(); if(ids === null) return true; return ids.includes(d._docId); }
+// P2b-2 : Helpers menu par compartiment
+function todayMenuForComp(compId){
+  const map = DATA.settings.menuOfDayByComp || {};
+  const m = map[compId];
+  if(!m || m.date !== nowDate() || !m.confirmedAt) return null;
+  return m.dishIds || [];
+}
+function todayMenuDraftForComp(compId){
+  const map = DATA.settings.menuOfDayByComp || {};
+  const m = map[compId];
+  if(m && m.date === nowDate() && m.dishIds) return m.dishIds;
+  return DATA.menu.filter(d => d.available && (d.compartmentId === compId || (compId !== "dessert" && d.compartmentId === "dessert"))).map(d => d._docId);
+}
+function todayMenu(){ return DATA.settings.menuOfDay ? (DATA.settings.menuOfDay.date===nowDate() && DATA.settings.menuOfDay.confirmedAt ? DATA.settings.menuOfDay.dishIds : null) : null; }
+function todayMenuDraft(){ return todayMenu() || DATA.menu.filter(d=>d.available).map(d=>d._docId); }
+function isDishAvailableToday(d, compId){
+  if(!d.available) return false;
+  if(compId){
+    const ids = todayMenuForComp(compId);
+    if(ids === null) return true;
+    return ids.includes(d._docId);
+  }
+  const ids = todayMenu();
+  if(ids === null) return true;
+  return ids.includes(d._docId);
+}
+function tableHasServeuse(tableId){
+  const day = DATA.affectation[nowDate()] || {};
+  return !!day[tableId];
+}
+function serveuseOfTable(tableId){
+  const day = DATA.affectation[nowDate()] || {};
+  const sId = day[tableId];
+  return sId ? DATA.staff.find(s=>s._docId===sId) : null;
+}
 
 function sendPush(title, message, targetRole){
   console.log("📤 PUSH → [" + (targetRole || "STAFF") + "] " + title + " : " + message);
@@ -398,7 +430,6 @@ async function seedIfEmpty() {
   await batch.commit();
 }
 
-// Migration P2a
 async function migrateToMultiComp() {
   if (DATA.settings && DATA.settings.migrationMultiCompDone) return;
   if (!DATA.menu.length || !DATA.tables.length) {
@@ -658,20 +689,32 @@ const A = {
   async logAuth(role,email,result){await addDoc(collection(db,"resetLogs"),{createdAt:Date.now(),adminName:email||"?",action:"Connexion "+(role==="admin"?"Admin":role==="gerant"?"Gérant":"?"),result,pinTried:""});},
   async generateRecoveryCode(staffId){const code=genRecoveryCode();await updateDoc(doc(db,"staff",staffId),{recoveryCode:code,recoveryCodeCreatedAt:Date.now()});return code;},
   async resetPasswordWithRecovery(staffId,newPassword){const code=genRecoveryCode();await updateDoc(doc(db,"staff",staffId),{password:newPassword,recoveryCode:code,recoveryCodeCreatedAt:Date.now()});return code;},
-  async toggleMenuOfDay(dishId){
-    const m = DATA.settings.menuOfDay;
+  async toggleMenuOfDayForComp(compId, dishId){
+    const map = { ...(DATA.settings.menuOfDayByComp || {}) };
+    const m = map[compId];
     const isToday = m && m.date === nowDate();
-    const cur = (isToday && m.dishIds) ? m.dishIds : DATA.menu.filter(d=>d.available).map(d=>d._docId);
+    const cur = (isToday && m.dishIds) ? m.dishIds : DATA.menu.filter(d=>d.available && (d.compartmentId===compId || (compId!=="dessert" && d.compartmentId==="dessert"))).map(d=>d._docId);
     const next = cur.includes(dishId) ? cur.filter(x=>x!==dishId) : [...cur, dishId];
-    await A.updateSettings({ menuOfDay: { date: nowDate(), dishIds: next, confirmedAt: (isToday && m.confirmedAt) || null } });
+    map[compId] = { date: nowDate(), dishIds: next, confirmedAt: (isToday && m.confirmedAt) || null };
+    await A.updateSettings({ menuOfDayByComp: map });
   },
-  async confirmMenuOfDay(dishIds){ await A.updateSettings({ menuOfDay: { date: nowDate(), dishIds: dishIds, confirmedAt: Date.now() } }); },
+  async confirmMenuOfDayForComp(compId, dishIds){
+    const map = { ...(DATA.settings.menuOfDayByComp || {}) };
+    map[compId] = { date: nowDate(), dishIds: dishIds, confirmedAt: Date.now() };
+    await A.updateSettings({ menuOfDayByComp: map });
+  },
+  async saveCashierStart(compId, amount){
+    const all = { ...(DATA.settings.cashierStart || {}) };
+    const today = nowDate();
+    all[today] = { ...(all[today] || {}), [compId]: amount };
+    await A.updateSettings({ cashierStart: all });
+  },
+  async setCompOpen(compId, open){
+    await updateDoc(doc(db,"compartments",compId),{ open });
+  },
   async downloadBackup(){const payload={exportedAt:new Date().toISOString(),settings:DATA.settings,menu:DATA.menu,staff:DATA.staff,tables:DATA.tables,compartments:DATA.compartments,stock:DATA.stock,stockMoves:DATA.stockMoves,zones:DATA.zones,affectation:DATA.affectation,orders:DATA.orders,resetLogs:DATA.resetLogs};const json=JSON.stringify(payload,null,2);const blob=new Blob([json],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="restaurant-ds-backup-"+nowDate()+".json";a.click();URL.revokeObjectURL(url);}
 };
 
-// ============================================================
-// COMPARTIMENTS - helpers
-// ============================================================
 function getCompById(id){ return DATA.compartments.find(c=>c._docId===id); }
 function getCompOfTable(tableId){ const t=DATA.tables.find(t=>t._docId===tableId); return t&&t.compartmentId?getCompById(t.compartmentId):null; }
 function getCompOfStaff(staff){ if(!staff) return null; if(staff.compartmentId) return getCompById(staff.compartmentId); const byRole = DATA.compartments.find(c=>c.managerId===staff._docId || c.kitchenId===staff._docId); return byRole||null; }
@@ -680,9 +723,6 @@ function dishesForComp(compId){ return DATA.menu.filter(d=>d.compartmentId===com
 function dishesForSaleInComp(compId){ if(!isCompOpen(compId)) return []; return DATA.menu.filter(d=> (d.compartmentId===compId || d.compartmentId==="dessert") && isDishAvailableToday(d)); }
 function allCompsOpen(){ return DATA.compartments.every(c=>c.open); }
 
-// ============================================================
-// P2b-1 : helpers de filtrage par comp
-// ============================================================
 function getMyCompId(role){
   if(!SESSION) return null;
   const me = DATA.staff.find(s => s.name === SESSION.name && s.role === role);
@@ -754,7 +794,7 @@ let loginRole=null, loginPin="", loginEmail="", loginPassword="", loginError="",
 let urlMode="default";
 let clientS={screen:"menu",mode:"livraison",cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},contactPhone:"",deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{},momoRefInput:"",claimType:null,claimText:"",ratingDriver:0,ratingResto:0,ratingComment:""};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};
-let gerS={tab:"validation",menuDraft:null};
+let gerS={tab:"validation",menuDraft:null,wizard:null};
 let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null,graceForm:{duration:60,roles:["serveuse","cuisine","livreur","gerant"]},livrPeriod:"today"};
 let livS={tab:"available"};
 let pendingReset=null;
@@ -769,7 +809,15 @@ function toast(msg){const t=document.createElement("div");t.className="toast";t.
 function topbar(opts){
   const back = opts.backAction?'<button class="topbar-btn" data-action="'+opts.backAction+'">←</button>':'<button class="topbar-btn" data-action="'+opts.homeAction+'">🏠</button>';
   const bell = (SESSION && SESSION.role !== "client") ? '<button class="topbar-btn" data-action="toggle-sound" style="padding:8px;font-size:18px">'+(isSoundEnabled()?'🔔':'🔕')+'</button>' : '';
-  return '<div class="topbar">'+back+'<div style="flex:1;min-width:0"><p class="topbar-sub">'+esc(opts.role||"")+'</p><div class="topbar-title">'+esc(opts.title||"")+'</div></div>'+bell+'<button class="topbar-logout" data-action="logout">Déco</button></div>';
+  let compBtn = '';
+  if(SESSION && SESSION.role === "gerant"){
+    const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+    const myComp = getCompOfStaff(me);
+    if(myComp){
+      compBtn = '<button class="topbar-btn" data-action="ger-toggle-open" style="padding:6px 10px;font-size:13px;background:'+(myComp.open?'var(--vert)':'var(--rouge)')+';color:white">'+(myComp.open?'🔒 Fermer':'🔓 Ouvrir')+'</button>';
+    }
+  }
+  return '<div class="topbar">'+back+'<div style="flex:1;min-width:0"><p class="topbar-sub">'+esc(opts.role||"")+'</p><div class="topbar-title">'+esc(opts.title||"")+'</div></div>'+compBtn+bell+'<button class="topbar-logout" data-action="logout">Déco</button></div>';
 }
 
 function screenClosed(){
@@ -834,11 +882,13 @@ function screenClient(){
   const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables;
   const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
 
-  // P2b-1 : si client sur place et comp fermé → blocage
   if(v.mode === "sur_place" && v.tableId){
     const myComp = getCompOfTable(v.tableId);
     if(myComp && !myComp.open){
       return '<div class="login"><div class="login-logo">⏳</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Service pas encore ouvert</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Le compartiment <strong>'+esc(myComp.name)+'</strong> n\'a pas encore ouvert aujourd\'hui.</p><div style="max-width:300px;width:100%"><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444;margin-bottom:8px">🛵 Commander en livraison</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-block" style="text-decoration:none;color:white;border-color:#444">📞 Appeler le restaurant</a></div></div>';
+    }
+    if(myComp && myComp.open && !tableHasServeuse(v.tableId)){
+      return '<div class="login"><div class="login-logo">⚠️</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Table sans serveuse</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Cette table n\'a pas encore de serveuse assignée. Patientez ou appelez le restaurant.</p><div style="max-width:300px;width:100%"><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-accent btn-block" style="text-decoration:none;margin-bottom:8px">📞 Appeler le restaurant</a><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444">🛵 Commander en livraison</button></div></div>';
     }
   }
 
@@ -868,10 +918,13 @@ function screenClient(){
     const cats=["Entrées","Plats","Desserts","Boissons"];
     const myCompId = v.mode === "sur_place" && v.tableId ? (getCompOfTable(v.tableId)?.compartmentId || null) : null;
     const isDishVisible = (d) => {
-      if(!isDishAvailableToday(d)) return false;
-      if(v.mode === "livraison") return true;
-      if(!myCompId) return true;
-      return d.compartmentId === myCompId || d.compartmentId === "dessert";
+      if(!d.available) return false;
+      if(v.mode === "livraison"){
+        return isDishAvailableToday(d, d.compartmentId === "dessert" ? "dessert" : (d.compartmentId || "comp2"));
+      }
+      if(!myCompId) return isDishAvailableToday(d);
+      if(d.compartmentId !== myCompId && d.compartmentId !== "dessert") return false;
+      return isDishAvailableToday(d, d.compartmentId === "dessert" ? "dessert" : myCompId);
     };
     const dishes=menu.filter(d=>d.cat===v.cat&&isDishVisible(d));
     const count=Object.values(v.cart).reduce((a,b)=>a+b,0);
@@ -895,10 +948,13 @@ function screenClient(){
   if(v.screen==="cart"){
     const myCompIdCart = v.mode === "sur_place" && v.tableId ? (getCompOfTable(v.tableId)?.compartmentId || null) : null;
     const cartVisible = (m) => {
-      if(!isDishAvailableToday(m)) return false;
-      if(v.mode === "livraison") return true;
-      if(!myCompIdCart) return true;
-      return m.compartmentId === myCompIdCart || m.compartmentId === "dessert";
+      if(!m.available) return false;
+      if(v.mode === "livraison"){
+        return isDishAvailableToday(m, m.compartmentId === "dessert" ? "dessert" : (m.compartmentId || "comp2"));
+      }
+      if(!myCompIdCart) return isDishAvailableToday(m);
+      if(m.compartmentId !== myCompIdCart && m.compartmentId !== "dessert") return false;
+      return isDishAvailableToday(m, m.compartmentId === "dessert" ? "dessert" : myCompIdCart);
     };
     const items=menu.filter(m=>v.cart[m._docId]>0 && cartVisible(m));
     const total=items.reduce((sum,d)=>sum+d.price*v.cart[d._docId],0);
@@ -1043,20 +1099,66 @@ function screenServeuse(){
 }
 
 function screenGerant(){
-  const v=gerS;const today=nowDate();const dayAffect=DATA.affectation[today]||{};const hasAffectation=Object.keys(dayAffect).length>0;
-  const hasMenuToday = todayMenu() !== null;
-  const needsSetup = !hasAffectation || !hasMenuToday;
-  if(needsSetup && v.tab!=="affectation" && v.tab!=="menuDuJour"){
-    const stepAffect = !hasAffectation;
-    const title = stepAffect ? "Attribution des tables" : "Menu du jour à confirmer";
-    const emoji = stepAffect ? "📋" : "🍽️";
-    const txt = stepAffect ? "Attribuez les tables aux serveuses." : "Confirmez les plats disponibles aujourd'hui.";
-    const cta = stepAffect ? "Commencer" : "Confirmer";
-    const act = stepAffect ? "ger-force-affect" : "ger-force-menu";
-    return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content"><div class="modal-overlay" style="position:fixed"><div class="modal-card"><div style="font-size:48px;margin-bottom:12px">'+emoji+'</div><h2>'+title+'</h2><p>'+txt+'</p><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="'+act+'">'+cta+'</button></div></div></div></div>';
+  const v=gerS;const today=nowDate();const dayAffect=DATA.affectation[today]||{};
+  const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+  const myComp = getCompOfStaff(me);
+  const myCompId = myComp?._docId;
+  const compOpen = myComp ? myComp.open : false;
+
+  // Wizard si comp fermé
+  if(myComp && !compOpen){
+    if(!v.wizard) v.wizard = { step: 1, caisse: "" };
+    const wiz = v.wizard;
+    const myTables = DATA.tables.filter(t => t.compartmentId === myCompId);
+    const affectedCount = myTables.filter(t => dayAffect[t._docId]).length;
+    const hasMenuToday = todayMenuForComp(myCompId) !== null;
+    const caisseToday = (DATA.settings.cashierStart || {})[today]?.[myCompId];
+
+    if(wiz.step === 1){
+      return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content content-narrow"><div class="card" style="border-left:4px solid var(--jaune);text-align:center"><p class="text-xs muted bold">ÉTAPE 1/4</p><h2 class="section-title" style="margin-top:8px">💰 Montant en caisse</h2><p class="section-sub">Saisissez le montant présent en caisse ce matin (fond de caisse).</p>'+(caisseToday!==undefined?'<p class="text-sm" style="color:var(--vert);margin-bottom:12px">✅ Déjà saisi : '+money(caisseToday)+'</p>':'')+'<input class="input" type="number" inputmode="numeric" style="margin-top:8px;text-align:center;font-size:24px;font-family:monospace" data-input="wiz-caisse" value="'+esc(wiz.caisse||String(caisseToday||""))+'" placeholder="50 000"><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="wiz-step1-next">Suivant →</button></div></div></div>';
+    }
+
+    if(wiz.step === 2){
+      const allServeuses = DATA.staff.filter(s => s.role === "serveuse");
+      const serveuseTableMap = {};
+      Object.entries(dayAffect).forEach(([tid, sid]) => { serveuseTableMap[sid] = tid; });
+      const availableServeuses = allServeuses.filter(s => {
+        const tId = serveuseTableMap[s._docId];
+        if (!tId) return true;
+        const t = DATA.tables.find(t => t._docId === tId);
+        return t && t.compartmentId === myCompId;
+      });
+      let tableHtml = '';
+      if(availableServeuses.length === 0){
+        tableHtml = '<p class="empty">Aucune serveuse disponible.</p>';
+      } else {
+        tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTables.map(t=>'<tr><td><strong>'+t.number+'</strong></td>'+availableServeuses.map(s=>{const checked=dayAffect[t._docId]===s._docId;const assignedTid=serveuseTableMap[s._docId];const elsewhere=assignedTid&&assignedTid!==t._docId;return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir);":"")+(elsewhere?"opacity:0.25;cursor:not-allowed;":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'" '+(elsewhere?"disabled":"")+'>'+(checked?"✓":"")+'</button></td>';}).join("")+'</tr>').join("")+'</tbody></table></div>';
+      }
+      const allDone = myTables.length>0 && myTables.every(t => dayAffect[t._docId]);
+      return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content content-narrow"><div class="card" style="border-left:4px solid var(--jaune);margin-bottom:14px"><p class="text-xs muted bold">ÉTAPE 2/4</p><h2 class="section-title" style="margin-top:8px">🗂️ Affectation</h2><p class="section-sub">'+affectedCount+'/'+myTables.length+' tables affectées. Chaque table doit avoir une serveuse.</p></div>'+tableHtml+'<button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px;opacity:'+(allDone?"1":"0.5")+'" data-action="wiz-step2-next" '+(allDone?"":"disabled")+'>Suivant →</button><button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="wiz-back">← Retour</button></div></div>';
+    }
+
+    if(wiz.step === 3){
+      const ids = todayMenuDraftForComp(myCompId);
+      const cats = ["Entrées","Plats","Desserts","Boissons"];
+      const dishInMyComp = (d) => d.compartmentId === myCompId || (myCompId !== "dessert" && d.compartmentId === "dessert");
+      return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content content-narrow"><div class="card" style="border-left:4px solid var(--jaune);margin-bottom:14px"><p class="text-xs muted bold">ÉTAPE 3/4</p><h2 class="section-title" style="margin-top:8px">🍽️ Menu du jour</h2><p class="section-sub">Cochez les plats disponibles aujourd\'hui.</p></div>'+
+        cats.map(cat=>{const dishes=DATA.menu.filter(d=>d.cat===cat && d.available && dishInMyComp(d));if(!dishes.length)return "";
+          return '<div class="cat-group"><div class="cat-group-title">'+esc(cat)+'</div>'+dishes.map(d=>{const on=ids.includes(d._docId);return '<div class="dish-row" style="cursor:pointer;'+(on?'border-color:var(--vert);background:rgba(45,122,62,0.04)':'opacity:0.55')+'" data-action="wiz-toggle-dish" data-id="'+d._docId+'"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p><p class="dish-desc">'+money(d.price)+'</p></div><div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;'+(on?'background:var(--vert);color:white':'background:var(--sable);color:var(--gris)')+'">'+(on?'✓':'—')+'</div></div>';}).join("")+'</div>';}).join("")+
+        '<button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="wiz-step3-next">Suivant →</button><button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="wiz-back">← Retour</button></div></div>';
+    }
+
+    if(wiz.step === 4){
+      const caisse = (DATA.settings.cashierStart || {})[today]?.[myCompId];
+      const menuOk = todayMenuForComp(myCompId) !== null;
+      return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content content-narrow"><div class="card" style="border-left:4px solid var(--vert);margin-bottom:14px"><p class="text-xs muted bold">ÉTAPE 4/4</p><h2 class="section-title" style="margin-top:8px">✅ Récapitulatif</h2></div><div class="card"><div class="flex between" style="margin-bottom:10px"><span>💰 Caisse</span><strong class="mono">'+(caisse!==undefined?money(caisse):"—")+'</strong></div><div class="flex between" style="margin-bottom:10px"><span>🗂️ Tables affectées</span><strong>'+affectedCount+'/'+myTables.length+'</strong></div><div class="flex between"><span>🍽️ Menu confirmé</span><strong>'+(menuOk?"✅ Oui":"⚠️ Non")+'</strong></div></div>'+
+        (menuOk?'<button class="btn btn-success btn-block" style="padding:16px;margin-top:14px;font-size:16px" data-action="wiz-open-service">🔓 Ouvrir le service</button>':'<p class="text-xs muted" style="text-align:center;margin-top:12px">Confirmez d\'abord le menu (étape 3)</p>')+
+        '<button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="wiz-back">← Retour</button></div></div>';
+    }
   }
-  const myCompId = getMyCompId("gerant");
-  const seeOrder = (o) => gerantShouldSeeOrder(o, myCompId);
+
+  const myCompId2 = getMyCompId("gerant");
+  const seeOrder = (o) => gerantShouldSeeOrder(o, myCompId2);
   const pending=DATA.orders.filter(o=>o.status==="att_validation" && seeOrder(o));
   const pendingLiv=DATA.orders.filter(o=>o.status==="att_verif_paiement" && seeOrder(o));
   const awaitingCollect=DATA.orders.filter(o=>o.status==="att_collect" && seeOrder(o));
@@ -1085,10 +1187,9 @@ function screenGerant(){
   } else if(v.tab==="livraisons"){
     content='<h2 class="section-title">🛵 Livraisons ('+delivering.length+')</h2>'+(delivering.length===0?'<p class="empty">Aucune</p>':delivering.map(o=>{const assigned=livreurs.find(l=>l._docId===o.livreurId);return '<div class="card" style="margin-bottom:12px"><p class="card-title">'+esc(o.clientInfo?.name||"")+'</p><p class="card-sub">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-xs muted" style="margin-top:4px">📞 '+esc(o.clientInfo?.phone||"")+' · '+money(orderGrandTotal(o))+'</p><div style="margin-top:10px"><select class="input" data-action="ger-assign-livreur" data-id="'+o._docId+'"><option value="">— Non assignée —</option>'+livreurs.map(l=>'<option value="'+l._docId+'" '+(o.livreurId===l._docId?"selected":"")+'>'+esc(l.name)+'</option>').join("")+'</select></div>'+(assigned?'<p class="text-sm" style="margin-top:8px;color:var(--vert)"><strong>'+esc(assigned.name)+'</strong></p>':"")+'</div>';}).join(""));
   } else if(v.tab==="affectation"){
-    const myStaff = DATA.staff.find(s=>s.name===SESSION.name && s.role==="gerant");
-    const myComp = getCompOfStaff(myStaff);
-    const myCompIdAff = myComp?._docId;
-    const myTables = myCompIdAff ? DATA.tables.filter(t => t.compartmentId === myCompIdAff) : DATA.tables;
+    const myCompAff = getCompOfStaff(me);
+    const myCompIdAff = myCompAff?._docId;
+    const myTablesAff = myCompIdAff ? DATA.tables.filter(t => t.compartmentId === myCompIdAff) : DATA.tables;
     const allServeuses = DATA.staff.filter(s => s.role === "serveuse");
     const serveuseTableMap = {};
     Object.entries(dayAffect).forEach(([tid, sid]) => { serveuseTableMap[sid] = tid; });
@@ -1104,16 +1205,16 @@ function screenGerant(){
       const t = DATA.tables.find(t => t._docId === tId);
       return t && t.compartmentId !== myCompIdAff;
     });
-    const compLabel = myComp ? (myComp.emoji + " " + myComp.name) : "—";
+    const compLabel = myCompAff ? (myCompAff.emoji + " " + myCompAff.name) : "—";
     let tableHtml;
     if(!myCompIdAff){
-      tableHtml = '<div class="alert-banner" style="background:rgba(192,57,43,0.1);border-color:var(--rouge)"><strong>⚠️ Aucun compartiment assigné</strong><p class="text-xs" style="margin-top:4px">Contactez l\'admin.</p></div>';
+      tableHtml = '<div class="alert-banner" style="background:rgba(192,57,43,0.1);border-color:var(--rouge)"><strong>⚠️ Aucun compartiment assigné</strong></div>';
     } else if(availableServeuses.length === 0){
       tableHtml = '<p class="empty">Aucune serveuse disponible</p>';
-    } else if(myTables.length === 0){
+    } else if(myTablesAff.length === 0){
       tableHtml = '<p class="empty">Aucune table dans ce compartiment</p>';
     } else {
-      tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTables.map(t=>{
+      tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTablesAff.map(t=>{
         return '<tr><td><strong>Table '+t.number+'</strong></td>'+availableServeuses.map(s=>{
           const checked = dayAffect[t._docId] === s._docId;
           const assignedTid = serveuseTableMap[s._docId];
@@ -1129,12 +1230,12 @@ function screenGerant(){
       const c = t ? getCompById(t.compartmentId) : null;
       return '<p class="text-sm" style="margin-top:6px">'+esc(s.name)+' — Table '+(t?.number||"?")+' ('+(c?.name||"—")+')</p>';
     }).join("")+'</div>' : '';
-    content='<h2 class="section-title">Affectation — '+esc(compLabel)+'</h2><p class="section-sub">'+new Date(today).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+' · '+myTables.length+' table(s)</p>'+(hasAffectation?'<p class="text-sm muted" style="margin-bottom:14px">Touchez une case pour assigner.</p>':'<div class="alert-banner" style="background:rgba(224,168,0,0.15);border-color:var(--jaune-fonce)"><strong>⚠️ Attribution obligatoire</strong></div>')+tableHtml+blockedHtml+(hasAffectation?'<button class="btn btn-accent btn-block" style="margin-top:20px" data-action="ger-home">Terminer</button>':"");
+    content='<h2 class="section-title">Affectation — '+esc(compLabel)+'</h2><p class="section-sub">'+new Date(today).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+' · '+myTablesAff.length+' table(s)</p>'+(Object.keys(dayAffect).length>0?'<p class="text-sm muted" style="margin-bottom:14px">Touchez une case pour assigner.</p>':'<div class="alert-banner" style="background:rgba(224,168,0,0.15);border-color:var(--jaune-fonce)"><strong>⚠️ Attribution obligatoire</strong></div>')+tableHtml+blockedHtml;
   } else if(v.tab==="menuDuJour"){
-    const confirmed = todayMenu() !== null;
-    const ids = todayMenuDraft();
-    const cats = ["Entrées","Plats","Desserts","Boissons"];
     const myCompIdMenu = getMyCompId("gerant");
+    const confirmed = todayMenuForComp(myCompIdMenu) !== null;
+    const ids = todayMenuDraftForComp(myCompIdMenu);
+    const cats = ["Entrées","Plats","Desserts","Boissons"];
     const dishInMyComp = (d) => !myCompIdMenu || d.compartmentId === myCompIdMenu || (myCompIdMenu !== "dessert" && d.compartmentId === "dessert");
     const myDishesCount = DATA.menu.filter(d => d.available && dishInMyComp(d) && ids.includes(d._docId)).length;
     const myDishesTotal = DATA.menu.filter(d => d.available && dishInMyComp(d)).length;
@@ -1161,7 +1262,7 @@ function screenGerant(){
     {k:"livraisons",l:"🛵 Livraisons"+(livBadge?" ("+livBadge+")":"")},
     {k:"invoices",l:"🧾 Factures"+(invBadge?" ("+invBadge+")":"")},
     {k:"affectation",l:"Tables"},
-    {k:"menuDuJour",l:"🍽️ Menu"+(todayMenu()===null?" ⚠️":"")},
+    {k:"menuDuJour",l:"🍽️ Menu"},
     {k:"bilan",l:"Bilan"}
   ].map(t=>'<button class="tab '+(v.tab===t.k?"active":"")+'" data-action="ger-tab" data-tab="'+t.k+'">'+t.l+'</button>').join("")+'</div><div class="content">'+content+'</div></div>';
 }
@@ -1212,23 +1313,23 @@ function screenAdmin(){
   ];
   let content="";
   if(v.section==="compartments"){
-    content='<h2 class="section-title">🏢 Compartiments</h2><p class="section-sub">'+DATA.compartments.length+' compartiment(s)</p>'+
+    content='<h2 class="section-title">🏢 Compartiments</h2><p class="section-sub">'+DATA.compartments.length+' compartiment(s) · Ouverture gérée par les gérants</p>'+
     DATA.compartments.map(c=>{
       const dishes = DATA.menu.filter(d=>d.compartmentId===c._docId);
       const staffs = DATA.staff.filter(s=>s.compartmentId===c._docId);
       const tables = DATA.tables.filter(t=>t.compartmentId===c._docId);
-      return '<div class="card" style="margin-bottom:14px;border-left:4px solid '+(c.open?"var(--vert)":"var(--gris)")+'"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">'+esc(c.emoji||"")+' '+esc(c.name)+'</p><p class="card-sub">'+dishes.length+' plats · '+staffs.length+' staff · '+tables.length+' tables</p></div><span class="badge '+(c.open?"badge-vert":"badge-neutre")+'">'+(c.open?"Ouvert":"Fermé")+'</span></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-'+(c.open?"danger":"success")+' btn-sm" data-action="admin-toggle-comp" data-id="'+c._docId+'">'+(c.open?"Fermer":"Ouvrir")+'</button></div><div style="margin-top:10px"><p class="text-xs muted bold">TABLES ('+tables.length+')</p><p class="text-xs">'+(tables.map(t=>t.number).sort((a,b)=>a-b).join(", ")||"—")+'</p></div></div>';
+      return '<div class="card" style="margin-bottom:14px;border-left:4px solid '+(c.open?"var(--vert)":"var(--gris)")+'"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">'+esc(c.emoji||"")+' '+esc(c.name)+'</p><p class="card-sub">'+dishes.length+' plats · '+staffs.length+' staff · '+tables.length+' tables</p></div><span class="badge '+(c.open?"badge-vert":"badge-neutre")+'">'+(c.open?"Ouvert":"Fermé")+'</span></div><div style="margin-top:10px"><p class="text-xs muted bold">TABLES ('+tables.length+')</p><p class="text-xs">'+(tables.map(t=>t.number).sort((a,b)=>a-b).join(", ")||"—")+'</p></div></div>';
     }).join("");
   } else if(v.section==="menu"){
     const cats=["Entrées","Plats","Desserts","Boissons"];const byCat={};cats.forEach(c=>byCat[c]=[]);DATA.menu.forEach(d=>{if(!byCat[d.cat])byCat[d.cat]=[];byCat[d.cat].push(d);});
     content='<div class="flex between center" style="margin-bottom:16px"><h2 class="section-title" style="font-size:19px;margin:0">Menu</h2><button class="btn btn-primary btn-sm" data-action="admin-add-dish">+ Ajouter</button></div>';
-    Object.keys(byCat).forEach(cat=>{const dishes=byCat[cat];if(dishes.length===0&&!cats.includes(cat))return;content+='<div class="cat-group"><div class="cat-group-title">'+esc(cat)+' ('+dishes.length+')</div><div class="table-wrap"><table><thead><tr><th>Plat</th><th>Prix</th><th>Cuisson</th><th>Dispo</th><th></th></tr></thead><tbody>'+dishes.map(d=>v.editingDish===d._docId?'<tr><td><input class="input" data-input="dish-name" value="'+esc(d.name)+'" style="padding:6px;min-width:120px"><input class="input" data-input="dish-desc" value="'+esc(d.desc||"")+'" placeholder="Description" style="padding:6px;margin-top:4px;font-size:12px"></td><td><input class="input" type="number" data-input="dish-price" value="'+d.price+'" style="padding:6px;width:80px"></td><td><input class="input" type="number" data-input="dish-time" value="'+d.time+'" style="padding:6px;width:60px"></td><td><input type="checkbox" data-input="dish-avail" '+(d.available?"checked":"")+' style="width:20px;height:20px"></td><td style="white-space:nowrap"><select class="input" data-input="dish-cat" style="padding:6px;display:inline-block;width:auto">'+cats.map(c=>'<option '+(d.cat===c?"selected":"")+'>'+c+'</option>').join("")+'</select> <button class="btn btn-success btn-sm" data-action="admin-save-dish" data-id="'+d._docId+'">✓</button></td></tr>':'<tr><td><strong>'+esc(d.name)+'</strong></td><td class="mono">'+money(d.price)+'</td><td>'+d.time+' min</td><td><span class="badge '+(d.available?"badge-vert":"badge-rouge")+'">'+(d.available?"Oui":"Non")+'</span></td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost btn-sm" data-action="admin-edit-dish" data-id="'+d._docId+'">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-dish" data-id="'+d._docId+'">🗑️</button></td></tr>').join("")+'</tbody></table></div></div>';});
+    Object.keys(byCat).forEach(cat=>{const dishes=byCat[cat];if(dishes.length===0&&!cats.includes(cat))return;content+='<div class="cat-group"><div class="cat-group-title">'+esc(cat)+' ('+dishes.length+')</div><div class="table-wrap"><table><thead><tr><th>Plat</th><th>Prix</th><th>Cuisson</th><th>Comp</th><th>Dispo</th><th></th></tr></thead><tbody>'+dishes.map(d=>v.editingDish===d._docId?'<tr><td><input class="input" data-input="dish-name" value="'+esc(d.name)+'" style="padding:6px;min-width:120px"><input class="input" data-input="dish-desc" value="'+esc(d.desc||"")+'" placeholder="Description" style="padding:6px;margin-top:4px;font-size:12px"></td><td><input class="input" type="number" data-input="dish-price" value="'+d.price+'" style="padding:6px;width:80px"></td><td><input class="input" type="number" data-input="dish-time" value="'+d.time+'" style="padding:6px;width:60px"></td><td><select class="input" data-input="dish-comp" style="padding:6px;width:auto">'+DATA.compartments.map(c=>'<option value="'+c._docId+'" '+(d.compartmentId===c._docId?"selected":"")+'>'+esc(c.name)+'</option>').join("")+'</select></td><td><input type="checkbox" data-input="dish-avail" '+(d.available?"checked":"")+' style="width:20px;height:20px"></td><td style="white-space:nowrap"><select class="input" data-input="dish-cat" style="padding:6px;display:inline-block;width:auto">'+cats.map(c=>'<option '+(d.cat===c?"selected":"")+'>'+c+'</option>').join("")+'</select> <button class="btn btn-success btn-sm" data-action="admin-save-dish" data-id="'+d._docId+'">✓</button></td></tr>':'<tr><td><strong>'+esc(d.name)+'</strong></td><td class="mono">'+money(d.price)+'</td><td>'+d.time+' min</td><td><span class="badge badge-neutre">'+esc(getCompById(d.compartmentId)?.name||"—")+'</span></td><td><span class="badge '+(d.available?"badge-vert":"badge-rouge")+'">'+(d.available?"Oui":"Non")+'</span></td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost btn-sm" data-action="admin-edit-dish" data-id="'+d._docId+'">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-dish" data-id="'+d._docId+'">🗑️</button></td></tr>').join("")+'</tbody></table></div></div>';});
   } else if(v.section==="staff"){
-    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2><div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'"><select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select><input class="input mono" placeholder="PIN" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'"><input class="input" placeholder="Email" data-input="new-staff-email" value="'+esc(v.newStaff.email||"")+'"><input class="input" placeholder="Mot de passe" data-input="new-staff-pwd" value="'+esc(v.newStaff.password||"")+'"><button class="btn btn-primary" data-action="admin-add-staff">Ajouter</button></div></div><div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>{const isAg=p.role==="gerant"||p.role==="admin";const creds=isAg?'📧 '+esc(p.email||"—"):'PIN '+esc(p.pin||"—");return '<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+'</p><p class="mono text-xs" style="color:var(--jaune-fonce);margin-top:6px">'+creds+'</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+(isAg?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Réinit MDP</button>':'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+'<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>';}).join("")+'</div>';
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2><div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'"><select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select><input class="input mono" placeholder="PIN" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'"><input class="input" placeholder="Email" data-input="new-staff-email" value="'+esc(v.newStaff.email||"")+'"><input class="input" placeholder="Mot de passe" data-input="new-staff-pwd" value="'+esc(v.newStaff.password||"")+'"><button class="btn btn-primary" data-action="admin-add-staff">Ajouter</button></div></div><div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>{const isAg=p.role==="gerant"||p.role==="admin";const creds=isAg?'📧 '+esc(p.email||"—"):'PIN '+esc(p.pin||"—");const comp=getCompById(p.compartmentId);return '<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+(comp?' · '+esc(comp.name):'')+'</p><p class="mono text-xs" style="color:var(--jaune-fonce);margin-top:6px">'+creds+'</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+(isAg?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Réinit MDP</button>':'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+'<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>';}).join("")+'</div>';
   } else if(v.section==="tables"){
     const adminUrl = SITE_URL + "?admin=1";
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Tables & QR</h2><div class="flex gap-2" style="flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-action="admin-add-table">+ Table</button><button class="btn btn-accent btn-sm" data-action="admin-print-all-qr">🖨️ QR</button></div></div><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">'+DATA.tables.map(t=>{const url=SITE_URL+"?table="+t.number;const comp=getCompById(t.compartmentId);return '<div class="qr-card"><p class="qr-resto">Restaurant D&S</p><img src="'+qrUrl(url,300)+'" alt="QR Table '+t.number+'"><p class="qr-table-num">Table '+t.number+'</p><p class="text-xs muted">'+esc(comp?comp.name:"—")+'</p><button class="btn btn-ghost btn-sm" style="width:100%;color:var(--rouge);margin-top:8px" data-action="admin-del-table" data-id="'+t._docId+'">🗑️ Supprimer</button></div>';}).join("")+'</div>'+
-    '<h2 class="section-title" style="font-size:19px;margin:30px 0 16px">🔐 Lien Admin</h2><p class="section-sub">Ce lien est réservé à l\'administrateur. Ne le partagez pas.</p><div class="qr-card" style="max-width:340px;margin:0 auto"><p class="qr-resto">Restaurant D&S — Admin</p><img src="'+qrUrl(adminUrl,300)+'" alt="QR Admin"><p style="font-family:monospace;font-size:11px;word-break:break-all;margin-top:8px">'+esc(adminUrl)+'</p></div>';
+    '<h2 class="section-title" style="font-size:19px;margin:30px 0 16px">🔐 Lien Admin</h2><p class="section-sub">Ce lien est réservé à l\'administrateur.</p><div class="qr-card" style="max-width:340px;margin:0 auto"><p class="qr-resto">Restaurant D&S — Admin</p><img src="'+qrUrl(adminUrl,300)+'" alt="QR Admin"><p style="font-family:monospace;font-size:11px;word-break:break-all;margin-top:8px">'+esc(adminUrl)+'</p></div>';
   } else if(v.section==="stock"){
     if(!v.stockForm.stockId&&DATA.stock[0])v.stockForm.stockId=DATA.stock[0]._docId;
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Stock</h2><button class="btn btn-primary btn-sm" data-action="admin-toggle-new-stock">'+(v.showNewStock?"✕ Annuler":"+ Ingrédient")+'</button></div>';
@@ -1264,7 +1365,7 @@ function screenAdmin(){
     });
     content='<h2 class="section-title">🛵 Bilan Livraisons</h2><p class="section-sub">Frais perçus et répartition 20% / 80%</p>'+
     '<div class="stats-grid" style="margin-bottom:20px"><div class="stat-card" style="border-left-color:var(--jaune-fonce)"><p class="stat-label">Frais aujourd\'hui</p><p class="stat-value">'+money(totalFeesToday)+'</p></div><div class="stat-card" style="border-left-color:var(--vert)"><p class="stat-label">Part resto (20%)</p><p class="stat-value">'+money(restoToday)+'</p></div><div class="stat-card" style="border-left-color:var(--noir)"><p class="stat-label">Part livreurs (80%)</p><p class="stat-value">'+money(livreurToday)+'</p></div></div>'+
-    '<h3 class="bold" style="margin:20px 0 10px;font-size:15px">Détail par livreur (total historique)</h3><div class="table-wrap"><table><thead><tr><th>Livreur</th><th>Cmd</th><th>Frais</th><th>Part livreur</th><th>Part resto</th></tr></thead><tbody>'+Object.entries(byLivreur).map(([name,st])=>'<tr><td><strong>'+esc(name)+'</strong></td><td>'+st.count+'</td><td class="mono">'+money(st.fees)+'</td><td class="mono" style="color:var(--jaune-fonce)">'+money(st.livreur)+'</td><td class="mono" style="color:var(--vert)">'+money(st.resto)+'</td></tr>').join("")+(Object.keys(byLivreur).length===0?'<tr><td colspan="5" class="empty">Aucune livraison</td></tr>':"")+'</tbody></table></div>';
+    '<h3 class="bold" style="margin:20px 0 10px;font-size:15px">Détail par livreur</h3><div class="table-wrap"><table><thead><tr><th>Livreur</th><th>Cmd</th><th>Frais</th><th>Part livreur</th><th>Part resto</th></tr></thead><tbody>'+Object.entries(byLivreur).map(([name,st])=>'<tr><td><strong>'+esc(name)+'</strong></td><td>'+st.count+'</td><td class="mono">'+money(st.fees)+'</td><td class="mono" style="color:var(--jaune-fonce)">'+money(st.livreur)+'</td><td class="mono" style="color:var(--vert)">'+money(st.resto)+'</td></tr>').join("")+(Object.keys(byLivreur).length===0?'<tr><td colspan="5" class="empty">Aucune livraison</td></tr>':"")+'</tbody></table></div>';
   } else if(v.section==="history"){
     const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));
     const filtered=paid.filter(o=>{
@@ -1281,7 +1382,7 @@ function screenAdmin(){
     const f=v.settingsForm;
     const graceActive=hasGraceActive();
     const graceRemaining=getGraceRemainingMin();
-    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Paramètres</h2><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🆔 Identité</h3><div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">NUMÉRO MoMo du RESTAURANT</label><input class="input" style="margin-top:6px;font-family:monospace" data-input="set-momo" value="'+esc(f.momoNumber||"")+'" placeholder="01 XX XX XX XX"></div></div>'+
+    content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Paramètres</h2><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🆔 Identité</h3><div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">NUMÉRO MoMo</label><input class="input" style="margin-top:6px;font-family:monospace" data-input="set-momo" value="'+esc(f.momoNumber||"")+'"></div></div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid var(--jaune-fonce)"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🕐 Horaires</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">OUVERTURE</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-open-hour" value="'+(f.openHour!=null?f.openHour:11)+'"></div><div><label class="text-xs muted bold">FERMETURE</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-close-hour" value="'+(f.closeHour!=null?f.closeHour:2)+'"></div></div></div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid '+(graceActive?"var(--vert)":"var(--gris)")+'"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🔓 Dérogation temporaire</h3>'+(graceActive?'<div class="alert-banner" style="background:rgba(45,122,62,0.1);border-color:var(--vert);margin-bottom:12px"><strong style="color:var(--vert)">✅ Active — '+graceRemaining+' min</strong><p class="text-xs" style="margin-top:4px">Rôles : '+((DATA.settings.graceRoles||[]).join(", ")||"—")+'</p></div><button class="btn btn-danger btn-block" data-action="admin-cancel-grace">Annuler</button>':'<div style="margin-bottom:12px"><label class="text-xs muted bold">DURÉE</label><select class="input" style="margin-top:6px" data-input="grace-duration"><option value="30" '+(v.graceForm.duration===30?"selected":"")+'>30 min</option><option value="60" '+(v.graceForm.duration===60?"selected":"")+'>60 min</option><option value="120" '+(v.graceForm.duration===120?"selected":"")+'>120 min</option></select></div><div style="margin-bottom:12px"><label class="text-xs muted bold">RÔLES</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">'+["serveuse","cuisine","livreur","gerant","client"].map(r=>'<div class="role-chip '+(v.graceForm.roles.includes(r)?"on":"")+'" data-action="grace-toggle-role" data-role="'+r+'">'+r+'</div>').join("")+'</div></div><button class="btn btn-accent btn-block" data-action="admin-activate-grace">Activer</button>')+'</div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📍 Localisation</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">LAT</label><input class="input" inputmode="decimal" style="margin-top:6px" data-input="set-resto-lat" value="'+esc(String(f.restoLat!=null?f.restoLat:DEFAULT_RESTO.lat))+'"></div><div><label class="text-xs muted bold">LON</label><input class="input" inputmode="decimal" style="margin-top:6px" data-input="set-resto-lon" value="'+esc(String(f.restoLon!=null?f.restoLon:DEFAULT_RESTO.lon))+'"></div></div></div>'+
@@ -1407,7 +1508,7 @@ document.addEventListener("click",async function(e){
     return;
   }
 
-  if(action==="logout"){resetClient();destroyMap();pendingReset=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null};livS={tab:"available"};A.logout();return;}
+  if(action==="logout"){resetClient();destroyMap();pendingReset=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null,wizard:null};livS={tab:"available"};A.logout();return;}
 
   if(action==="reset-cancel"){pendingReset=null;render();return;}
   if(action==="reset-confirm"){
@@ -1430,6 +1531,65 @@ document.addEventListener("click",async function(e){
       await A.logReset(act,"✅ Succès",null);
       toast(resultMsg);
     }catch(err){toast("Erreur : "+err.message);}
+    render();return;
+  }
+
+  // Wizard handlers
+  if(action==="wiz-step1-next"){
+    const el2 = document.querySelector('[data-input="wiz-caisse"]');
+    const amount = el2 ? parseFloat(el2.value) : 0;
+    if(isNaN(amount) || amount < 0){ toast("Montant invalide"); return; }
+    const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+    const myComp = getCompOfStaff(me);
+    if(!myComp) return;
+    await A.saveCashierStart(myComp._docId, amount);
+    gerS.wizard = { ...gerS.wizard, step: 2 };
+    render();return;
+  }
+  if(action==="wiz-step2-next"){ gerS.wizard = { ...gerS.wizard, step: 3 }; render(); return; }
+  if(action==="wiz-step3-next"){
+    const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+    const myComp = getCompOfStaff(me);
+    if(!myComp) return;
+    const ids = todayMenuDraftForComp(myComp._docId);
+    if(!ids.length){ toast("Sélectionnez au moins 1 plat"); return; }
+    await A.confirmMenuOfDayForComp(myComp._docId, ids);
+    gerS.wizard = { ...gerS.wizard, step: 4 };
+    render();return;
+  }
+  if(action==="wiz-back"){
+    const s = (gerS.wizard?.step || 1) - 1;
+    gerS.wizard = { ...gerS.wizard, step: Math.max(1, s) };
+    render();return;
+  }
+  if(action==="wiz-toggle-dish"){
+    const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+    const myComp = getCompOfStaff(me);
+    if(!myComp) return;
+    await A.toggleMenuOfDayForComp(myComp._docId, id);
+    return;
+  }
+  if(action==="wiz-open-service"){
+    const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+    const myComp = getCompOfStaff(me);
+    if(!myComp) return;
+    await A.setCompOpen(myComp._docId, true);
+    gerS.wizard = null;
+    toast("🔓 Service ouvert");
+    return;
+  }
+  if(action==="ger-toggle-open"){
+    const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+    const myComp = getCompOfStaff(me);
+    if(!myComp) return;
+    if(myComp.open){
+      if(!confirm("Fermer le service ? Les commandes en cours continueront mais aucune nouvelle ne sera acceptée.")) return;
+      await A.setCompOpen(myComp._docId, false);
+      toast("🔒 Service fermé");
+    } else {
+      gerS.wizard = { step: 1, caisse: "" };
+      toast("Reprenez les étapes d'ouverture");
+    }
     render();return;
   }
 
@@ -1487,6 +1647,10 @@ document.addEventListener("click",async function(e){
   if(action==="client-submit"){
     const items=DATA.menu.filter(m=>v.cart[m._docId]>0).map(d=>({id:d._docId,name:d.name,price:d.price,qty:v.cart[d._docId],time:d.time}));
     if(!items.length){toast("Panier vide");return;}
+    if(v.mode === "sur_place" && !tableHasServeuse(v.tableId)){
+      toast("Table sans serveuse. Appelez le restaurant.");
+      return;
+    }
     const orderData={type:"sur_place",items};
     const t=DATA.tables.find(x=>x._docId===v.tableId);
     const day=DATA.affectation[nowDate()]||{};
@@ -1593,13 +1757,29 @@ document.addEventListener("click",async function(e){
   if(action==="srv-collect-issue"){if(!confirm("Signaler non reçu ?"))return;await A.reportCashIssue(id);srvS.collectMethod=null;toast("Signalé");render();return;}
   if(action==="srv-served"){await A.markServed(id);toast("Servie !");render();return;}
 
-  if(action==="ger-home"){gerS.tab="validation";render();return;}
+  if(action==="ger-home"){gerS.tab="validation";gerS.wizard=null;render();return;}
   if(action==="ger-tab"){gerS.tab=el.dataset.tab;render();return;}
   if(action==="ger-force-affect"){gerS.tab="affectation";render();return;}
   if(action==="ger-force-menu"){gerS.tab="menuDuJour";render();return;}
-  if(action==="ger-toggle-menu"){await A.toggleMenuOfDay(id);return;}
-  if(action==="ger-confirm-menu"){const ids=todayMenuDraft();await A.confirmMenuOfDay(ids);toast("Confirmé");return;}
-  if(action==="ger-reconfirm-menu"){if(!confirm("Reconfirmer ?"))return;const ids=todayMenuDraft();await A.confirmMenuOfDay(ids);toast("Reconfirmé");return;}
+  if(action==="ger-toggle-menu"){
+    const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+    const myComp = getCompOfStaff(me);
+    if(myComp) await A.toggleMenuOfDayForComp(myComp._docId, id);
+    return;
+  }
+  if(action==="ger-confirm-menu"){
+    const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+    const myComp = getCompOfStaff(me);
+    if(myComp){ const ids=todayMenuDraftForComp(myComp._docId); await A.confirmMenuOfDayForComp(myComp._docId, ids); toast("Confirmé"); }
+    return;
+  }
+  if(action==="ger-reconfirm-menu"){
+    if(!confirm("Reconfirmer ?"))return;
+    const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
+    const myComp = getCompOfStaff(me);
+    if(myComp){ const ids=todayMenuDraftForComp(myComp._docId); await A.confirmMenuOfDayForComp(myComp._docId, ids); toast("Reconfirmé"); }
+    return;
+  }
   if(action==="ger-item-valid"){await A.setItemStatut(id,idx,"Validé");return;}
   if(action==="ger-item-refuse"){await A.setItemStatut(id,idx,"Refusé");return;}
   if(action==="ger-motif"){await A.setItemMotif(id,idx,el.dataset.motif);return;}
@@ -1646,9 +1826,34 @@ document.addEventListener("click",async function(e){
 
   if(action==="admin-home"){admS.section="compartments";admS.editingDish=null;render();return;}
   if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;admS.showNewStock=false;if(el.dataset.section==="bilan"){const t=nowDate();if(!admS.bilanFrom)admS.bilanFrom=t;if(!admS.bilanTo)admS.bilanTo=t;}if(el.dataset.section==="settings"){admS.settingsForm={...DATA.settings};}render();return;}
-  if(action==="admin-add-dish"){await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:"",compartmentId:"comp2"});return;}
+  if(action==="admin-add-dish"){
+    const choice = prompt("Compartiment du plat :\n1 = Africain (comp1)\n2 = Tendance (comp2)\n3 = Desserts (dessert)\n\nTape 1, 2 ou 3 :", "2");
+    if(choice===null) return;
+    let compId = "comp2";
+    if(choice==="1") compId = "comp1";
+    else if(choice==="2") compId = "comp2";
+    else if(choice==="3") compId = "dessert";
+    else { toast("Choix invalide"); return; }
+    await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:"",compartmentId:compId});
+    toast("Plat créé dans " + compId);
+    return;
+  }
   if(action==="admin-edit-dish"){admS.editingDish=id;render();return;}
-  if(action==="admin-save-dish"){const row=el.closest("tr");const name=row.querySelector('[data-input="dish-name"]').value;const desc=row.querySelector('[data-input="dish-desc"]').value;const cat=row.querySelector('[data-input="dish-cat"]').value;const price=parseInt(row.querySelector('[data-input="dish-price"]').value)||0;const time=parseInt(row.querySelector('[data-input="dish-time"]').value)||0;const avail=row.querySelector('[data-input="dish-avail"]').checked;await A.updateDish(id,{name,desc,cat,price,time,available:avail});admS.editingDish=null;return;}
+  if(action==="admin-save-dish"){
+    const row=el.closest("tr");
+    const name=row.querySelector('[data-input="dish-name"]').value;
+    const desc=row.querySelector('[data-input="dish-desc"]').value;
+    const cat=row.querySelector('[data-input="dish-cat"]').value;
+    const price=parseInt(row.querySelector('[data-input="dish-price"]').value)||0;
+    const time=parseInt(row.querySelector('[data-input="dish-time"]').value)||0;
+    const avail=row.querySelector('[data-input="dish-avail"]').checked;
+    const compSel=row.querySelector('[data-input="dish-comp"]');
+    const compartmentId = compSel ? compSel.value : undefined;
+    const patch = {name,desc,cat,price,time,available:avail};
+    if(compartmentId) patch.compartmentId = compartmentId;
+    await A.updateDish(id, patch);
+    admS.editingDish=null;render();return;
+  }
   if(action==="admin-del-dish"){if(confirm("Supprimer ?"))await A.removeDish(id);return;}
   if(action==="admin-add-staff"){const s={...admS.newStaff};if((s.role==="gerant"||s.role==="admin")){if(!s.email||!s.password){toast("Email + MDP requis");return;}}else{if(!s.pin||s.pin.length<4){toast("PIN 4 chiffres");return;}s.email="";s.password="";}if(!s.name){toast("Nom requis");return;}await A.addStaff(s);admS.newStaff={name:"",role:"serveuse",pin:"",email:"",password:""};toast("Ajouté");render();return;}
   if(action==="admin-reset-pin"){const pin=await A.resetPin(id);toast("PIN: "+pin);return;}
@@ -1714,6 +1919,7 @@ document.addEventListener("input",function(e){
   if(key==="client-rating-comment")v.ratingComment=el.value;
   if(key==="client-claim-text")v.claimText=el.value;
   if(key==="client-contact-phone"){const clean=el.value.replace(/[^\d]/g,"").slice(0,10);if(clean!==el.value)el.value=clean;v.contactPhone=clean;return;}
+  if(key==="wiz-caisse"&&gerS.wizard){gerS.wizard.caisse=el.value;return;}
   if(key==="srv-collect-ref")srvS.collectRef=el.value;
   if(key==="new-staff-name")admS.newStaff.name=el.value;
   if(key==="new-staff-pin")admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);
