@@ -1558,29 +1558,52 @@ let urlParamsHandled = false;
 function handleUrlParams(){
   if(urlParamsHandled) return;
   if(!DATA.menu.length) return;
-  urlParamsHandled = true;
 
   const params = new URLSearchParams(window.location.search);
   const t = params.get("table");
   const staff = params.get("staff");
   const admin = params.get("admin");
 
-  if(admin === "1"){ urlMode = "admin"; console.log("🔐 Lien ADMIN"); return; }
-  if(staff === "1"){ urlMode = "staff"; console.log("🔐 Lien STAFF"); return; }
+  if(admin === "1"){
+    urlParamsHandled = true;
+    urlMode = "admin";
+    console.log("🔐 Lien ADMIN");
+    return;
+  }
+  if(staff === "1"){
+    urlParamsHandled = true;
+    urlMode = "staff";
+    console.log("🔐 Lien STAFF");
+    return;
+  }
   if(t){
     const num = parseInt(t);
     if(num){
+      // ⚠️ Attendre que les TABLES soient chargées avant de traiter
+      if(!DATA.tables.length){
+        console.log("⏳ En attente des tables pour traiter ?table=" + num);
+        return;
+      }
       const f = DATA.tables.find(x => x.number === num);
       if(f){
+        urlParamsHandled = true;
         urlMode = "table";
         SESSION = { role:"client", name:"Client (T"+num+")", userId:DEVICE_ID, since:Date.now(), fromTable:true };
         setTimeout(loadOneSignal, 200); applyRoleTag("client");
-        clientS.mode = "sur_place"; clientS.tableId = f._docId; clientS.screen = "menu"; clientS.cart = {};
-        console.log("📱 QR table " + num);
+        clientS.mode = "sur_place";
+        clientS.tableId = f._docId;
+        clientS.screen = "menu";
+        clientS.cart = {};
+        console.log("📱 QR table " + num + " détecté");
         return;
-      } else { console.warn("⚠️ Table " + num + " introuvable"); }
+      } else {
+        urlParamsHandled = true;
+        console.warn("⚠️ Table " + num + " introuvable en base");
+        return;
+      }
     }
   }
+  urlParamsHandled = true;
   urlMode = "default";
   SESSION = { role:"client", name:"Client (Livraison)", userId:DEVICE_ID, since:Date.now(), isDelivery:true };
   setTimeout(loadOneSignal, 200); applyRoleTag("client");
