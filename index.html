@@ -715,6 +715,29 @@ const A = {
   async setCompOpen(compId, open){
     await updateDoc(doc(db,"compartments",compId),{ open });
   },
+  async addCompartment(name, emoji, managerId, kitchenId, isCashier){
+    const newId = "comp_" + Date.now().toString(36);
+    await setDoc(doc(db,"compartments",newId), {
+      name, emoji, order: DATA.compartments.length + 1,
+      open: false, managerId, kitchenId, isCashier: !!isCashier
+    });
+    return newId;
+  },
+  async removeCompartment(compId){
+    if(compId === "dessert") throw new Error("Impossible de supprimer le dessert");
+    const c = getCompById(compId);
+    if(!c) throw new Error("Compartiment introuvable");
+    const activeOrders = DATA.orders.filter(o => {
+      if(o.status==="servie"||o.status==="livree"||o.status==="refusee") return false;
+      if(o.type === "sur_place"){ const t = DATA.tables.find(x=>x._docId===o.tableId); return t && t.compartmentId === compId; }
+      return false;
+    });
+    if(activeOrders.length>0) throw new Error("Commandes actives sur ce compartiment");
+    if(DATA.tables.some(t=>t.compartmentId===compId)) throw new Error("Tables encore assignées à ce compartiment");
+    if(DATA.menu.some(m=>m.compartmentId===compId)) throw new Error("Plats encore assignés à ce compartiment");
+    if(DATA.staff.some(s=>s.compartmentId===compId)) throw new Error("Staff encore assigné à ce compartiment");
+    await deleteDoc(doc(db,"compartments",compId));
+  },
   async downloadBackup(){const payload={exportedAt:new Date().toISOString(),settings:DATA.settings,menu:DATA.menu,staff:DATA.staff,tables:DATA.tables,compartments:DATA.compartments,stock:DATA.stock,stockMoves:DATA.stockMoves,zones:DATA.zones,affectation:DATA.affectation,orders:DATA.orders,resetLogs:DATA.resetLogs};const json=JSON.stringify(payload,null,2);const blob=new Blob([json],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="restaurant-ds-backup-"+nowDate()+".json";a.click();URL.revokeObjectURL(url);}
 };
 
@@ -724,7 +747,20 @@ function getCompOfStaff(staff){ if(!staff) return null; if(staff.compartmentId) 
 function isCompOpen(compId){ const c=getCompById(compId); return c?!!c.open:false; }
 function dishesForComp(compId){ return DATA.menu.filter(d=>d.compartmentId===compId || d.compartmentId==="dessert"); }
 function dishesForSaleInComp(compId){ if(!isCompOpen(compId)) return []; return DATA.menu.filter(d=> (d.compartmentId===compId || d.compartmentId==="dessert") && isDishAvailableToday(d)); }
-function allCompsOpen(){ return DATA.compartments.every(c=>c.open); }
+function allCompsOpen(){ return DATA.compartments.filter(c=>c._docId!=="dessert").every(c=>c.open); }
+function getOpenCompsForDelivery(){
+  return DATA.compartments.filter(c => c._docId !== "dessert" && c.open);
+}
+function deliveryMenuDishes(){
+  const openComps = getOpenCompsForDelivery();
+  if(openComps.length === 0) return [];
+  const openIds = openComps.map(c => c._docId);
+  return DATA.menu.filter(d => {
+    if(!isDishAvailableToday(d, d.compartmentId === "dessert" ? "dessert" : (d.compartmentId||"comp2"))) return false;
+    if(d.compartmentId === "dessert") return openComps.length > 0;
+    return openIds.includes(d.compartmentId);
+  });
+}
 
 function getMyCompId(role){
   if(!SESSION) return null;
@@ -885,12 +921,21 @@ function screenClient(){
   const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables;
   const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
 
+  // Livraison : impossible si aucun comp ouvert
+  if(v.mode === "livraison" && v.screen === "menu" && getOpenCompsForDelivery().length === 0){
+    const graceOpen = hasGraceActive() && ((DATA.settings.graceRoles||[]).includes("client"));
+    if(!graceOpen){
+      return '<div class="login"><div class="login-logo">🚫</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Service non disponible</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Aucun compartiment n\'est encore ouvert. Revenez un peu plus tard.</p><div style="max-width:300px;width:100%"><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-accent btn-block" style="text-decoration:none">📞 Appeler le restaurant</a></div></div>';
+    }
+  }
+
   if(v.mode === "sur_place" && v.tableId){
     const myComp = getCompOfTable(v.tableId);
-    if(myComp && !myComp.open){
+    const graceOpen = hasGraceActive() && ((DATA.settings.graceRoles||[]).includes("client"));
+    if(myComp && !myComp.open && !graceOpen){
       return '<div class="login"><div class="login-logo">⏳</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Service pas encore ouvert</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Le compartiment <strong>'+esc(myComp.name)+'</strong> n\'a pas encore ouvert aujourd\'hui.</p><div style="max-width:300px;width:100%"><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444;margin-bottom:8px">🛵 Commander en livraison</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-block" style="text-decoration:none;color:white;border-color:#444">📞 Appeler le restaurant</a></div></div>';
     }
-    if(myComp && myComp.open && !tableHasServeuse(v.tableId)){
+    if(myComp && (myComp.open || graceOpen) && !tableHasServeuse(v.tableId)){
       return '<div class="login"><div class="login-logo">⚠️</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Table sans serveuse</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Cette table n\'a pas encore de serveuse assignée. Patientez ou appelez le restaurant.</p><div style="max-width:300px;width:100%"><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-accent btn-block" style="text-decoration:none;margin-bottom:8px">📞 Appeler le restaurant</a><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444">🛵 Commander en livraison</button></div></div>';
     }
   }
@@ -920,10 +965,13 @@ function screenClient(){
   if(v.screen==="menu"){
     const cats=["Entrées","Plats","Desserts","Boissons"];
     const myCompId = v.mode === "sur_place" && v.tableId ? (getCompOfTable(v.tableId)?.compartmentId || null) : null;
+    const openCompsIds = getOpenCompsForDelivery().map(c=>c._docId);
     const isDishVisible = (d) => {
       if(!d.available) return false;
       if(v.mode === "livraison"){
-        return isDishAvailableToday(d, d.compartmentId === "dessert" ? "dessert" : (d.compartmentId || "comp2"));
+        if(!isDishAvailableToday(d, d.compartmentId === "dessert" ? "dessert" : (d.compartmentId || "comp2"))) return false;
+        if(d.compartmentId === "dessert") return openCompsIds.length > 0;
+        return openCompsIds.includes(d.compartmentId);
       }
       if(!myCompId) return isDishAvailableToday(d);
       if(d.compartmentId !== myCompId && d.compartmentId !== "dessert") return false;
@@ -950,10 +998,13 @@ function screenClient(){
 
   if(v.screen==="cart"){
     const myCompIdCart = v.mode === "sur_place" && v.tableId ? (getCompOfTable(v.tableId)?.compartmentId || null) : null;
+    const openCompsIdsCart = getOpenCompsForDelivery().map(c=>c._docId);
     const cartVisible = (m) => {
       if(!m.available) return false;
       if(v.mode === "livraison"){
-        return isDishAvailableToday(m, m.compartmentId === "dessert" ? "dessert" : (m.compartmentId || "comp2"));
+        if(!isDishAvailableToday(m, m.compartmentId === "dessert" ? "dessert" : (m.compartmentId || "comp2"))) return false;
+        if(m.compartmentId === "dessert") return openCompsIdsCart.length > 0;
+        return openCompsIdsCart.includes(m.compartmentId);
       }
       if(!myCompIdCart) return isDishAvailableToday(m);
       if(m.compartmentId !== myCompIdCart && m.compartmentId !== "dessert") return false;
@@ -1122,7 +1173,6 @@ function screenGerant(){
 
     if(wiz.step === 2){
       const allServeuses = DATA.staff.filter(s => s.role === "serveuse");
-      // Une serveuse peut être sur plusieurs tables du même comp
       const serveuseComps = {};
       Object.entries(dayAffect).forEach(([tid, sid]) => {
         const t = DATA.tables.find(x => x._docId === tid);
@@ -1199,7 +1249,6 @@ function screenGerant(){
     const myCompIdAff = myCompAff?._docId;
     const myTablesAff = myCompIdAff ? DATA.tables.filter(t => t.compartmentId === myCompIdAff) : DATA.tables;
     const allServeuses = DATA.staff.filter(s => s.role === "serveuse");
-    // Une serveuse peut être sur plusieurs tables du même comp
     const serveuseComps = {};
     Object.entries(dayAffect).forEach(([tid, sid]) => {
       const t = DATA.tables.find(x => x._docId === tid);
@@ -1325,19 +1374,15 @@ function screenAdmin(){
   let content="";
   if(v.section==="compartments"){
     const realComps = DATA.compartments.filter(c => c._docId !== "dessert");
-    const dessertComp = DATA.compartments.find(c => c._docId === "dessert");
-    content='<h2 class="section-title">🏢 Compartiments</h2><p class="section-sub">Ouverture gérée par les gérants</p>'+
+    content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">🏢 Compartiments</h2><button class="btn btn-primary btn-sm" data-action="admin-add-comp">+ Ajouter</button></div><p class="section-sub">Ouverture gérée par les gérants</p>'+
+    (realComps.length===0 ? '<p class="empty">Aucun compartiment</p>' :
     realComps.map(c=>{
       const dishes = DATA.menu.filter(d=>d.compartmentId===c._docId);
       const staffs = DATA.staff.filter(s=>s.compartmentId===c._docId);
       const tables = DATA.tables.filter(t=>t.compartmentId===c._docId);
-      return '<div class="card" style="margin-bottom:14px;border-left:4px solid '+(c.open?"var(--vert)":"var(--gris)")+'"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">'+esc(c.emoji||"")+' '+esc(c.name)+'</p><p class="card-sub">'+dishes.length+' plats · '+staffs.length+' staff · '+tables.length+' tables</p></div><span class="badge '+(c.open?"badge-vert":"badge-neutre")+'">'+(c.open?"Ouvert":"Fermé")+'</span></div><div style="margin-top:10px"><p class="text-xs muted bold">TABLES ('+tables.length+')</p><p class="text-xs">'+(tables.map(t=>t.number).sort((a,b)=>a-b).join(", ")||"—")+'</p></div></div>';
-    }).join("")+
-    (dessertComp ? (()=>{
-      const dishes = DATA.menu.filter(d=>d.compartmentId==="dessert");
-      const staffs = DATA.staff.filter(s=>s.compartmentId==="dessert");
-      return '<div class="card" style="margin-top:20px;margin-bottom:14px;border-left:4px solid var(--jaune-fonce);background:rgba(255,193,7,0.04)"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">🍰 Cuisine Desserts</p><p class="card-sub">Cuisine indépendante · '+dishes.length+' plats · '+staffs.length+' staff</p></div><span class="badge badge-orange">Toujours ouverte</span></div><p class="text-xs muted">Les desserts sont préparés par une cuisine séparée et sont toujours visibles dans les 2 compartiments.</p></div>';
-    })() : '');
+      return '<div class="card" style="margin-bottom:14px;border-left:4px solid '+(c.open?"var(--vert)":"var(--gris)")+'"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">'+esc(c.emoji||"")+' '+esc(c.name)+'</p><p class="card-sub">'+dishes.length+' plats · '+staffs.length+' staff · '+tables.length+' tables'+(c.isCashier?' · 💰 caissier':'')+'</p></div><span class="badge '+(c.open?"badge-vert":"badge-neutre")+'">'+(c.open?"Ouvert":"Fermé")+'</span></div><div style="margin-bottom:10px"><p class="text-xs muted bold">TABLES ('+tables.length+')</p><p class="text-xs">'+(tables.map(t=>t.number).sort((a,b)=>a-b).join(", ")||"—")+'</p></div><button class="btn btn-danger btn-sm" data-action="admin-del-comp" data-id="'+c._docId+'">🗑️ Supprimer</button></div>';
+    }).join(""))+
+    '<div class="card" style="margin-top:20px;margin-bottom:14px;border-left:4px solid var(--jaune-fonce);background:rgba(255,193,7,0.04)"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">🍰 Cuisine Desserts</p><p class="card-sub">Cuisine indépendante (pas un compartiment)</p></div><span class="badge badge-orange">Cuisine</span></div><p class="text-xs muted">Les desserts sont préparés par une cuisine séparée. Ils sont visibles dans tous les menus du jour des compartiments ouverts.</p></div>';
   } else if(v.section==="menu"){
     const cats=["Entrées","Plats","Desserts","Boissons"];const byCat={};cats.forEach(c=>byCat[c]=[]);DATA.menu.forEach(d=>{if(!byCat[d.cat])byCat[d.cat]=[];byCat[d.cat].push(d);});
     content='<div class="flex between center" style="margin-bottom:16px"><h2 class="section-title" style="font-size:19px;margin:0">Menu</h2><button class="btn btn-primary btn-sm" data-action="admin-add-dish">+ Ajouter</button></div>';
@@ -1552,7 +1597,6 @@ document.addEventListener("click",async function(e){
     render();return;
   }
 
-  // Wizard handlers
   if(action==="wiz-step1-next"){
     const el2 = document.querySelector('[data-input="wiz-caisse"]');
     const amount = el2 ? parseFloat(el2.value) : 0;
@@ -1614,6 +1658,37 @@ document.addEventListener("click",async function(e){
 
   if(action==="admin-test-push"){toast("Envoi…");sendPush("🔔 Test","Notification test ✅");toast("Envoyé");return;}
   if(action==="admin-install-pwa"){if(window.__deferredPrompt){window.__deferredPrompt.prompt();const {outcome}=await window.__deferredPrompt.userChoice;if(outcome==="accepted"){toast("Installée !");window.__deferredPrompt=null;}}else{toast("Menu Chrome → Ajouter à l'écran");}return;}
+  if(action==="admin-add-comp"){
+    const name = prompt("Nom du compartiment (ex: Africain, Tendance) :", "");
+    if(!name || !name.trim()) return;
+    const emoji = prompt("Emoji (ex: 🌍, 🍔, 🍝) :", "🍽️") || "🍽️";
+    const managers = DATA.staff.filter(s => s.role === "gerant");
+    const kitchens = DATA.staff.filter(s => s.role === "cuisine" && s.compartmentId !== "dessert");
+    if(managers.length===0){ toast("Aucun gérant disponible"); return; }
+    if(kitchens.length===0){ toast("Aucune cuisine disponible"); return; }
+    const managerList = managers.map((m,i)=>(i+1)+" = "+m.name).join(", ");
+    const kitchenList = kitchens.map((k,i)=>(i+1)+" = "+k.name).join(", ");
+    const mIdx = parseInt(prompt("Gérant :\n"+managerList+"\n\nNuméro :", "1"));
+    if(isNaN(mIdx) || mIdx<1 || mIdx>managers.length){ toast("Gérant invalide"); return; }
+    const kIdx = parseInt(prompt("Cuisine :\n"+kitchenList+"\n\nNuméro :", "1"));
+    if(isNaN(kIdx) || kIdx<1 || kIdx>kitchens.length){ toast("Cuisine invalide"); return; }
+    const cashier = confirm("Ce compartiment est-il le caissier (reçoit frais de livraison) ?");
+    try{
+      await A.addCompartment(name.trim(), emoji.trim(), managers[mIdx-1]._docId, kitchens[kIdx-1]._docId, cashier);
+      toast("✅ Compartiment créé");
+    } catch(err){ toast("Erreur : "+err.message); }
+    return;
+  }
+  if(action==="admin-del-comp"){
+    const c = getCompById(id);
+    if(!c){ toast("Introuvable"); return; }
+    if(!confirm("Supprimer le compartiment « "+c.name+" » ?\n\n(Vérifiez qu'aucune table/plat/staff n'y est assigné)")) return;
+    try{
+      await A.removeCompartment(id);
+      toast("✅ Compartiment supprimé");
+    } catch(err){ toast("❌ "+err.message); }
+    return;
+  }
   if(action==="admin-toggle-comp"){
     const c = getCompById(id);
     if(!c) return;
@@ -1825,7 +1900,6 @@ document.addEventListener("click",async function(e){
     const serveuseId = el.dataset.serveuse;
     const cur = day[tableId] === serveuseId;
     if(!cur){
-      // Interdit seulement si la TABLE est déjà prise par UNE AUTRE serveuse
       const currentServeuseOnTable = day[tableId];
       if(currentServeuseOnTable && currentServeuseOnTable !== serveuseId){
         const sName = DATA.staff.find(s=>s._docId===currentServeuseOnTable)?.name || "Serveuse";
@@ -1849,15 +1923,13 @@ document.addEventListener("click",async function(e){
   if(action==="admin-home"){admS.section="compartments";admS.editingDish=null;render();return;}
   if(action==="admin-section"){admS.section=el.dataset.section;admS.editingDish=null;admS.showNewStock=false;if(el.dataset.section==="bilan"){const t=nowDate();if(!admS.bilanFrom)admS.bilanFrom=t;if(!admS.bilanTo)admS.bilanTo=t;}if(el.dataset.section==="settings"){admS.settingsForm={...DATA.settings};}render();return;}
   if(action==="admin-add-dish"){
-    const choice = prompt("Compartiment du plat :\n1 = Africain (comp1)\n2 = Tendance (comp2)\n3 = Desserts (dessert)\n\nTape 1, 2 ou 3 :", "2");
+    const choice = prompt("Compartiment du plat :\n"+DATA.compartments.map((c,i)=>(i+1)+" = "+c.name).join("\n")+"\n\nNuméro :", "1");
     if(choice===null) return;
-    let compId = "comp2";
-    if(choice==="1") compId = "comp1";
-    else if(choice==="2") compId = "comp2";
-    else if(choice==="3") compId = "dessert";
-    else { toast("Choix invalide"); return; }
+    const idx2 = parseInt(choice);
+    if(isNaN(idx2) || idx2<1 || idx2>DATA.compartments.length){ toast("Choix invalide"); return; }
+    const compId = DATA.compartments[idx2-1]._docId;
     await A.addDish({name:"Nouveau plat",cat:"Plats",price:0,time:10,available:true,desc:"",compartmentId:compId});
-    toast("Plat créé dans " + compId);
+    toast("Plat créé dans " + DATA.compartments[idx2-1].name);
     return;
   }
   if(action==="admin-edit-dish"){admS.editingDish=id;render();return;}
@@ -1882,8 +1954,8 @@ document.addEventListener("click",async function(e){
   if(action==="admin-reset-creds"){const pwd=prompt("Nouveau MDP (min 6)");if(!pwd||pwd.length<6){toast("Min 6");return;}await A.updateStaff(id,{password:pwd});toast("MDP mis à jour");return;}
   if(action==="admin-del-staff"){if(confirm("Supprimer ?"))await A.removeStaff(id);return;}
   if(action==="admin-add-table"){
-    const compId = prompt("Compartiment (comp1 = Africain, comp2 = Tendance) :", "comp1");
-    if(!compId || !["comp1","comp2"].includes(compId)){ if(compId!==null) toast("Valeur invalide"); return; }
+    const compId = prompt("Compartiment ("+DATA.compartments.filter(c=>c._docId!=="dessert").map(c=>c._docId+" = "+c.name).join(", ")+") :", "comp1");
+    if(!compId || compId === "dessert"){ if(compId!==null) toast("Valeur invalide"); return; }
     try{
       const n = await A.addTable(compId);
       toast("Table "+n+" ("+compId+") créée");
@@ -1937,7 +2009,7 @@ document.addEventListener("input",function(e){
   if(key==="info-name")v.info.name=el.value;
   if(key==="info-phone"){const clean=el.value.replace(/[^\d]/g,"").slice(0,10);if(clean!==el.value)el.value=clean;v.info.phone=clean;}
   if(key==="info-address")v.info.address=el.value;
-  if(key==="client-momo-ref")v.momoRefInput=el.value;
+  if(key==="client-momo-ref"){ v.momoRefInput=el.value; const btn=document.querySelector('[data-action="client-submit-livraison"]'); if(btn){ const ok=el.value.trim().length>=8; btn.disabled=!ok; btn.style.opacity=ok?"1":"0.5"; } return; }
   if(key==="client-rating-comment")v.ratingComment=el.value;
   if(key==="client-claim-text")v.claimText=el.value;
   if(key==="client-contact-phone"){const clean=el.value.replace(/[^\d]/g,"").slice(0,10);if(clean!==el.value)el.value=clean;v.contactPhone=clean;return;}
