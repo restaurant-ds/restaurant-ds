@@ -302,7 +302,6 @@ function isAppAllowed(role){
   return false;
 }
 
-// P2b-2 : Helpers menu par compartiment
 function todayMenuForComp(compId){
   const map = DATA.settings.menuOfDayByComp || {};
   const m = map[compId];
@@ -397,7 +396,7 @@ const SEED = {
   compartments: [
     { id:"comp1", name:"Africain", emoji:"🌍", order:1, open:false, managerId:"s4", kitchenId:"s3", isCashier:true },
     { id:"comp2", name:"Tendance", emoji:"🍔", order:2, open:false, managerId:"s7", kitchenId:"s8", isCashier:false },
-    { id:"dessert", name:"Desserts", emoji:"🍰", order:3, open:false, managerId:null, kitchenId:"s9", isCashier:false }
+    { id:"dessert", name:"Desserts", emoji:"🍰", order:3, open:true, managerId:null, kitchenId:"s9", isCashier:false }
   ],
   stock: [
     { id:"st1", name:"Poulet", unit:"kg", initial:30, threshold:5 },
@@ -440,7 +439,11 @@ async function migrateToMultiComp() {
   console.log("🔄 Migration multi-comp en cours…");
   try {
     const batch = writeBatch(db);
-    SEED.compartments.forEach(c => batch.set(doc(db, "compartments", c.id), c, { merge: true }));
+    SEED.compartments.forEach(c => {
+      const data = { ...c };
+      if (c.id === "dessert") data.open = true;
+      batch.set(doc(db, "compartments", c.id), data, { merge: true });
+    });
     DATA.menu.forEach(d => {
       if (!d.compartmentId) {
         const compId = d.cat === "Desserts" ? "dessert" : "comp2";
@@ -813,7 +816,7 @@ function topbar(opts){
   if(SESSION && SESSION.role === "gerant"){
     const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
     const myComp = getCompOfStaff(me);
-    if(myComp){
+    if(myComp && myComp._docId !== "dessert"){
       compBtn = '<button class="topbar-btn" data-action="ger-toggle-open" style="padding:6px 10px;font-size:13px;background:'+(myComp.open?'var(--vert)':'var(--rouge)')+';color:white">'+(myComp.open?'🔒 Fermer':'🔓 Ouvrir')+'</button>';
     }
   }
@@ -1105,8 +1108,7 @@ function screenGerant(){
   const myCompId = myComp?._docId;
   const compOpen = myComp ? myComp.open : false;
 
-  // Wizard si comp fermé
-  if(myComp && !compOpen){
+  if(myComp && !compOpen && myCompId !== "dessert"){
     if(!v.wizard) v.wizard = { step: 1, caisse: "" };
     const wiz = v.wizard;
     const myTables = DATA.tables.filter(t => t.compartmentId === myCompId);
@@ -1120,19 +1122,25 @@ function screenGerant(){
 
     if(wiz.step === 2){
       const allServeuses = DATA.staff.filter(s => s.role === "serveuse");
-      const serveuseTableMap = {};
-      Object.entries(dayAffect).forEach(([tid, sid]) => { serveuseTableMap[sid] = tid; });
+      // Une serveuse peut être sur plusieurs tables du même comp
+      const serveuseComps = {};
+      Object.entries(dayAffect).forEach(([tid, sid]) => {
+        const t = DATA.tables.find(x => x._docId === tid);
+        if (t && t.compartmentId) {
+          if (!serveuseComps[sid]) serveuseComps[sid] = new Set();
+          serveuseComps[sid].add(t.compartmentId);
+        }
+      });
       const availableServeuses = allServeuses.filter(s => {
-        const tId = serveuseTableMap[s._docId];
-        if (!tId) return true;
-        const t = DATA.tables.find(t => t._docId === tId);
-        return t && t.compartmentId === myCompId;
+        const comps = serveuseComps[s._docId];
+        if (!comps) return true;
+        return comps.has(myCompId) || comps.size === 0;
       });
       let tableHtml = '';
       if(availableServeuses.length === 0){
         tableHtml = '<p class="empty">Aucune serveuse disponible.</p>';
       } else {
-        tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTables.map(t=>'<tr><td><strong>'+t.number+'</strong></td>'+availableServeuses.map(s=>{const checked=dayAffect[t._docId]===s._docId;const assignedTid=serveuseTableMap[s._docId];const elsewhere=assignedTid&&assignedTid!==t._docId;return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir);":"")+(elsewhere?"opacity:0.25;cursor:not-allowed;":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'" '+(elsewhere?"disabled":"")+'>'+(checked?"✓":"")+'</button></td>';}).join("")+'</tr>').join("")+'</tbody></table></div>';
+        tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTables.map(t=>'<tr><td><strong>'+t.number+'</strong></td>'+availableServeuses.map(s=>{const checked=dayAffect[t._docId]===s._docId;const currentSrvOnTable=dayAffect[t._docId];const disabled=currentSrvOnTable&&currentSrvOnTable!==s._docId;return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir);":"")+(disabled?"opacity:0.25;cursor:not-allowed;":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'" '+(disabled?"disabled":"")+'>'+(checked?"✓":"")+'</button></td>';}).join("")+'</tr>').join("")+'</tbody></table></div>';
       }
       const allDone = myTables.length>0 && myTables.every(t => dayAffect[t._docId]);
       return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content content-narrow"><div class="card" style="border-left:4px solid var(--jaune);margin-bottom:14px"><p class="text-xs muted bold">ÉTAPE 2/4</p><h2 class="section-title" style="margin-top:8px">🗂️ Affectation</h2><p class="section-sub">'+affectedCount+'/'+myTables.length+' tables affectées. Chaque table doit avoir une serveuse.</p></div>'+tableHtml+'<button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px;opacity:'+(allDone?"1":"0.5")+'" data-action="wiz-step2-next" '+(allDone?"":"disabled")+'>Suivant →</button><button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="wiz-back">← Retour</button></div></div>';
@@ -1191,19 +1199,24 @@ function screenGerant(){
     const myCompIdAff = myCompAff?._docId;
     const myTablesAff = myCompIdAff ? DATA.tables.filter(t => t.compartmentId === myCompIdAff) : DATA.tables;
     const allServeuses = DATA.staff.filter(s => s.role === "serveuse");
-    const serveuseTableMap = {};
-    Object.entries(dayAffect).forEach(([tid, sid]) => { serveuseTableMap[sid] = tid; });
+    // Une serveuse peut être sur plusieurs tables du même comp
+    const serveuseComps = {};
+    Object.entries(dayAffect).forEach(([tid, sid]) => {
+      const t = DATA.tables.find(x => x._docId === tid);
+      if (t && t.compartmentId) {
+        if (!serveuseComps[sid]) serveuseComps[sid] = new Set();
+        serveuseComps[sid].add(t.compartmentId);
+      }
+    });
     const availableServeuses = allServeuses.filter(s => {
-      const tId = serveuseTableMap[s._docId];
-      if (!tId) return true;
-      const t = DATA.tables.find(t => t._docId === tId);
-      return t && t.compartmentId === myCompIdAff;
+      const comps = serveuseComps[s._docId];
+      if (!comps) return true;
+      return comps.has(myCompIdAff) || comps.size === 0;
     });
     const blockedServeuses = allServeuses.filter(s => {
-      const tId = serveuseTableMap[s._docId];
-      if (!tId) return false;
-      const t = DATA.tables.find(t => t._docId === tId);
-      return t && t.compartmentId !== myCompIdAff;
+      const comps = serveuseComps[s._docId];
+      if (!comps) return false;
+      return !comps.has(myCompIdAff) && comps.size > 0;
     });
     const compLabel = myCompAff ? (myCompAff.emoji + " " + myCompAff.name) : "—";
     let tableHtml;
@@ -1217,18 +1230,16 @@ function screenGerant(){
       tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTablesAff.map(t=>{
         return '<tr><td><strong>Table '+t.number+'</strong></td>'+availableServeuses.map(s=>{
           const checked = dayAffect[t._docId] === s._docId;
-          const assignedTid = serveuseTableMap[s._docId];
-          const assignedElsewhere = assignedTid && assignedTid !== t._docId;
-          const disabled = assignedElsewhere && !checked;
+          const currentSrvOnTable = dayAffect[t._docId];
+          const disabled = currentSrvOnTable && currentSrvOnTable !== s._docId;
           return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir);":"")+(disabled?"opacity:0.25;cursor:not-allowed;":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'" '+(disabled?"disabled":"")+'>'+(checked?"✓":"")+'</button></td>';
         }).join("")+'</tr>';
       }).join("")+'</tbody></table></div>';
     }
-    const blockedHtml = blockedServeuses.length > 0 ? '<div class="card" style="margin-top:16px;border-left:4px solid var(--gris)"><p class="text-xs muted bold">🔒 INDISPONIBLES AUJOURD\'HUI</p>'+blockedServeuses.map(s=>{
-      const tId = serveuseTableMap[s._docId];
-      const t = DATA.tables.find(x => x._docId === tId);
-      const c = t ? getCompById(t.compartmentId) : null;
-      return '<p class="text-sm" style="margin-top:6px">'+esc(s.name)+' — Table '+(t?.number||"?")+' ('+(c?.name||"—")+')</p>';
+    const blockedHtml = blockedServeuses.length > 0 ? '<div class="card" style="margin-top:16px;border-left:4px solid var(--gris)"><p class="text-xs muted bold">🔒 INDISPONIBLES AUJOURD\'HUI (autre compartiment)</p>'+blockedServeuses.map(s=>{
+      const comps = serveuseComps[s._docId] || new Set();
+      const compNames = Array.from(comps).map(cid => getCompById(cid)?.name || "?").join(", ");
+      return '<p class="text-sm" style="margin-top:6px">'+esc(s.name)+' → '+esc(compNames)+'</p>';
     }).join("")+'</div>' : '';
     content='<h2 class="section-title">Affectation — '+esc(compLabel)+'</h2><p class="section-sub">'+new Date(today).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})+' · '+myTablesAff.length+' table(s)</p>'+(Object.keys(dayAffect).length>0?'<p class="text-sm muted" style="margin-bottom:14px">Touchez une case pour assigner.</p>':'<div class="alert-banner" style="background:rgba(224,168,0,0.15);border-color:var(--jaune-fonce)"><strong>⚠️ Attribution obligatoire</strong></div>')+tableHtml+blockedHtml;
   } else if(v.tab==="menuDuJour"){
@@ -1313,13 +1324,20 @@ function screenAdmin(){
   ];
   let content="";
   if(v.section==="compartments"){
-    content='<h2 class="section-title">🏢 Compartiments</h2><p class="section-sub">'+DATA.compartments.length+' compartiment(s) · Ouverture gérée par les gérants</p>'+
-    DATA.compartments.map(c=>{
+    const realComps = DATA.compartments.filter(c => c._docId !== "dessert");
+    const dessertComp = DATA.compartments.find(c => c._docId === "dessert");
+    content='<h2 class="section-title">🏢 Compartiments</h2><p class="section-sub">Ouverture gérée par les gérants</p>'+
+    realComps.map(c=>{
       const dishes = DATA.menu.filter(d=>d.compartmentId===c._docId);
       const staffs = DATA.staff.filter(s=>s.compartmentId===c._docId);
       const tables = DATA.tables.filter(t=>t.compartmentId===c._docId);
       return '<div class="card" style="margin-bottom:14px;border-left:4px solid '+(c.open?"var(--vert)":"var(--gris)")+'"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">'+esc(c.emoji||"")+' '+esc(c.name)+'</p><p class="card-sub">'+dishes.length+' plats · '+staffs.length+' staff · '+tables.length+' tables</p></div><span class="badge '+(c.open?"badge-vert":"badge-neutre")+'">'+(c.open?"Ouvert":"Fermé")+'</span></div><div style="margin-top:10px"><p class="text-xs muted bold">TABLES ('+tables.length+')</p><p class="text-xs">'+(tables.map(t=>t.number).sort((a,b)=>a-b).join(", ")||"—")+'</p></div></div>';
-    }).join("");
+    }).join("")+
+    (dessertComp ? (()=>{
+      const dishes = DATA.menu.filter(d=>d.compartmentId==="dessert");
+      const staffs = DATA.staff.filter(s=>s.compartmentId==="dessert");
+      return '<div class="card" style="margin-top:20px;margin-bottom:14px;border-left:4px solid var(--jaune-fonce);background:rgba(255,193,7,0.04)"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">🍰 Cuisine Desserts</p><p class="card-sub">Cuisine indépendante · '+dishes.length+' plats · '+staffs.length+' staff</p></div><span class="badge badge-orange">Toujours ouverte</span></div><p class="text-xs muted">Les desserts sont préparés par une cuisine séparée et sont toujours visibles dans les 2 compartiments.</p></div>';
+    })() : '');
   } else if(v.section==="menu"){
     const cats=["Entrées","Plats","Desserts","Boissons"];const byCat={};cats.forEach(c=>byCat[c]=[]);DATA.menu.forEach(d=>{if(!byCat[d.cat])byCat[d.cat]=[];byCat[d.cat].push(d);});
     content='<div class="flex between center" style="margin-bottom:16px"><h2 class="section-title" style="font-size:19px;margin:0">Menu</h2><button class="btn btn-primary btn-sm" data-action="admin-add-dish">+ Ajouter</button></div>';
@@ -1582,6 +1600,7 @@ document.addEventListener("click",async function(e){
     const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant");
     const myComp = getCompOfStaff(me);
     if(!myComp) return;
+    if(myComp._docId === "dessert"){ toast("🍰 Cuisine desserts indépendante"); return; }
     if(myComp.open){
       if(!confirm("Fermer le service ? Les commandes en cours continueront mais aucune nouvelle ne sera acceptée.")) return;
       await A.setCompOpen(myComp._docId, false);
@@ -1598,6 +1617,10 @@ document.addEventListener("click",async function(e){
   if(action==="admin-toggle-comp"){
     const c = getCompById(id);
     if(!c) return;
+    if(c._docId === "dessert"){
+      toast("🍰 Cuisine desserts indépendante — toujours ouverte");
+      return;
+    }
     await updateDoc(doc(db,"compartments",id),{ open: !c.open });
     toast((!c.open?"✅ Ouvert":"🔒 Fermé"));
     return;
@@ -1802,12 +1825,11 @@ document.addEventListener("click",async function(e){
     const serveuseId = el.dataset.serveuse;
     const cur = day[tableId] === serveuseId;
     if(!cur){
-      const existingTid = Object.entries(day).find(([tid, sid]) => sid === serveuseId)?.[0];
-      if(existingTid && existingTid !== tableId){
-        const t = DATA.tables.find(x => x._docId === existingTid);
-        const comp = t ? getCompById(t.compartmentId) : null;
-        const sName = DATA.staff.find(s=>s._docId===serveuseId)?.name || "Serveuse";
-        toast(`❌ ${sName} déjà sur Table ${t?.number||"?"} (${comp?.name||"—"})`);
+      // Interdit seulement si la TABLE est déjà prise par UNE AUTRE serveuse
+      const currentServeuseOnTable = day[tableId];
+      if(currentServeuseOnTable && currentServeuseOnTable !== serveuseId){
+        const sName = DATA.staff.find(s=>s._docId===currentServeuseOnTable)?.name || "Serveuse";
+        toast(`❌ Table déjà prise par ${sName}`);
         return;
       }
     }
