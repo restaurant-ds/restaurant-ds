@@ -302,6 +302,20 @@ function isAppAllowed(role){
   return false;
 }
 
+// PATCH 1 : Wizard respecte l'heure de fermeture
+function nowDate(){
+  const d = new Date();
+  const beninDate = new Date(d.getTime() + (1 * 60 * 60 * 1000)); 
+  const closeHour = DATA.settings && DATA.settings.closeHour != null ? Number(DATA.settings.closeHour) : 2;
+  if (beninDate.getUTCHours() < closeHour) {
+    beninDate.setUTCDate(beninDate.getUTCDate() - 1);
+  }
+  const y = beninDate.getUTCFullYear();
+  const m = String(beninDate.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(beninDate.getUTCDate()).padStart(2, "0");
+  return y + "-" + m + "-" + day;
+}
+
 function todayMenuForComp(compId){
   const map = DATA.settings.menuOfDayByComp || {};
   const m = map[compId];
@@ -365,6 +379,7 @@ async function clearRoleTag(){
   try{ const OS=window.OneSignal; if(OS&&OS.User&&typeof OS.User.addTag==="function"){ await OS.User.addTag("role","anonymous"); await OS.User.addTag("is_staff","false"); } }catch(e){}
 }
 
+// PATCH 12.1 : Sécurité des identifiants
 const SEED = {
   menu: [
     { id:"m1", name:"Salade César", cat:"Entrées", price:2500, time:5, available:true, desc:"Romaine, parmesan, croûtons", compartmentId:"comp2" },
@@ -379,15 +394,15 @@ const SEED = {
     { id:"m10", name:"Eau minérale", cat:"Boissons", price:500, time:1, available:true, desc:"", compartmentId:"comp2" }
   ],
   staff: [
-    { id:"s1", name:"Aïcha", role:"serveuse", pin:"4821", compartmentId:null },
-    { id:"s2", name:"Fatou", role:"serveuse", pin:"3390", compartmentId:null },
-    { id:"s3", name:"Moussa", role:"cuisine", pin:"1234", compartmentId:"comp1" },
-    { id:"s4", name:"Ibrahim", role:"gerant", pin:"0000", email:"ibrahim@restaurant-ds.com", password:"Ibrahim2024!", recoveryCode:"", recoveryCodeCreatedAt:0, compartmentId:"comp1" },
-    { id:"s5", name:"Salif", role:"livreur", pin:"5678", compartmentId:null },
-    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999", email:"admin@restaurant-ds.com", password:"motdepass", recoveryCode:"", recoveryCodeCreatedAt:0, compartmentId:null },
-    { id:"s7", name:"Koffi", role:"gerant", pin:"3333", email:"koffi@restaurant-ds.com", password:"Koffi2024!", recoveryCode:"", recoveryCodeCreatedAt:0, compartmentId:"comp2" },
-    { id:"s8", name:"Adjoa", role:"cuisine", pin:"1111", compartmentId:"comp2" },
-    { id:"s9", name:"Chantal", role:"cuisine", pin:"2222", compartmentId:"dessert" }
+    { id:"s1", name:"Aïcha", role:"serveuse", pin:"8492", compartmentId:null },
+    { id:"s2", name:"Fatou", role:"serveuse", pin:"7315", compartmentId:null },
+    { id:"s3", name:"Moussa", role:"cuisine", pin:"2058", compartmentId:"comp1" },
+    { id:"s4", name:"Ibrahim", role:"gerant", pin:"0000", email:"ibrahim@restaurant-ds.com", password:"Ds@Ibrah#2026!", recoveryCode:"", recoveryCodeCreatedAt:0, compartmentId:"comp1" },
+    { id:"s5", name:"Salif", role:"livreur", pin:"9147", compartmentId:null, phone:"01 97 00 00 01" },
+    { id:"s6", name:"Admin D&S", role:"admin", pin:"9999", email:"admin@restaurant-ds.com", password:"Ds@Admin#Master2026!", recoveryCode:"", recoveryCodeCreatedAt:0, compartmentId:null },
+    { id:"s7", name:"Koffi", role:"gerant", pin:"3333", email:"koffi@restaurant-ds.com", password:"Ds@Koffi#2026!", recoveryCode:"", recoveryCodeCreatedAt:0, compartmentId:"comp2" },
+    { id:"s8", name:"Adjoa", role:"cuisine", pin:"6381", compartmentId:"comp2" },
+    { id:"s9", name:"Chantal", role:"cuisine", pin:"4529", compartmentId:"dessert" }
   ],
   tables: [
     ...Array.from({length:12},(_,i)=>({ id:"t"+(i+1), number:i+1, token:Math.random().toString(36).slice(2,8), compartmentId:"comp1" })),
@@ -478,7 +493,6 @@ async function migrateToMultiComp() {
 }
 
 function money(n){return (n||0).toLocaleString("fr-FR")+" F";}
-function nowDate(){const d=new Date();const y=d.getUTCFullYear();const m=String(d.getUTCMonth()+1).padStart(2,"0");const day=String(d.getUTCDate()).padStart(2,"0");return y+"-"+m+"-"+day;}
 function fmtDate(iso){return new Date(iso).toLocaleDateString("fr-FR",{day:"2-digit",month:"short"});}
 function fmtDateTime(ts){const d=new Date(ts);return d.toLocaleDateString("fr-FR")+" "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});}
 function timeAgo(ts){if(!ts)return "à l'instant";const m=Math.floor((Date.now()-ts)/60000);if(m<=0)return "à l'instant";if(m<60)return "il y a "+m+" min";return "il y a "+Math.floor(m/60)+"h";}
@@ -552,7 +566,7 @@ const A = {
       type:order.type||"sur_place",
       tableId:order.tableId||null, tableNumber:order.tableNumber||null,
       serveuseId:order.serveuseId||null, serveuseName:order.serveuseName||null,
-      livreurId:null, deliveryStatus:null,
+      livreurId:null, livreurPhone:null, deliveryStatus:null,
       clientInfo:order.clientInfo||null,
       contactPhone:order.contactPhone||null,
       deliveryLat:order.deliveryLat||null, deliveryLon:order.deliveryLon||null,
@@ -561,7 +575,7 @@ const A = {
       momoRefStatus:null, momoRefNote:null,
       items:order.items.map(i=>({...i,statut:null,motif:null})),
       paymentMethod: null, paymentRef:null,
-      readyAt:null, servedAt:null, cashIssue:null, callCount:0,
+      readyAt:null, readyAtByComp:null, servedAt:null, cashIssue:null, callCount:0,
       source:order.source||"client", deviceId:DEVICE_ID,
       rating:null, claim:null
     };
@@ -630,13 +644,39 @@ const A = {
   async confirmCash(id,method,ref){await A.markOrderPaid(id,method,ref);},
   async reportCashIssue(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{cashIssue:"non_recu",cashIssueAt:Date.now()});sendPush("⚠️ Paiement non reçu", "Table "+(o?.tableNumber||""), "gerant");},
   async resolveCashIssue(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{cashIssue:null,cashIssueResolvedAt:Date.now()});sendPush("✅ Paiement résolu", "Table "+(o?.tableNumber||""), "serveuse");},
-  async markReady(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{readyAt:Date.now()});const label=o?.type==="livraison"?"Livraison "+(o?.clientInfo?.name||""):"Table "+(o?.tableNumber||"");sendPush("🍽️ Plat prêt", label, "serveuse");sendPush("🍽️ Commande prête", label, "livreur");},
+  
+  // PATCH 4.A : Multi-cuisines
+  async markReady(id, compId){
+    const o=DATA.orders.find(x=>x._docId===id);if(!o)return;
+    const rByComp = { ...(o.readyAtByComp || {}), [compId]: Date.now() };
+    const involvedComps = new Set();
+    o.items.filter(i=>i.statut!=="Refusé").forEach(i=>{
+      const d = DATA.menu.find(m=>m._docId===i.id);
+      if(d && d.compartmentId) involvedComps.add(d.compartmentId);
+    });
+    const allReady = Array.from(involvedComps).every(c => rByComp[c]);
+    const patch = { readyAtByComp: rByComp };
+    if(allReady) patch.readyAt = Date.now();
+    await updateDoc(doc(db,"orders",id),patch);
+    
+    const label=o?.type==="livraison"?"Livraison "+(o?.clientInfo?.name||""):"Table "+(o?.tableNumber||"");
+    if(allReady){
+      sendPush("🍽️ Plat prêt (Complet)", label, "serveuse");
+      sendPush("🍽️ Commande prête", label, "livreur");
+    } else {
+      sendPush("🍽️ Plat prêt (Partiel)", label + " - " + (getCompById(compId)?.name||compId), "gerant");
+    }
+  },
+  
   async markServed(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{status:"servie",servedAt:Date.now()});const label=o?.type==="livraison"?"Livraison "+(o?.clientInfo?.name||""):"Table "+(o?.tableNumber||"");sendPush("✅ Commande servie", label, "gerant");},
   async markDelivered(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{status:"livree",servedAt:Date.now()});sendPush("🛵 Commande livrée", (o?.clientInfo?.name||""), "gerant");},
   async markPrinted(id){await updateDoc(doc(db,"orders",id),{printedAt:Date.now()});},
-  async takeDelivery(id,livreurId,livreurName){await updateDoc(doc(db,"orders",id),{livreurId,livreurName,deliveryStatus:"prise"});const o=DATA.orders.find(x=>x._docId===id);sendPush("🛵 Livraison prise", (livreurName||"Livreur")+" — "+(o?.clientInfo?.name||""), "gerant");},
+  
+  // PATCH 5.B : Prise de livraison avec téléphone
+  async takeDelivery(id,livreurId,livreurName,livreurPhone){await updateDoc(doc(db,"orders",id),{livreurId,livreurName,livreurPhone,deliveryStatus:"prise"});const o=DATA.orders.find(x=>x._docId===id);sendPush("🛵 Livraison prise", (livreurName||"Livreur")+" — "+(o?.clientInfo?.name||""), "gerant");},
+  
   async setDeliveryStatus(id,st){await updateDoc(doc(db,"orders",id),{deliveryStatus:st});},
-  async assignLivreur(id,livreurId){const l=DATA.staff.find(x=>x._docId===livreurId);await updateDoc(doc(db,"orders",id),{livreurId:livreurId||null,livreurName:l?l.name:null,deliveryStatus:livreurId?"prise":null});if(livreurId){const o=DATA.orders.find(x=>x._docId===id);sendPush("🛵 Nouvelle livraison", (o?.clientInfo?.name||"")+" — "+(o?.clientInfo?.address||""), "livreur");}},
+  async assignLivreur(id,livreurId){const l=DATA.staff.find(x=>x._docId===livreurId);await updateDoc(doc(db,"orders",id),{livreurId:livreurId||null,livreurName:l?l.name:null,livreurPhone:l?l.phone:null,deliveryStatus:livreurId?"prise":null});if(livreurId){const o=DATA.orders.find(x=>x._docId===id);sendPush("🛵 Nouvelle livraison", (o?.clientInfo?.name||"")+" — "+(o?.clientInfo?.address||""), "livreur");}},
 
   async submitRating(id, rating){ await updateDoc(doc(db,"orders",id),{ rating: {...rating, createdAt:Date.now()}, ratedAt:Date.now() }); },
   async submitClaim(id, claim){ await updateDoc(doc(db,"orders",id),{ claim: {...claim, createdAt:Date.now(), resolvedAt:null, resolvedBy:null}, claimedAt:Date.now() });
@@ -806,13 +846,14 @@ function cuisineShouldSeeOrder(o, myCompId){
   if(myCompId === "dessert") return orderHasDessertItems(o);
   return orderHasCompItems(o, myCompId);
 }
+
+// PATCH 4.B : Correction de la logique multi-cuisines
 function decorateItems(o, myCompId){
   return o.items.map((it, idx) => {
     const d = DATA.menu.find(x => x._docId === it.id);
     const comp = d ? d.compartmentId : null;
     let mine = true;
-    if(myCompId === "dessert") mine = comp === "dessert";
-    else if(myCompId) mine = comp === myCompId || comp === "dessert";
+    if(myCompId) mine = comp === myCompId;
     return { it, idx, mine, comp };
   });
 }
@@ -865,6 +906,7 @@ function screenClosed(){
   return '<div class="login"><div class="login-logo">🌙</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Nous sommes fermés</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Merci de revenir pendant nos horaires d\'ouverture.</p><div class="card" style="background:#1a1a1a;border:1px solid #333;color:white;max-width:300px;width:100%;text-align:center"><p class="text-sm" style="color:#aaa;margin-bottom:8px">🕐 Horaires</p><p style="font-size:15px;margin:0"><strong>Ouverture :</strong> '+String(open).padStart(2,"0")+'h00</p><p style="font-size:15px;margin:4px 0 0"><strong>Fermeture :</strong> '+String(close).padStart(2,"0")+'h00</p></div>'+btnPhone+'</div>';
 }
 
+// PATCH 12.2 : Suppression des indices de démo
 function screenLogin(){
   let roles;
   if(urlMode === "admin"){
@@ -892,14 +934,12 @@ function screenLogin(){
   if(loginRecovery) return screenRecovery();
   if(loginRole==="gerant"||loginRole==="admin"){
     const labels={gerant:"Gérant",admin:"Administrateur"};
-    const demo={gerant:"ibrahim@restaurant-ds.com / Ibrahim2024!",admin:"admin@restaurant-ds.com / motdepass"};
-    return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Identifiez-vous</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="login-email" value="'+esc(loginEmail)+'" autocomplete="username" autocapitalize="none"></div><div><label class="text-xs" style="color:#aaa;font-weight:600">MOT DE PASSE</label><input class="auth-input" type="password" data-input="login-password" value="'+esc(loginPassword)+'" autocomplete="current-password"></div>'+(loginError?'<p class="pin-error" style="margin:0">'+esc(loginError)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="login-submit">Se connecter</button><button class="btn btn-ghost btn-block" style="padding:10px;font-size:13px" data-action="login-forgot-pwd">🔑 Mot de passe oublié ?</button><button class="pin-back" data-action="back-role">← Changer de rôle</button><p class="pin-hint">Démo : '+demo[loginRole]+'</p></div></div></div>';
+    return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Identifiez-vous</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="login-email" value="'+esc(loginEmail)+'" autocomplete="username" autocapitalize="none"></div><div><label class="text-xs" style="color:#aaa;font-weight:600">MOT DE PASSE</label><input class="auth-input" type="password" data-input="login-password" value="'+esc(loginPassword)+'" autocomplete="current-password"></div>'+(loginError?'<p class="pin-error" style="margin:0">'+esc(loginError)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="login-submit">Se connecter</button><button class="btn btn-ghost btn-block" style="padding:10px;font-size:13px" data-action="login-forgot-pwd">🔑 Mot de passe oublié ?</button><button class="pin-back" data-action="back-role">← Changer de rôle</button></div></div></div>';
   }
   const labels={serveuse:"Serveuse",cuisine:"Cuisine",livreur:"Livreur"};
   const dots=[0,1,2,3].map(i=>'<div class="pin-dot '+(i<loginPin.length?"filled":"")+'"></div>').join("");
   const keypad=[1,2,3,4,5,6,7,8,9].map(n=>'<button class="pin-key" data-action="pin-digit" data-digit="'+n+'">'+n+'</button>').join("");
-  const hint={serveuse:"PIN démo : 4821 (Aïcha)",cuisine:"PIN démo : 1234 (Moussa)",livreur:"PIN démo : 5678 (Salif)"}[loginRole]||"";
-  return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0">Entrez votre code PIN</p><div class="pin-display">'+dots+'</div><div class="pin-pad">'+keypad+'<button class="pin-key blank" disabled></button><button class="pin-key" data-action="pin-digit" data-digit="0">0</button><button class="pin-key del" data-action="pin-del">⌫</button></div>'+(loginError?'<p class="pin-error">'+esc(loginError)+'</p>':"")+'<button class="pin-back" data-action="back-role">← Changer de rôle</button><p class="pin-hint">'+hint+'</p></div></div>';
+  return '<div class="login"><div class="login-logo">'+labels[loginRole][0]+'</div><h1 class="serif">'+labels[loginRole]+'</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0">Entrez votre code PIN</p><div class="pin-display">'+dots+'</div><div class="pin-pad">'+keypad+'<button class="pin-key blank" disabled></button><button class="pin-key" data-action="pin-digit" data-digit="0">0</button><button class="pin-key del" data-action="pin-del">⌫</button></div>'+(loginError?'<p class="pin-error">'+esc(loginError)+'</p>':"")+'<button class="pin-back" data-action="back-role">← Changer de rôle</button></div></div>';
 }
 
 function screenRecovery(){
@@ -921,7 +961,6 @@ function screenClient(){
   const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables;
   const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
 
-  // Livraison : impossible si aucun comp ouvert
   if(v.mode === "livraison" && v.screen === "menu" && getOpenCompsForDelivery().length === 0){
     const graceOpen = hasGraceActive() && ((DATA.settings.graceRoles||[]).includes("client"));
     if(!graceOpen){
@@ -957,7 +996,12 @@ function screenClient(){
     if(order.status==="att_verif_paiement" && v.screen==="waiting"){ }
     if(order.status==="att_collect" && v.screen==="waiting")v.screen="serving";
     if(order.status==="att_paiement" && v.screen==="waiting")v.screen="payment";
-    if(order.status==="payee" && (v.screen==="payment"||v.screen==="serving")){v.screen="tracking";v.timerTotal=0;}
+    
+    // PATCH 2.1 : Client livraison bloqué
+    if(order.status==="payee" && (v.screen==="payment"||v.screen==="serving"||v.screen==="waiting")){
+      v.screen="tracking"; v.timerTotal=0;
+    }
+    
     const refIdx=order.items.findIndex((it,i)=>it.statut==="Refusé"&&v.refusedIdx!==i);
     if(refIdx>=0 && v.screen!=="refused" && v.screen!=="fully_refused" && v.screen!=="editOrder"){v.refusedIdx=refIdx;v.screen="refused";}
   }
@@ -1084,7 +1128,15 @@ function screenClient(){
     const mm=String(Math.floor(v.timerRemaining/60)).padStart(2,"0");const ss=String(v.timerRemaining%60).padStart(2,"0");
     const progress=v.timerTotal?1-v.timerRemaining/v.timerTotal:1;const circ=2*Math.PI*86,dash=circ*(1-progress);
     const title = order.type==="livraison"?"Livraison":"Table "+(order.tableNumber||"");
-    return '<div class="app">'+topbar({title:"Suivi",homeAction:"client-home"})+'<div style="background:var(--noir);color:white;flex:1;padding:24px 20px 40px;display:flex;flex-direction:column;align-items:center"><p class="login-sub">'+title+'</p><h1 class="serif" style="text-align:center;font-size:20px;margin:8px 0 20px;color:white">'+(served?"Terminée":ready?"Prête !":"En cours")+'</h1><div class="progress-circle"><svg><circle cx="90" cy="90" r="86" stroke="#2a2a2a" stroke-width="10" fill="none"/><circle cx="90" cy="90" r="86" stroke="'+(ready?"#2d7a3e":"#ffc107")+'" stroke-width="10" fill="none" stroke-dasharray="'+circ+'" stroke-dashoffset="'+dash+'" stroke-linecap="round"/></svg><div class="center">'+(ready?'<div style="font-size:48px">✅</div>':'<span class="mono" style="font-size:26px;font-weight:bold;color:white">'+mm+':'+ss+'</span>')+'</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><button class="btn btn-accent" data-action="client-call-serveuse">🔔 Appeler serveuse</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="text-decoration:none;color:var(--jaune);border-color:#444">📞 Restaurant</a></div></div></div>';
+    
+    // PATCH 4.E : Affichage cuisines prêtes
+    const myReadyHtml = (order.readyAtByComp ? Object.entries(order.readyAtByComp).map(([cid, ts]) => '<div>✅ '+(getCompById(cid)?.name || cid)+' : Prêt</div>').join("") : "")+
+    ((!order.readyAt && order.readyAtByComp) ? '<div>⏳ En attente des autres cuisines...</div>' : "");
+    
+    // PATCH 5.D : Appel livreur
+    const callLivreurHtml = (order.type === "livraison" && order.livreurId) ? '<a href="tel:'+((order.livreurPhone||"").replace(/\s/g,""))+'" class="btn btn-primary" style="text-decoration:none;width:100%;margin-bottom:8px">🛵 Appeler le livreur</a>' : "";
+
+    return '<div class="app">'+topbar({title:"Suivi",homeAction:"client-home"})+'<div style="background:var(--noir);color:white;flex:1;padding:24px 20px 40px;display:flex;flex-direction:column;align-items:center"><p class="login-sub">'+title+'</p><h1 class="serif" style="text-align:center;font-size:20px;margin:8px 0 20px;color:white">'+(served?"Terminée":ready?"Prête !":"En cours")+'</h1><div class="progress-circle"><svg><circle cx="90" cy="90" r="86" stroke="#2a2a2a" stroke-width="10" fill="none"/><circle cx="90" cy="90" r="86" stroke="'+(ready?"#2d7a3e":"#ffc107")+'" stroke-width="10" fill="none" stroke-dasharray="'+circ+'" stroke-dashoffset="'+dash+'" stroke-linecap="round"/></svg><div class="center">'+(ready?'<div style="font-size:48px">✅</div>':'<span class="mono" style="font-size:26px;font-weight:bold;color:white">'+mm+':'+ss+'</span>')+'</div></div><div style="font-size:12px;color:#aaa;margin-bottom:12px;text-align:center">'+myReadyHtml+'</div><div style="display:flex;flex-direction:column;width:100%;max-width:280px;gap:8px">'+callLivreurHtml+'<button class="btn btn-accent" data-action="client-call-serveuse">🔔 Appeler serveuse</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="text-decoration:none;color:var(--jaune);border-color:#444">📞 Restaurant</a></div></div></div>';
   }
 
   if(v.screen==="done"){
@@ -1332,6 +1384,8 @@ function screenCuisine(){
   const seeOrder = (o) => cuisineShouldSeeOrder(o, myCompId);
   const active=DATA.orders.filter(o=>o.status==="payee"&&!o.readyAt && seeOrder(o));
   const ready=DATA.orders.filter(o=>o.readyAt&&o.status==="payee" && seeOrder(o));
+  
+  // PATCH 4.C : Bouton multi-cuisines
   const ticket=(o)=>{
     const t=orderTimerInfo(o);
     const decorated = decorateItems(o, myCompId);
@@ -1340,8 +1394,13 @@ function screenCuisine(){
       if(mine) return '<li>'+it.qty+'× '+esc(it.name)+'</li>';
       return '<li style="text-decoration:line-through;color:#bbb">'+it.qty+'× '+esc(it.name)+'</li>';
     }).join("");
-    return '<div class="ticket '+(t.urgent||t.overdue?"urgent":"")+'"><div class="flex between" style="margin-bottom:12px"><div><p class="serif" style="font-size:19px;font-weight:bold;margin:0">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p><p class="text-xs muted">'+timeAgo(o.createdAt)+'</p></div><div class="timer '+(t.urgent||t.overdue?"urgent":"ok")+'">'+t.text+'</div></div><ul style="margin:0 0 14px 0;padding-left:20px;font-size:14px">'+itemsHtml+'</ul><button class="btn btn-outline btn-block" data-action="cui-ready" data-id="'+o._docId+'">Marquer prêt</button></div>';
+    
+    const myReady = o.readyAtByComp && o.readyAtByComp[myCompId];
+    const btnHtml = myReady ? '<div style="text-align:center;padding:10px;background:var(--vert);color:white;border-radius:8px;font-weight:bold">✅ Ma partie est prête</div>' : '<button class="btn btn-outline btn-block" data-action="cui-ready" data-id="'+o._docId+'">Marquer ma partie prête</button>';
+    
+    return '<div class="ticket '+(t.urgent||t.overdue?"urgent":"")+'"><div class="flex between" style="margin-bottom:12px"><div><p class="serif" style="font-size:19px;font-weight:bold;margin:0">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p><p class="text-xs muted">'+timeAgo(o.createdAt)+'</p></div><div class="timer '+(t.urgent||t.overdue?"urgent":"ok")+'">'+t.text+'</div></div><ul style="margin:0 0 14px 0;padding-left:20px;font-size:14px">'+itemsHtml+'</ul>'+btnHtml+'</div>';
   };
+  
   return '<div class="app">'+topbar({role:"Cuisine",title:SESSION.name,homeAction:"cui-home"})+'<div class="content"><h2 class="section-title" style="font-size:17px">👨‍🍳 File ('+active.length+')</h2>'+(active.length===0?'<p class="empty">Aucune commande</p>':'<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+active.map(ticket).join("")+'</div>')+(ready.length>0?'<h2 class="section-title" style="font-size:17px;margin-top:24px">✅ Prêtes ('+ready.length+')</h2><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+ready.map(o=>'<div class="card" style="border:2px solid var(--vert)"><p class="bold">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p></div>').join("")+'</div>':"")+'</div></div>';
 }
 
@@ -1374,6 +1433,7 @@ function screenAdmin(){
   let content="";
   if(v.section==="compartments"){
     const realComps = DATA.compartments.filter(c => c._docId !== "dessert");
+    // PATCH 3 : Suppression de la carte Dessert
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">🏢 Compartiments</h2><button class="btn btn-primary btn-sm" data-action="admin-add-comp">+ Ajouter</button></div><p class="section-sub">Ouverture gérée par les gérants</p>'+
     (realComps.length===0 ? '<p class="empty">Aucun compartiment</p>' :
     realComps.map(c=>{
@@ -1381,8 +1441,7 @@ function screenAdmin(){
       const staffs = DATA.staff.filter(s=>s.compartmentId===c._docId);
       const tables = DATA.tables.filter(t=>t.compartmentId===c._docId);
       return '<div class="card" style="margin-bottom:14px;border-left:4px solid '+(c.open?"var(--vert)":"var(--gris)")+'"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">'+esc(c.emoji||"")+' '+esc(c.name)+'</p><p class="card-sub">'+dishes.length+' plats · '+staffs.length+' staff · '+tables.length+' tables'+(c.isCashier?' · 💰 caissier':'')+'</p></div><span class="badge '+(c.open?"badge-vert":"badge-neutre")+'">'+(c.open?"Ouvert":"Fermé")+'</span></div><div style="margin-bottom:10px"><p class="text-xs muted bold">TABLES ('+tables.length+')</p><p class="text-xs">'+(tables.map(t=>t.number).sort((a,b)=>a-b).join(", ")||"—")+'</p></div><button class="btn btn-danger btn-sm" data-action="admin-del-comp" data-id="'+c._docId+'">🗑️ Supprimer</button></div>';
-    }).join(""))+
-    '<div class="card" style="margin-top:20px;margin-bottom:14px;border-left:4px solid var(--jaune-fonce);background:rgba(255,193,7,0.04)"><div class="flex between center" style="margin-bottom:10px"><div><p class="card-title">🍰 Cuisine Desserts</p><p class="card-sub">Cuisine indépendante (pas un compartiment)</p></div><span class="badge badge-orange">Cuisine</span></div><p class="text-xs muted">Les desserts sont préparés par une cuisine séparée. Ils sont visibles dans tous les menus du jour des compartiments ouverts.</p></div>';
+    }).join(""));
   } else if(v.section==="menu"){
     const cats=["Entrées","Plats","Desserts","Boissons"];const byCat={};cats.forEach(c=>byCat[c]=[]);DATA.menu.forEach(d=>{if(!byCat[d.cat])byCat[d.cat]=[];byCat[d.cat].push(d);});
     content='<div class="flex between center" style="margin-bottom:16px"><h2 class="section-title" style="font-size:19px;margin:0">Menu</h2><button class="btn btn-primary btn-sm" data-action="admin-add-dish">+ Ajouter</button></div>';
@@ -1482,7 +1541,8 @@ function render(){
       root.innerHTML = '<div class="loader"><div class="loader-logo">D&S</div><div class="spin"></div><p class="loader-text">Chargement…</p></div>';
       return;
     }
-    if(!isAppAllowed(null)){ root.innerHTML = screenClosed(); return; }
+    // PATCH 2.2 : Bug lien admin
+    if(!isAppAllowed(null) && urlMode !== "admin"){ root.innerHTML = screenClosed(); return; }
     root.innerHTML=screenLogin(); return;
   }
   if(!isAppAllowed(SESSION.role)){ SESSION=null; root.innerHTML = screenClosed(); return; }
@@ -1912,11 +1972,16 @@ document.addEventListener("click",async function(e){
   }
 
   if(action==="cui-home"){render();return;}
-  if(action==="cui-ready"){await A.markReady(id);toast("Prêt !");render();return;}
+  
+  // PATCH 4.D : Appel markReady avec compId
+  if(action==="cui-ready"){const myCompId = getMyCompId("cuisine");await A.markReady(id, myCompId);toast("Partie prête !");render();return;}
 
   if(action==="liv-home"){livS.tab="available";render();return;}
   if(action==="liv-tab"){livS.tab=el.dataset.tab;render();return;}
-  if(action==="liv-take"){const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");if(me)await A.takeDelivery(id,me._docId,me.name);livS.tab="current";render();return;}
+  
+  // PATCH 5.C : Appel takeDelivery avec téléphone
+  if(action==="liv-take"){const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");if(me)await A.takeDelivery(id,me._docId,me.name, me.phone || DATA.settings.phone);livS.tab="current";render();return;}
+  
   if(action==="liv-enroute"){await A.setDeliveryStatus(id,"en_route");return;}
   if(action==="liv-done"){await A.markDelivered(id);render();return;}
 
