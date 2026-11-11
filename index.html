@@ -146,11 +146,6 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 #map{width:100%;height:320px;border-radius:12px;border:2px solid var(--sable);z-index:1}
 .map-info{background:var(--noir);color:white;padding:12px 14px;border-radius:12px;margin-top:12px;border-left:4px solid var(--jaune)}
 .map-info .dist{font-family:monospace;font-size:20px;font-weight:bold;color:var(--jaune)}
-.chart-bar{display:flex;flex-direction:column;align-items:center;gap:4px}
-.chart-bar .bar{background:var(--jaune);width:100%;min-height:4px;border-radius:4px 4px 0 0}
-.chart-bar .lbl{font-size:10px;color:var(--gris);white-space:nowrap}
-.chart-bar .val{font-size:10px;font-weight:bold;font-family:monospace}
-.chart-container{display:flex;align-items:flex-end;gap:4px;height:200px;padding:16px;background:white;border:1px solid var(--sable);border-radius:12px;overflow-x:auto}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px}
 .modal-card{background:white;border-radius:16px;max-width:420px;width:100%;padding:24px;text-align:center;border:3px solid var(--jaune)}
 .modal-card h2{font-family:Georgia,serif;font-size:22px;margin:0 0 12px}
@@ -161,16 +156,9 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 .log-row{display:flex;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #f0ede4;font-size:12px;gap:10px;align-items:flex-start}
 .log-row:last-child{border-bottom:none}
 .log-row .when{color:var(--gris);font-family:monospace;font-size:10px;margin-top:2px}
-.log-ok{color:var(--vert);font-weight:600}
-.log-fail{color:var(--rouge);font-weight:600}
-.discreet-zone{padding:14px 10px;text-align:center;border-top:1px dashed var(--sable);margin-top:24px;opacity:0.35}
-.discreet-zone:hover,.discreet-zone:focus-within{opacity:1}
-.discreet-zone input{width:60px;padding:4px;border:1px solid var(--sable);border-radius:4px;text-align:center;font-size:12px;background:transparent}
-.discreet-zone button{background:transparent;color:var(--gris);font-size:11px;padding:4px 8px;text-decoration:underline}
 .flow-step{background:#faf8f2;border-left:4px solid var(--jaune);padding:10px 14px;border-radius:8px;margin-bottom:8px;font-size:13px}
 .role-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;border:2px solid var(--sable);font-size:13px;font-weight:600;background:white;color:var(--gris);cursor:pointer;user-select:none}
 .role-chip.on{background:var(--jaune);color:var(--noir);border-color:var(--jaune)}
-.role-chip.locked{opacity:0.4;cursor:not-allowed}
 .momo-box{background:var(--noir);color:white;padding:16px;border-radius:12px;border:2px solid var(--jaune);text-align:center}
 .momo-num{font-family:monospace;font-size:22px;font-weight:bold;color:var(--jaune);letter-spacing:0.05em;margin:8px 0}
 .star-row{display:flex;gap:8px;justify-content:center;font-size:32px;margin:14px 0}
@@ -210,6 +198,10 @@ if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().t
 let SESSION = null;
 let lastAlertCount = 0;
 let audioCtx = null;
+
+let stockAlerts = {};
+let stockAlertsInitialized = false;
+let prevDishAvailability = null;
 
 function isSoundEnabled(){ return localStorage.getItem("ds_sound_enabled") === "1"; }
 function setSoundEnabled(v){ localStorage.setItem("ds_sound_enabled", v ? "1" : "0"); }
@@ -302,7 +294,6 @@ function isAppAllowed(role){
   return false;
 }
 
-// PATCH 1 : Wizard respecte l'heure de fermeture
 function nowDate(){
   const d = new Date();
   const beninDate = new Date(d.getTime() + (1 * 60 * 60 * 1000)); 
@@ -332,6 +323,7 @@ function todayMenu(){ return DATA.settings.menuOfDay ? (DATA.settings.menuOfDay.
 function todayMenuDraft(){ return todayMenu() || DATA.menu.filter(d=>d.available).map(d=>d._docId); }
 function isDishAvailableToday(d, compId){
   if(!d.available) return false;
+  if(!dishHasStock(d)) return false;
   if(compId){
     const ids = todayMenuForComp(compId);
     if(ids === null) return true;
@@ -349,6 +341,74 @@ function serveuseOfTable(tableId){
   const day = DATA.affectation[nowDate()] || {};
   const sId = day[tableId];
   return sId ? DATA.staff.find(s=>s._docId===sId) : null;
+}
+
+function stockQty(id){const item=DATA.stock.find(x=>x._docId===id);if(!item)return 0;return DATA.stockMoves.filter(m=>m.stockId===id).reduce((a,m)=>a+(m.type==="Entrée"?m.qty:-m.qty),item.initial);}
+
+function dishHasStock(dish){
+  if(!dish.ingredients || dish.ingredients.length === 0) return true;
+  for(const ing of dish.ingredients){
+    if(stockQty(ing.stockId) < ing.qty) return false;
+  }
+  return true;
+}
+
+function getDynamicThreshold(stockItem){
+  const now = Date.now();
+  const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+  const outMoves = DATA.stockMoves.filter(m => m.stockId === stockItem._docId && m.type === "Sortie" && (m._ts || 0) >= sevenDaysAgo);
+  if(outMoves.length === 0) return stockItem.threshold || 0;
+  const firstMoveTs = Math.min(...outMoves.map(m => m._ts));
+  const daysElapsed = Math.max(1, (now - firstMoveTs) / (24 * 60 * 60 * 1000));
+  const totalOut = outMoves.reduce((s, m) => s + m.qty, 0);
+  return Math.ceil((totalOut / daysElapsed) * 2);
+}
+
+function checkStockAlerts(){
+  if(!DATA.stock.length || !DATA.menu.length) return;
+  if(!stockAlertsInitialized){
+    DATA.stock.forEach(item => {
+      const qty = stockQty(item._docId);
+      const threshold = getDynamicThreshold(item);
+      stockAlerts[item._docId] = qty <= 0 ? "out" : (qty <= threshold ? "low" : "ok");
+    });
+    prevDishAvailability = {};
+    DATA.menu.forEach(d => { prevDishAvailability[d._docId] = dishHasStock(d); });
+    stockAlertsInitialized = true;
+    return;
+  }
+  DATA.stock.forEach(item => {
+    const qty = stockQty(item._docId);
+    const threshold = getDynamicThreshold(item);
+    const status = qty <= 0 ? "out" : (qty <= threshold ? "low" : "ok");
+    const prev = stockAlerts[item._docId];
+    if(prev && prev !== status){
+      if(status === "out"){
+        sendPush("🚨 Rupture stock", item.name + " épuisé — plats concernés masqués", "admin");
+        sendPush("🚨 Rupture stock", item.name + " épuisé", "gerant");
+      } else if(status === "low" && prev === "ok"){
+        sendPush("⚠️ Stock bas", item.name + " : " + qty + " " + item.unit, "admin");
+        sendPush("⚠️ Stock bas", item.name + " : " + qty + " " + item.unit, "gerant");
+      }
+    }
+    stockAlerts[item._docId] = status;
+  });
+  if(prevDishAvailability){
+    DATA.menu.forEach(dish => {
+      if(!dish.ingredients || dish.ingredients.length === 0) return;
+      const was = prevDishAvailability[dish._docId];
+      const now = dishHasStock(dish);
+      if(was === false && now === true && dish.available){
+        sendPush("✅ Plat réactivé", dish.name + " — stock suffisant", "admin");
+        sendPush("✅ Plat réactivé", dish.name, "gerant");
+      } else if(was === true && now === false){
+        sendPush("🚫 Plat retiré", dish.name + " — stock insuffisant", "admin");
+        sendPush("🚫 Plat retiré", dish.name + " — stock insuffisant", "gerant");
+      }
+    });
+  }
+  prevDishAvailability = {};
+  DATA.menu.forEach(d => { prevDishAvailability[d._docId] = dishHasStock(d); });
 }
 
 function sendPush(title, message, targetRole){
@@ -379,7 +439,6 @@ async function clearRoleTag(){
   try{ const OS=window.OneSignal; if(OS&&OS.User&&typeof OS.User.addTag==="function"){ await OS.User.addTag("role","anonymous"); await OS.User.addTag("is_staff","false"); } }catch(e){}
 }
 
-// PATCH 12.1 : Sécurité des identifiants
 const SEED = {
   menu: [
     { id:"m1", name:"Salade César", cat:"Entrées", price:2500, time:5, available:true, desc:"Romaine, parmesan, croûtons", compartmentId:"comp2" },
@@ -447,11 +506,9 @@ async function seedIfEmpty() {
 async function migrateToMultiComp() {
   if (DATA.settings && DATA.settings.migrationMultiCompDone) return;
   if (!DATA.menu.length || !DATA.tables.length) {
-    console.log("⏳ Migration reportée (données non chargées)");
     setTimeout(migrateToMultiComp, 2000);
     return;
   }
-  console.log("🔄 Migration multi-comp en cours…");
   try {
     const batch = writeBatch(db);
     SEED.compartments.forEach(c => {
@@ -488,7 +545,6 @@ async function migrateToMultiComp() {
     });
     batch.set(doc(db, "settings", "main"), { migrationMultiCompDone: true }, { merge: true });
     await batch.commit();
-    console.log("✅ Migration multi-comp terminée");
   } catch(e) { console.error("❌ Migration error:", e); }
 }
 
@@ -521,10 +577,15 @@ function preserveInput(){const a=document.activeElement;if(!a||!a.dataset||!a.da
 function restoreInput(saved){if(!saved)return;const el=document.querySelector('[data-input="'+saved.key+'"]');if(el){el.focus();try{el.setSelectionRange(saved.start,saved.end);}catch(e){}}}
 
 function subscribeAll(onUpdate) {
-  const sub = (col, key, tr) => onSnapshot(collection(db, col), snap => {const arr=[];snap.forEach(d=>arr.push({...d.data(),_docId:d.id}));DATA[key]=tr?tr(arr):arr;onUpdate();});
+  const sub = (col, key, tr) => onSnapshot(collection(db, col), snap => {
+    const arr=[];snap.forEach(d=>arr.push({...d.data(),_docId:d.id}));
+    DATA[key]=tr?tr(arr):arr;
+    onUpdate();
+  });
   sub("menu","menu"); sub("staff","staff"); sub("tables","tables",arr=>arr.sort((a,b)=>a.number-b.number));
   sub("compartments","compartments",arr=>arr.sort((a,b)=>(a.order||0)-(b.order||0)));
-  sub("stock","stock"); sub("stockMoves","stockMoves",arr=>arr.sort((a,b)=>(b._ts||0)-(a._ts||0)));
+  sub("stock","stock");
+  sub("stockMoves","stockMoves",arr=>{arr.sort((a,b)=>(b._ts||0)-(a._ts||0)); setTimeout(checkStockAlerts, 150); return arr;});
   sub("orders","orders",arr=>arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
   sub("zones","zones"); sub("resetLogs","resetLogs",arr=>arr.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
   onSnapshot(collection(db,"affectation"),snap=>{const obj={};snap.forEach(d=>obj[d.id]=d.data());DATA.affectation=obj;onUpdate();});
@@ -542,7 +603,6 @@ function loadOneSignal(){
   window.OneSignalDeferred.push(async function(OneSignal) {
     try {
       await OneSignal.init({ appId, allowLocalhostAsSecureOrigin:true, notifyButton:{enable:false}, serviceWorkerParam:{scope:"/restaurant-ds/"}, serviceWorkerPath:"/restaurant-ds/service-worker.js" });
-      console.log("✅ OneSignal initialisé");
       await applyRoleTag(SESSION ? SESSION.role : null);
       if (typeof Notification !== "undefined" && Notification.permission === "default") { try { OneSignal.Slidedown.promptPush(); } catch(e) {} }
     } catch(e) { console.error("❌ OneSignal init:", e); }
@@ -551,8 +611,6 @@ function loadOneSignal(){
   s.src = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
   s.defer = true; document.head.appendChild(s);
 }
-
-function randomDeletePercent(pct){const all=DATA.orders.slice();if(all.length===0)return [];const n=Math.max(1,Math.round(all.length*(pct/100)));const idxs=all.map((_,i)=>i);for(let i=idxs.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[idxs[i],idxs[j]]=[idxs[j],idxs[i]];}return idxs.slice(0,n).map(i=>all[i]._docId);}
 
 const A = {
   login(role,name){ SESSION={role,name,userId:DEVICE_ID,since:Date.now()}; setTimeout(loadOneSignal,200); applyRoleTag(role); render(); },
@@ -634,7 +692,17 @@ const A = {
   async markOrderPaid(id,method,ref){
     const o=DATA.orders.find(o=>o._docId===id);if(!o)return;
     const batch=writeBatch(db);
-    for(const item of o.items){if(item.statut==="Refusé")continue;const dish=DATA.menu.find(d=>d._docId===item.id);if(!dish||!dish.recipe)continue;for(const ing of dish.recipe){batch.set(doc(collection(db,"stockMoves")),{stockId:ing.stockId,type:"Sortie",qty:ing.qty*item.qty,motif:"Cmd #"+id.slice(-6),date:nowDate(),_ts:Date.now()});}}
+    for(const item of o.items){
+      if(item.statut==="Refusé")continue;
+      const dish=DATA.menu.find(d=>d._docId===item.id);
+      if(!dish||!dish.ingredients||!dish.ingredients.length)continue;
+      for(const ing of dish.ingredients){
+        batch.set(doc(collection(db,"stockMoves")),{
+          stockId:ing.stockId, type:"Sortie", qty:ing.qty*item.qty,
+          motif:"Cmd #"+id.slice(-6), date:nowDate(), _ts:Date.now()
+        });
+      }
+    }
     batch.update(doc(db,"orders",id),{status:"payee",paymentMethod:method,paymentRef:ref||null,paidAt:Date.now(),cashIssue:null});
     await batch.commit();
     const label = o.type==="livraison" ? "Livraison "+(o.clientInfo?.name||"") : "Table "+(o.tableNumber||"");
@@ -644,8 +712,7 @@ const A = {
   async confirmCash(id,method,ref){await A.markOrderPaid(id,method,ref);},
   async reportCashIssue(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{cashIssue:"non_recu",cashIssueAt:Date.now()});sendPush("⚠️ Paiement non reçu", "Table "+(o?.tableNumber||""), "gerant");},
   async resolveCashIssue(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{cashIssue:null,cashIssueResolvedAt:Date.now()});sendPush("✅ Paiement résolu", "Table "+(o?.tableNumber||""), "serveuse");},
-  
-  // PATCH 4.A : Multi-cuisines
+
   async markReady(id, compId){
     const o=DATA.orders.find(x=>x._docId===id);if(!o)return;
     const rByComp = { ...(o.readyAtByComp || {}), [compId]: Date.now() };
@@ -658,7 +725,6 @@ const A = {
     const patch = { readyAtByComp: rByComp };
     if(allReady) patch.readyAt = Date.now();
     await updateDoc(doc(db,"orders",id),patch);
-    
     const label=o?.type==="livraison"?"Livraison "+(o?.clientInfo?.name||""):"Table "+(o?.tableNumber||"");
     if(allReady){
       sendPush("🍽️ Plat prêt (Complet)", label, "serveuse");
@@ -667,14 +733,13 @@ const A = {
       sendPush("🍽️ Plat prêt (Partiel)", label + " - " + (getCompById(compId)?.name||compId), "gerant");
     }
   },
-  
+
   async markServed(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{status:"servie",servedAt:Date.now()});const label=o?.type==="livraison"?"Livraison "+(o?.clientInfo?.name||""):"Table "+(o?.tableNumber||"");sendPush("✅ Commande servie", label, "gerant");},
   async markDelivered(id){const o=DATA.orders.find(x=>x._docId===id);await updateDoc(doc(db,"orders",id),{status:"livree",servedAt:Date.now()});sendPush("🛵 Commande livrée", (o?.clientInfo?.name||""), "gerant");},
   async markPrinted(id){await updateDoc(doc(db,"orders",id),{printedAt:Date.now()});},
-  
-  // PATCH 5.B : Prise de livraison avec téléphone
+
   async takeDelivery(id,livreurId,livreurName,livreurPhone){await updateDoc(doc(db,"orders",id),{livreurId,livreurName,livreurPhone,deliveryStatus:"prise"});const o=DATA.orders.find(x=>x._docId===id);sendPush("🛵 Livraison prise", (livreurName||"Livreur")+" — "+(o?.clientInfo?.name||""), "gerant");},
-  
+
   async setDeliveryStatus(id,st){await updateDoc(doc(db,"orders",id),{deliveryStatus:st});},
   async assignLivreur(id,livreurId){const l=DATA.staff.find(x=>x._docId===livreurId);await updateDoc(doc(db,"orders",id),{livreurId:livreurId||null,livreurName:l?l.name:null,livreurPhone:l?l.phone:null,deliveryStatus:livreurId?"prise":null});if(livreurId){const o=DATA.orders.find(x=>x._docId===id);sendPush("🛵 Nouvelle livraison", (o?.clientInfo?.name||"")+" — "+(o?.clientInfo?.address||""), "livreur");}},
 
@@ -785,21 +850,8 @@ function getCompById(id){ return DATA.compartments.find(c=>c._docId===id); }
 function getCompOfTable(tableId){ const t=DATA.tables.find(t=>t._docId===tableId); return t&&t.compartmentId?getCompById(t.compartmentId):null; }
 function getCompOfStaff(staff){ if(!staff) return null; if(staff.compartmentId) return getCompById(staff.compartmentId); const byRole = DATA.compartments.find(c=>c.managerId===staff._docId || c.kitchenId===staff._docId); return byRole||null; }
 function isCompOpen(compId){ const c=getCompById(compId); return c?!!c.open:false; }
-function dishesForComp(compId){ return DATA.menu.filter(d=>d.compartmentId===compId || d.compartmentId==="dessert"); }
-function dishesForSaleInComp(compId){ if(!isCompOpen(compId)) return []; return DATA.menu.filter(d=> (d.compartmentId===compId || d.compartmentId==="dessert") && isDishAvailableToday(d)); }
-function allCompsOpen(){ return DATA.compartments.filter(c=>c._docId!=="dessert").every(c=>c.open); }
 function getOpenCompsForDelivery(){
   return DATA.compartments.filter(c => c._docId !== "dessert" && c.open);
-}
-function deliveryMenuDishes(){
-  const openComps = getOpenCompsForDelivery();
-  if(openComps.length === 0) return [];
-  const openIds = openComps.map(c => c._docId);
-  return DATA.menu.filter(d => {
-    if(!isDishAvailableToday(d, d.compartmentId === "dessert" ? "dessert" : (d.compartmentId||"comp2"))) return false;
-    if(d.compartmentId === "dessert") return openComps.length > 0;
-    return openIds.includes(d.compartmentId);
-  });
 }
 
 function getMyCompId(role){
@@ -846,8 +898,6 @@ function cuisineShouldSeeOrder(o, myCompId){
   if(myCompId === "dessert") return orderHasDessertItems(o);
   return orderHasCompItems(o, myCompId);
 }
-
-// PATCH 4.B : Correction de la logique multi-cuisines
 function decorateItems(o, myCompId){
   return o.items.map((it, idx) => {
     const d = DATA.menu.find(x => x._docId === it.id);
@@ -858,7 +908,6 @@ function decorateItems(o, myCompId){
   });
 }
 
-function stockQty(id){const item=DATA.stock.find(x=>x._docId===id);if(!item)return 0;return DATA.stockMoves.filter(m=>m.stockId===id).reduce((a,m)=>a+(m.type==="Entrée"?m.qty:-m.qty),item.initial);}
 function statusBadge(o){
   if(o.status==="servie")return '<span class="badge badge-vert">Servie</span>';
   if(o.status==="livree")return '<span class="badge badge-vert">Livrée</span>';
@@ -875,7 +924,7 @@ let urlMode="default";
 let clientS={screen:"menu",mode:"livraison",cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},contactPhone:"",deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{},momoRefInput:"",claimType:null,claimText:"",ratingDriver:0,ratingResto:0,ratingComment:""};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};
 let gerS={tab:"validation",menuDraft:null,wizard:null};
-let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null,graceForm:{duration:60,roles:["serveuse","cuisine","livreur","gerant"]},livrPeriod:"today"};
+let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null,graceForm:{duration:60,roles:["serveuse","cuisine","livreur","gerant"]},livrPeriod:"today",ingredientsModal:null};
 let livS={tab:"available"};
 let pendingReset=null;
 let mapInstance=null, mapMarker=null;
@@ -906,7 +955,6 @@ function screenClosed(){
   return '<div class="login"><div class="login-logo">🌙</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Nous sommes fermés</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Merci de revenir pendant nos horaires d\'ouverture.</p><div class="card" style="background:#1a1a1a;border:1px solid #333;color:white;max-width:300px;width:100%;text-align:center"><p class="text-sm" style="color:#aaa;margin-bottom:8px">🕐 Horaires</p><p style="font-size:15px;margin:0"><strong>Ouverture :</strong> '+String(open).padStart(2,"0")+'h00</p><p style="font-size:15px;margin:4px 0 0"><strong>Fermeture :</strong> '+String(close).padStart(2,"0")+'h00</p></div>'+btnPhone+'</div>';
 }
 
-// PATCH 12.2 : Suppression des indices de démo
 function screenLogin(){
   let roles;
   if(urlMode === "admin"){
@@ -996,12 +1044,9 @@ function screenClient(){
     if(order.status==="att_verif_paiement" && v.screen==="waiting"){ }
     if(order.status==="att_collect" && v.screen==="waiting")v.screen="serving";
     if(order.status==="att_paiement" && v.screen==="waiting")v.screen="payment";
-    
-    // PATCH 2.1 : Client livraison bloqué
     if(order.status==="payee" && (v.screen==="payment"||v.screen==="serving"||v.screen==="waiting")){
       v.screen="tracking"; v.timerTotal=0;
     }
-    
     const refIdx=order.items.findIndex((it,i)=>it.statut==="Refusé"&&v.refusedIdx!==i);
     if(refIdx>=0 && v.screen!=="refused" && v.screen!=="fully_refused" && v.screen!=="editOrder"){v.refusedIdx=refIdx;v.screen="refused";}
   }
@@ -1012,6 +1057,7 @@ function screenClient(){
     const openCompsIds = getOpenCompsForDelivery().map(c=>c._docId);
     const isDishVisible = (d) => {
       if(!d.available) return false;
+      if(!dishHasStock(d)) return false;
       if(v.mode === "livraison"){
         if(!isDishAvailableToday(d, d.compartmentId === "dessert" ? "dessert" : (d.compartmentId || "comp2"))) return false;
         if(d.compartmentId === "dessert") return openCompsIds.length > 0;
@@ -1045,6 +1091,7 @@ function screenClient(){
     const openCompsIdsCart = getOpenCompsForDelivery().map(c=>c._docId);
     const cartVisible = (m) => {
       if(!m.available) return false;
+      if(!dishHasStock(m)) return false;
       if(v.mode === "livraison"){
         if(!isDishAvailableToday(m, m.compartmentId === "dessert" ? "dessert" : (m.compartmentId || "comp2"))) return false;
         if(m.compartmentId === "dessert") return openCompsIdsCart.length > 0;
@@ -1128,14 +1175,9 @@ function screenClient(){
     const mm=String(Math.floor(v.timerRemaining/60)).padStart(2,"0");const ss=String(v.timerRemaining%60).padStart(2,"0");
     const progress=v.timerTotal?1-v.timerRemaining/v.timerTotal:1;const circ=2*Math.PI*86,dash=circ*(1-progress);
     const title = order.type==="livraison"?"Livraison":"Table "+(order.tableNumber||"");
-    
-    // PATCH 4.E : Affichage cuisines prêtes
     const myReadyHtml = (order.readyAtByComp ? Object.entries(order.readyAtByComp).map(([cid, ts]) => '<div>✅ '+(getCompById(cid)?.name || cid)+' : Prêt</div>').join("") : "")+
     ((!order.readyAt && order.readyAtByComp) ? '<div>⏳ En attente des autres cuisines...</div>' : "");
-    
-    // PATCH 5.D : Appel livreur
     const callLivreurHtml = (order.type === "livraison" && order.livreurId) ? '<a href="tel:'+((order.livreurPhone||"").replace(/\s/g,""))+'" class="btn btn-primary" style="text-decoration:none;width:100%;margin-bottom:8px">🛵 Appeler le livreur</a>' : "";
-
     return '<div class="app">'+topbar({title:"Suivi",homeAction:"client-home"})+'<div style="background:var(--noir);color:white;flex:1;padding:24px 20px 40px;display:flex;flex-direction:column;align-items:center"><p class="login-sub">'+title+'</p><h1 class="serif" style="text-align:center;font-size:20px;margin:8px 0 20px;color:white">'+(served?"Terminée":ready?"Prête !":"En cours")+'</h1><div class="progress-circle"><svg><circle cx="90" cy="90" r="86" stroke="#2a2a2a" stroke-width="10" fill="none"/><circle cx="90" cy="90" r="86" stroke="'+(ready?"#2d7a3e":"#ffc107")+'" stroke-width="10" fill="none" stroke-dasharray="'+circ+'" stroke-dashoffset="'+dash+'" stroke-linecap="round"/></svg><div class="center">'+(ready?'<div style="font-size:48px">✅</div>':'<span class="mono" style="font-size:26px;font-weight:bold;color:white">'+mm+':'+ss+'</span>')+'</div></div><div style="font-size:12px;color:#aaa;margin-bottom:12px;text-align:center">'+myReadyHtml+'</div><div style="display:flex;flex-direction:column;width:100%;max-width:280px;gap:8px">'+callLivreurHtml+'<button class="btn btn-accent" data-action="client-call-serveuse">🔔 Appeler serveuse</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="text-decoration:none;color:var(--jaune);border-color:#444">📞 Restaurant</a></div></div></div>';
   }
 
@@ -1220,7 +1262,7 @@ function screenGerant(){
     const caisseToday = (DATA.settings.cashierStart || {})[today]?.[myCompId];
 
     if(wiz.step === 1){
-      return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content content-narrow"><div class="card" style="border-left:4px solid var(--jaune);text-align:center"><p class="text-xs muted bold">ÉTAPE 1/4</p><h2 class="section-title" style="margin-top:8px">💰 Montant en caisse</h2><p class="section-sub">Saisissez le montant présent en caisse ce matin (fond de caisse).</p>'+(caisseToday!==undefined?'<p class="text-sm" style="color:var(--vert);margin-bottom:12px">✅ Déjà saisi : '+money(caisseToday)+'</p>':'')+'<input class="input" type="number" inputmode="numeric" style="margin-top:8px;text-align:center;font-size:24px;font-family:monospace" data-input="wiz-caisse" value="'+esc(wiz.caisse||String(caisseToday||""))+'" placeholder="50 000"><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="wiz-step1-next">Suivant →</button></div></div></div>';
+      return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content content-narrow"><div class="card" style="border-left:4px solid var(--jaune);text-align:center"><p class="text-xs muted bold">ÉTAPE 1/4</p><h2 class="section-title" style="margin-top:8px">💰 Montant en caisse</h2><p class="section-sub">Saisissez le montant présent en caisse ce matin (fond de caisse).</p>'+(caisseToday!==undefined?'<p class="text-sm" style="color:var(--vert);margin-bottom:12px">✅ Déjà saisi : '+money(caisseToday)+'</p>':'')+'<input class="input" type="text" inputmode="numeric" style="margin-top:8px;text-align:center;font-size:24px;font-family:monospace" data-input="wiz-caisse" value="'+esc(wiz.caisse||String(caisseToday||""))+'" placeholder="50 000"><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="wiz-step1-next">Suivant →</button></div></div></div>';
     }
 
     if(wiz.step === 2){
@@ -1384,8 +1426,6 @@ function screenCuisine(){
   const seeOrder = (o) => cuisineShouldSeeOrder(o, myCompId);
   const active=DATA.orders.filter(o=>o.status==="payee"&&!o.readyAt && seeOrder(o));
   const ready=DATA.orders.filter(o=>o.readyAt&&o.status==="payee" && seeOrder(o));
-  
-  // PATCH 4.C : Bouton multi-cuisines
   const ticket=(o)=>{
     const t=orderTimerInfo(o);
     const decorated = decorateItems(o, myCompId);
@@ -1394,13 +1434,10 @@ function screenCuisine(){
       if(mine) return '<li>'+it.qty+'× '+esc(it.name)+'</li>';
       return '<li style="text-decoration:line-through;color:#bbb">'+it.qty+'× '+esc(it.name)+'</li>';
     }).join("");
-    
     const myReady = o.readyAtByComp && o.readyAtByComp[myCompId];
     const btnHtml = myReady ? '<div style="text-align:center;padding:10px;background:var(--vert);color:white;border-radius:8px;font-weight:bold">✅ Ma partie est prête</div>' : '<button class="btn btn-outline btn-block" data-action="cui-ready" data-id="'+o._docId+'">Marquer ma partie prête</button>';
-    
     return '<div class="ticket '+(t.urgent||t.overdue?"urgent":"")+'"><div class="flex between" style="margin-bottom:12px"><div><p class="serif" style="font-size:19px;font-weight:bold;margin:0">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p><p class="text-xs muted">'+timeAgo(o.createdAt)+'</p></div><div class="timer '+(t.urgent||t.overdue?"urgent":"ok")+'">'+t.text+'</div></div><ul style="margin:0 0 14px 0;padding-left:20px;font-size:14px">'+itemsHtml+'</ul>'+btnHtml+'</div>';
   };
-  
   return '<div class="app">'+topbar({role:"Cuisine",title:SESSION.name,homeAction:"cui-home"})+'<div class="content"><h2 class="section-title" style="font-size:17px">👨‍🍳 File ('+active.length+')</h2>'+(active.length===0?'<p class="empty">Aucune commande</p>':'<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+active.map(ticket).join("")+'</div>')+(ready.length>0?'<h2 class="section-title" style="font-size:17px;margin-top:24px">✅ Prêtes ('+ready.length+')</h2><div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+ready.map(o=>'<div class="card" style="border:2px solid var(--vert)"><p class="bold">'+(o.type==="livraison"?"Livr. ":"Table ")+(o.tableNumber||o.clientInfo?.name||"—")+'</p></div>').join("")+'</div>':"")+'</div></div>';
 }
 
@@ -1414,6 +1451,21 @@ function screenLivreur(){
   else if(v.tab==="current"){content='<h2 class="section-title">Mes livraisons</h2>'+(mine.length===0?'<p class="empty">Aucune livraison en cours</p>':mine.map(o=>'<div class="card" style="border:2px solid var(--jaune);margin-bottom:14px"><p class="bold">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-sm" style="margin:4px 0 12px">'+esc(o.clientInfo?.name||"")+'</p><div class="grid-2" style="margin-bottom:12px"><a href="tel:'+(o.clientInfo?.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost" style="text-decoration:none">📞 Appeler</a>'+(o.deliveryLat?'<a href="https://www.google.com/maps/dir/?api=1&destination='+o.deliveryLat+','+o.deliveryLon+'" target="_blank" class="btn btn-ghost" style="text-decoration:none">🧭 Itinéraire</a>':"")+'</div><div style="background:#faf8f2;padding:10px;border-radius:8px;margin-bottom:12px"><ul style="margin:0;padding-left:20px;font-size:14px">'+o.items.filter(i=>i.statut!=="Refusé").map(i=>'<li>'+i.qty+'× '+esc(i.name)+'</li>').join("")+'</ul><p class="text-xs muted" style="margin-top:6px">Client a déjà payé en ligne — rien à encaisser</p></div>'+((!o.deliveryStatus||o.deliveryStatus==="prise")?'<button class="btn btn-primary btn-block" data-action="liv-enroute" data-id="'+o._docId+'">🧭 En route</button>':"")+(o.deliveryStatus==="en_route"?'<button class="btn btn-success btn-block" data-action="liv-done" data-id="'+o._docId+'">✅ Livrée</button>':"")+'</div>').join(""));}
   else if(v.tab==="history"){content='<h2 class="section-title">Historique</h2><p class="section-sub">'+done.length+' livrée(s)</p>'+(done.length===0?'<p class="empty">Aucune</p>':done.map(o=>'<div class="card card-row" style="margin-bottom:8px"><div style="min-width:0"><p class="card-title">'+esc(o.clientInfo?.address||"")+'</p><p class="card-sub">'+(o.servedAt?new Date(o.servedAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"")+'</p></div><span class="mono bold">'+money(Math.round((o.deliveryKm||0)*prixParKm()*LIVREUR_SHARE))+'</span></div>').join(""));}
   return '<div class="app" style="max-width:520px;margin:0 auto">'+topbar({role:"Livreur",title:SESSION.name,homeAction:"liv-home"})+'<div class="content">'+content+'</div><div class="bottom-nav cols-3">'+[{key:"available",em:"📦",label:"Dispos",badge:available.length},{key:"current",em:"🧭",label:"En cours",badge:mine.length},{key:"history",em:"📋",label:"Historique"}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="liv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+'</div></div>';
+}
+
+function screenIngredientsModal(){
+  if(!admS.ingredientsModal) return "";
+  const dish = DATA.menu.find(d => d._docId === admS.ingredientsModal.dishId);
+  if(!dish) return "";
+  const ings = dish.ingredients || [];
+  let rows = DATA.stock.map(stock => {
+    const linked = ings.find(i => i.stockId === stock._docId);
+    const qty = linked ? linked.qty : "";
+    const avail = stockQty(stock._docId);
+    return '<div class="flex between center" style="padding:10px 0;border-bottom:1px solid var(--sable);gap:8px"><div style="flex:1;min-width:0"><p class="bold" style="margin:0;font-size:14px">'+esc(stock.name)+'</p><p class="text-xs muted" style="margin:0">Stock : '+avail+' '+esc(stock.unit)+'</p></div><input class="input" type="number" min="0" step="0.01" style="width:90px;text-align:center;padding:8px" data-input="ingredient-qty" data-stock-id="'+stock._docId+'" value="'+esc(String(qty))+'" placeholder="0"><span class="text-xs muted" style="width:24px;text-align:center">'+esc(stock.unit)+'</span></div>';
+  }).join("");
+  if(!DATA.stock.length) rows = '<p class="empty">Aucun ingrédient dans le stock. Créez-en d\'abord.</p>';
+  return '<div class="modal-overlay"><div class="modal-card" style="max-width:520px;text-align:left"><h2 style="text-align:center">🧂 Ingrédients</h2><p style="text-align:center;color:var(--gris);font-size:13px;margin-bottom:16px">'+esc(dish.name)+'</p><p class="text-xs muted" style="margin-bottom:8px">Indiquez la quantité nécessaire par portion. Laisser vide = ingrédient non utilisé.</p><div style="max-height:400px;overflow-y:auto;margin-bottom:16px;padding-right:4px">'+rows+'</div><div class="flex gap-2"><button class="btn btn-ghost" style="flex:1" data-action="admin-close-ingredients">Annuler</button><button class="btn btn-accent" style="flex:1" data-action="admin-save-ingredients" data-dish-id="'+dish._docId+'">Enregistrer</button></div></div></div>';
 }
 
 function screenAdmin(){
@@ -1433,7 +1485,6 @@ function screenAdmin(){
   let content="";
   if(v.section==="compartments"){
     const realComps = DATA.compartments.filter(c => c._docId !== "dessert");
-    // PATCH 3 : Suppression de la carte Dessert
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">🏢 Compartiments</h2><button class="btn btn-primary btn-sm" data-action="admin-add-comp">+ Ajouter</button></div><p class="section-sub">Ouverture gérée par les gérants</p>'+
     (realComps.length===0 ? '<p class="empty">Aucun compartiment</p>' :
     realComps.map(c=>{
@@ -1445,7 +1496,7 @@ function screenAdmin(){
   } else if(v.section==="menu"){
     const cats=["Entrées","Plats","Desserts","Boissons"];const byCat={};cats.forEach(c=>byCat[c]=[]);DATA.menu.forEach(d=>{if(!byCat[d.cat])byCat[d.cat]=[];byCat[d.cat].push(d);});
     content='<div class="flex between center" style="margin-bottom:16px"><h2 class="section-title" style="font-size:19px;margin:0">Menu</h2><button class="btn btn-primary btn-sm" data-action="admin-add-dish">+ Ajouter</button></div>';
-    Object.keys(byCat).forEach(cat=>{const dishes=byCat[cat];if(dishes.length===0&&!cats.includes(cat))return;content+='<div class="cat-group"><div class="cat-group-title">'+esc(cat)+' ('+dishes.length+')</div><div class="table-wrap"><table><thead><tr><th>Plat</th><th>Prix</th><th>Cuisson</th><th>Comp</th><th>Dispo</th><th></th></tr></thead><tbody>'+dishes.map(d=>v.editingDish===d._docId?'<tr><td><input class="input" data-input="dish-name" value="'+esc(d.name)+'" style="padding:6px;min-width:120px"><input class="input" data-input="dish-desc" value="'+esc(d.desc||"")+'" placeholder="Description" style="padding:6px;margin-top:4px;font-size:12px"></td><td><input class="input" type="number" data-input="dish-price" value="'+d.price+'" style="padding:6px;width:80px"></td><td><input class="input" type="number" data-input="dish-time" value="'+d.time+'" style="padding:6px;width:60px"></td><td><select class="input" data-input="dish-comp" style="padding:6px;width:auto">'+DATA.compartments.map(c=>'<option value="'+c._docId+'" '+(d.compartmentId===c._docId?"selected":"")+'>'+esc(c.name)+'</option>').join("")+'</select></td><td><input type="checkbox" data-input="dish-avail" '+(d.available?"checked":"")+' style="width:20px;height:20px"></td><td style="white-space:nowrap"><select class="input" data-input="dish-cat" style="padding:6px;display:inline-block;width:auto">'+cats.map(c=>'<option '+(d.cat===c?"selected":"")+'>'+c+'</option>').join("")+'</select> <button class="btn btn-success btn-sm" data-action="admin-save-dish" data-id="'+d._docId+'">✓</button></td></tr>':'<tr><td><strong>'+esc(d.name)+'</strong></td><td class="mono">'+money(d.price)+'</td><td>'+d.time+' min</td><td><span class="badge badge-neutre">'+esc(getCompById(d.compartmentId)?.name||"—")+'</span></td><td><span class="badge '+(d.available?"badge-vert":"badge-rouge")+'">'+(d.available?"Oui":"Non")+'</span></td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost btn-sm" data-action="admin-edit-dish" data-id="'+d._docId+'">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-dish" data-id="'+d._docId+'">🗑️</button></td></tr>').join("")+'</tbody></table></div></div>';});
+    Object.keys(byCat).forEach(cat=>{const dishes=byCat[cat];if(dishes.length===0&&!cats.includes(cat))return;content+='<div class="cat-group"><div class="cat-group-title">'+esc(cat)+' ('+dishes.length+')</div><div class="table-wrap"><table><thead><tr><th>Plat</th><th>Prix</th><th>Cuisson</th><th>Comp</th><th>Dispo</th><th></th></tr></thead><tbody>'+dishes.map(d=>v.editingDish===d._docId?'<tr><td><input class="input" data-input="dish-name" value="'+esc(d.name)+'" style="padding:6px;min-width:120px"><input class="input" data-input="dish-desc" value="'+esc(d.desc||"")+'" placeholder="Description" style="padding:6px;margin-top:4px;font-size:12px"></td><td><input class="input" type="number" data-input="dish-price" value="'+d.price+'" style="padding:6px;width:80px"></td><td><input class="input" type="number" data-input="dish-time" value="'+d.time+'" style="padding:6px;width:60px"></td><td><select class="input" data-input="dish-comp" style="padding:6px;width:auto">'+DATA.compartments.map(c=>'<option value="'+c._docId+'" '+(d.compartmentId===c._docId?"selected":"")+'>'+esc(c.name)+'</option>').join("")+'</select></td><td><input type="checkbox" data-input="dish-avail" '+(d.available?"checked":"")+' style="width:20px;height:20px"></td><td style="white-space:nowrap"><select class="input" data-input="dish-cat" style="padding:6px;display:inline-block;width:auto">'+cats.map(c=>'<option '+(d.cat===c?"selected":"")+'>'+c+'</option>').join("")+'</select> <button class="btn btn-success btn-sm" data-action="admin-save-dish" data-id="'+d._docId+'">✓</button></td></tr>':'<tr><td><strong>'+esc(d.name)+'</strong></td><td class="mono">'+money(d.price)+'</td><td>'+d.time+' min</td><td><span class="badge badge-neutre">'+esc(getCompById(d.compartmentId)?.name||"—")+'</span></td><td><span class="badge '+(d.available?"badge-vert":"badge-rouge")+'">'+(d.available?"Oui":"Non")+'</span></td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost btn-sm" data-action="admin-edit-dish" data-id="'+d._docId+'">✏️</button><button class="btn btn-ghost btn-sm" data-action="admin-edit-ingredients" data-id="'+d._docId+'" title="Ingrédients">🧂</button><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-dish" data-id="'+d._docId+'">🗑️</button></td></tr>').join("")+'</tbody></table></div></div>';});
   } else if(v.section==="staff"){
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Personnel</h2><div class="card" style="margin-bottom:16px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-staff-name" value="'+esc(v.newStaff.name)+'"><select class="input" data-input="new-staff-role">'+["serveuse","cuisine","gerant","livreur","admin"].map(r=>'<option '+(v.newStaff.role===r?"selected":"")+'>'+r+'</option>').join("")+'</select><input class="input mono" placeholder="PIN" maxlength="4" inputmode="numeric" data-input="new-staff-pin" value="'+esc(v.newStaff.pin)+'"><input class="input" placeholder="Email" data-input="new-staff-email" value="'+esc(v.newStaff.email||"")+'"><input class="input" placeholder="Mot de passe" data-input="new-staff-pwd" value="'+esc(v.newStaff.password||"")+'"><button class="btn btn-primary" data-action="admin-add-staff">Ajouter</button></div></div><div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">'+DATA.staff.map(p=>{const isAg=p.role==="gerant"||p.role==="admin";const creds=isAg?'📧 '+esc(p.email||"—"):'PIN '+esc(p.pin||"—");const comp=getCompById(p.compartmentId);return '<div class="card"><p class="bold">'+esc(p.name)+'</p><p class="text-xs muted">'+esc(p.role)+(comp?' · '+esc(comp.name):'')+'</p><p class="mono text-xs" style="color:var(--jaune-fonce);margin-top:6px">'+creds+'</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+(isAg?'<button class="btn btn-ghost btn-sm" data-action="admin-reset-creds" data-id="'+p._docId+'">Réinit MDP</button>':'<button class="btn btn-ghost btn-sm" data-action="admin-reset-pin" data-id="'+p._docId+'">Réinit PIN</button>')+'<button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-staff" data-id="'+p._docId+'">Suppr.</button></div></div>';}).join("")+'</div>';
   } else if(v.section==="tables"){
@@ -1455,8 +1506,8 @@ function screenAdmin(){
   } else if(v.section==="stock"){
     if(!v.stockForm.stockId&&DATA.stock[0])v.stockForm.stockId=DATA.stock[0]._docId;
     content='<div class="flex between center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px"><h2 class="section-title" style="font-size:19px;margin:0">Stock</h2><button class="btn btn-primary btn-sm" data-action="admin-toggle-new-stock">'+(v.showNewStock?"✕ Annuler":"+ Ingrédient")+'</button></div>';
-    if(v.showNewStock){const ns=v.newStockItem;content+='<div class="card" style="margin-bottom:16px;border-left:4px solid var(--jaune)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-stock-name" value="'+esc(ns.name)+'"><input class="input" placeholder="Unité" data-input="new-stock-unit" value="'+esc(ns.unit)+'"><input class="input" type="number" placeholder="Qté init." data-input="new-stock-initial" value="'+(ns.initial||"")+'"><input class="input" type="number" placeholder="Seuil" data-input="new-stock-threshold" value="'+(ns.threshold||"")+'"><button class="btn btn-accent" data-action="admin-create-stock">Créer</button></div></div>';}
-    content+='<div class="table-wrap" style="margin-bottom:16px"><table><thead><tr><th>Ingrédient</th><th>Qté</th><th>Seuil</th><th>État</th><th></th></tr></thead><tbody>'+DATA.stock.map(s=>{const qty=stockQty(s._docId);const low=qty<=s.threshold;return '<tr><td><strong>'+esc(s.name)+'</strong></td><td class="mono">'+qty+' '+esc(s.unit)+'</td><td class="muted">'+s.threshold+'</td><td>'+(low?'<span class="badge badge-rouge">⚠</span>':'<span class="badge badge-vert">OK</span>')+'</td><td style="text-align:right"><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-stock" data-id="'+s._docId+'">🗑️</button></td></tr>';}).join("")+'</tbody></table></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">Mouvement</h3><div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><select class="input" data-input="stock-id">'+DATA.stock.map(s=>'<option value="'+s._docId+'" '+(v.stockForm.stockId===s._docId?"selected":"")+'>'+esc(s.name)+'</option>').join("")+'</select><select class="input" data-input="stock-type">'+["Entrée","Sortie"].map(t=>'<option '+(v.stockForm.type===t?"selected":"")+'>'+t+'</option>').join("")+'</select><input class="input" type="number" placeholder="Qté" data-input="stock-qty" value="'+(v.stockForm.qty||"")+'"><input class="input" placeholder="Motif" data-input="stock-motif" value="'+esc(v.stockForm.motif)+'"><button class="btn btn-primary" data-action="admin-add-move">OK</button></div></div>';
+    if(v.showNewStock){const ns=v.newStockItem;content+='<div class="card" style="margin-bottom:16px;border-left:4px solid var(--jaune)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px"><input class="input" placeholder="Nom" data-input="new-stock-name" value="'+esc(ns.name)+'"><input class="input" placeholder="Unité" data-input="new-stock-unit" value="'+esc(ns.unit)+'"><input class="input" type="number" placeholder="Qté init." data-input="new-stock-initial" value="'+(ns.initial||"")+'"><input class="input" type="number" placeholder="Seuil manuel" data-input="new-stock-threshold" value="'+(ns.threshold||"")+'"><button class="btn btn-accent" data-action="admin-create-stock">Créer</button></div></div>';}
+    content+='<div class="table-wrap" style="margin-bottom:16px"><table><thead><tr><th>Ingrédient</th><th>Qté</th><th>Seuil auto</th><th>État</th><th></th></tr></thead><tbody>'+DATA.stock.map(s=>{const qty=stockQty(s._docId);const autoThresh=getDynamicThreshold(s);const low=qty<=autoThresh;const out=qty<=0;return '<tr><td><strong>'+esc(s.name)+'</strong></td><td class="mono">'+qty+' '+esc(s.unit)+'</td><td class="muted">'+(out?'⚠️ 0':autoThresh)+' <span class="text-xs" style="opacity:0.6">(auto)</span></td><td>'+(out?'<span class="badge badge-rouge">Rupture</span>':(low?'<span class="badge badge-orange">Bas</span>':'<span class="badge badge-vert">OK</span>'))+'</td><td style="text-align:right"><button class="btn btn-ghost btn-sm" style="color:var(--rouge)" data-action="admin-del-stock" data-id="'+s._docId+'">🗑️</button></td></tr>';}).join("")+'</tbody></table></div><h3 class="bold" style="margin-bottom:10px;font-size:15px">Mouvement</h3><div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><select class="input" data-input="stock-id">'+DATA.stock.map(s=>'<option value="'+s._docId+'" '+(v.stockForm.stockId===s._docId?"selected":"")+'>'+esc(s.name)+'</option>').join("")+'</select><select class="input" data-input="stock-type">'+["Entrée","Sortie"].map(t=>'<option '+(v.stockForm.type===t?"selected":"")+'>'+t+'</option>').join("")+'</select><input class="input" type="number" placeholder="Qté" data-input="stock-qty" value="'+(v.stockForm.qty||"")+'"><input class="input" placeholder="Motif" data-input="stock-motif" value="'+esc(v.stockForm.motif)+'"><button class="btn btn-primary" data-action="admin-add-move">OK</button></div></div>';
   } else if(v.section==="bilan"){
     const from=v.bilanFrom||nowDate();const to=v.bilanTo||nowDate();
     const fromTs=new Date(from+"T00:00:00").getTime();const toTs=new Date(to+"T23:59:59").getTime();
@@ -1530,7 +1581,14 @@ function screenPinModal(){
   return '<div class="modal-overlay"><div class="modal-card"><div style="font-size:48px;margin-bottom:12px">🔐</div><h2>Vérification</h2><p style="font-weight:700;color:var(--rouge);font-size:15px;margin-bottom:14px">'+esc(labels[pendingReset.action]||pendingReset.action)+'</p><p style="font-size:13px;margin-bottom:10px">Mot de passe admin :</p><input type="password" id="reset-pin-input" data-input="reset-pin" autocomplete="new-password" value="'+esc(pendingReset.pin||"")+'" class="pin-modal-input">'+(pendingReset.error?'<p style="color:var(--rouge);font-size:13px;font-weight:600">'+esc(pendingReset.error)+'</p>':'<div style="height:20px"></div>')+'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ghost" style="flex:1" data-action="reset-cancel">Annuler</button><button class="btn btn-danger" style="flex:1" data-action="reset-confirm">Confirmer</button></div></div></div>';
 }
 
-function render(){
+function render(force){
+  if(!force){
+    const active=document.activeElement;
+    if(active && (active.tagName==="INPUT" || active.tagName==="TEXTAREA") && active.dataset && active.dataset.input){
+      const noRenderInputs = ["login-email","login-password","rec-email","rec-code","rec-newpwd","rec-newpwd2","wiz-caisse","reset-pin","info-name","info-phone","info-address","client-momo-ref","new-staff-name","new-staff-pin","new-staff-email","new-staff-pwd","set-name","set-phone","set-momo","set-open-hour","set-close-hour","set-resto-lat","set-resto-lon","set-km-price","set-email-rapport","set-onesignal","set-webhook-url","set-webhook-token","set-master-code","ingredient-qty"];
+      if(noRenderInputs.includes(active.dataset.input)) return;
+    }
+  }
   const root=document.getElementById("root");
   if(mapInstance && (!SESSION || SESSION.role!=="client" || (clientS.screen!=="deliveryInfo"))) destroyMap();
 
@@ -1541,7 +1599,6 @@ function render(){
       root.innerHTML = '<div class="loader"><div class="loader-logo">D&S</div><div class="spin"></div><p class="loader-text">Chargement…</p></div>';
       return;
     }
-    // PATCH 2.2 : Bug lien admin
     if(!isAppAllowed(null) && urlMode !== "admin"){ root.innerHTML = screenClosed(); return; }
     root.innerHTML=screenLogin(); return;
   }
@@ -1556,6 +1613,7 @@ function render(){
   else if(SESSION.role==="livreur")html=screenLivreur();
   else if(SESSION.role==="admin")html=screenAdmin();
   if(SESSION.role==="admin" && pendingReset) html+=screenPinModal();
+  if(SESSION.role==="admin" && admS.ingredientsModal) html+=screenIngredientsModal();
   root.innerHTML=html;
   restoreInput(saved);
   if(SESSION.role==="client" && clientS.screen==="deliveryInfo"){setTimeout(initLeafletMap,80);}
@@ -1601,10 +1659,10 @@ document.addEventListener("click",async function(e){
 
   if(action==="login-submit"){
     const email=loginEmail.trim().toLowerCase();const pwd=loginPassword;
-    if(!email||!pwd){loginError="Remplissez tous les champs";render();return;}
+    if(!email||!pwd){loginError="Remplissez tous les champs";render(true);return;}
     const user=DATA.staff.find(s=>s.role===loginRole && s.email && s.email.toLowerCase()===email && s.password===pwd);
     if(user){A.login(loginRole,user.name);loginRole=null;loginEmail="";loginPassword="";loginError="";A.logAuth(user.role,user.email,"✅ Connexion réussie");}
-    else{loginError="Identifiants incorrects";loginPassword="";A.logAuth(loginRole,email,"❌ Échec connexion");render();}
+    else{loginError="Identifiants incorrects";loginPassword="";A.logAuth(loginRole,email,"❌ Échec connexion");render(true);}
     return;
   }
   if(action==="login-forgot-pwd"){loginRecovery={stage:"form",email:"",code:"",error:""};render();return;}
@@ -1614,33 +1672,33 @@ document.addEventListener("click",async function(e){
     if(!loginRecovery) return;
     const email=(loginRecovery.email||"").trim().toLowerCase();
     const code=(loginRecovery.code||"").trim().toUpperCase();
-    if(!email||!code){ loginRecovery.error="Remplissez les deux champs"; render(); return; }
+    if(!email||!code){ loginRecovery.error="Remplissez les deux champs"; render(true); return; }
     let user;
     if(code === masterCode().toUpperCase()){ user = DATA.staff.find(s => s.role===loginRole && s.email && s.email.toLowerCase()===email); }
     else { user = DATA.staff.find(s => s.role===loginRole && s.email && s.email.toLowerCase()===email && s.recoveryCode && s.recoveryCode.toUpperCase()===code); }
     if(user){loginRecovery.stage="newPwd";loginRecovery.matchedId=user._docId;loginRecovery.matchedName=user.name;loginRecovery.newPwd="";loginRecovery.newPwd2="";loginRecovery.error="";}
     else{loginRecovery.error="Email ou code invalide";}
-    render(); return;
+    render(true); return;
   }
   if(action==="rec-save"){
     if(!loginRecovery) return;
     const p1=loginRecovery.newPwd||"";const p2=loginRecovery.newPwd2||"";
-    if(p1.length<6){loginRecovery.error="Minimum 6 caractères";render();return;}
-    if(p1!==p2){loginRecovery.error="Les mots de passe ne correspondent pas";render();return;}
-    try{const newCode=await A.resetPasswordWithRecovery(loginRecovery.matchedId, p1);loginRecovery.stage="success";loginRecovery.generatedCode=newCode;render();}catch(err){loginRecovery.error="Erreur : "+err.message;render();}
+    if(p1.length<6){loginRecovery.error="Minimum 6 caractères";render(true);return;}
+    if(p1!==p2){loginRecovery.error="Les mots de passe ne correspondent pas";render(true);return;}
+    try{const newCode=await A.resetPasswordWithRecovery(loginRecovery.matchedId, p1);loginRecovery.stage="success";loginRecovery.generatedCode=newCode;render(true);}catch(err){loginRecovery.error="Erreur : "+err.message;render(true);}
     return;
   }
 
-  if(action==="logout"){resetClient();destroyMap();pendingReset=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null,wizard:null};livS={tab:"available"};A.logout();return;}
+  if(action==="logout"){resetClient();destroyMap();pendingReset=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null,wizard:null};livS={tab:"available"};admS={...admS,ingredientsModal:null};A.logout();return;}
 
   if(action==="reset-cancel"){pendingReset=null;render();return;}
   if(action==="reset-confirm"){
     if(!pendingReset) return;
     const admin=DATA.staff.find(s=>s.role==="admin");
-    if(!admin){pendingReset.error="Aucun admin";render();return;}
-    if(!pendingReset.pin||pendingReset.pin.length<4){pendingReset.error="Mot de passe trop court";render();return;}
+    if(!admin){pendingReset.error="Aucun admin";render(true);return;}
+    if(!pendingReset.pin||pendingReset.pin.length<4){pendingReset.error="Mot de passe trop court";render(true);return;}
     const okPwd=admin.password && admin.password===pendingReset.pin;
-    if(!okPwd){const wrong=pendingReset.pin;pendingReset.error="Mot de passe incorrect";pendingReset.pin="";await A.logReset(pendingReset.action,"❌ Mot de passe incorrect",wrong);render();return;}
+    if(!okPwd){const wrong=pendingReset.pin;pendingReset.error="Mot de passe incorrect";pendingReset.pin="";await A.logReset(pendingReset.action,"❌ Mot de passe incorrect",wrong);render(true);return;}
     const act=pendingReset.action;pendingReset=null;
     try{
       let resultMsg="";
@@ -1763,6 +1821,23 @@ document.addEventListener("click",async function(e){
   if(action==="grace-toggle-role"){const r=el.dataset.role;const f=admS.graceForm;if(f.roles.includes(r))f.roles=f.roles.filter(x=>x!==r);else f.roles=[...f.roles,r];render();return;}
   if(action==="admin-activate-grace"){const f=admS.graceForm;if(!f.roles.length){toast("Sélectionnez un rôle");return;}await A.activateGrace(f.duration, f.roles);toast("Dérogation activée");render();return;}
   if(action==="admin-cancel-grace"){if(!confirm("Annuler ?"))return;await A.cancelGrace();toast("Annulée");render();return;}
+
+  if(action==="admin-edit-ingredients"){ admS.ingredientsModal = { dishId: id }; render(); return; }
+  if(action==="admin-close-ingredients"){ admS.ingredientsModal = null; render(); return; }
+  if(action==="admin-save-ingredients"){
+    const dishId = el.dataset.dishId;
+    const inputs = document.querySelectorAll('[data-input="ingredient-qty"]');
+    const ingredients = [];
+    inputs.forEach(input => {
+      const qty = parseFloat(input.value) || 0;
+      if(qty > 0) ingredients.push({ stockId: input.dataset.stockId, qty });
+    });
+    await A.updateDish(dishId, { ingredients });
+    admS.ingredientsModal = null;
+    toast("✅ Ingrédients enregistrés");
+    render();
+    return;
+  }
 
   if(action==="client-cat"){v.cat=el.dataset.cat;render();return;}
   if(action==="client-add"){v.cart[id]=(v.cart[id]||0)+1;render();return;}
@@ -1972,16 +2047,11 @@ document.addEventListener("click",async function(e){
   }
 
   if(action==="cui-home"){render();return;}
-  
-  // PATCH 4.D : Appel markReady avec compId
   if(action==="cui-ready"){const myCompId = getMyCompId("cuisine");await A.markReady(id, myCompId);toast("Partie prête !");render();return;}
 
   if(action==="liv-home"){livS.tab="available";render();return;}
   if(action==="liv-tab"){livS.tab=el.dataset.tab;render();return;}
-  
-  // PATCH 5.C : Appel takeDelivery avec téléphone
   if(action==="liv-take"){const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");if(me)await A.takeDelivery(id,me._docId,me.name, me.phone || DATA.settings.phone);livS.tab="current";render();return;}
-  
   if(action==="liv-enroute"){await A.setDeliveryStatus(id,"en_route");return;}
   if(action==="liv-done"){await A.markDelivered(id);render();return;}
 
@@ -2078,7 +2148,7 @@ document.addEventListener("input",function(e){
   if(key==="client-rating-comment")v.ratingComment=el.value;
   if(key==="client-claim-text")v.claimText=el.value;
   if(key==="client-contact-phone"){const clean=el.value.replace(/[^\d]/g,"").slice(0,10);if(clean!==el.value)el.value=clean;v.contactPhone=clean;return;}
-  if(key==="wiz-caisse"&&gerS.wizard){gerS.wizard.caisse=el.value;return;}
+  if(key==="wiz-caisse"&&gerS.wizard){const clean=el.value.replace(/[^\d]/g,"");if(clean!==el.value)el.value=clean;gerS.wizard.caisse=clean;return;}
   if(key==="srv-collect-ref")srvS.collectRef=el.value;
   if(key==="new-staff-name")admS.newStaff.name=el.value;
   if(key==="new-staff-pin")admS.newStaff.pin=el.value.replace(/\D/g,"").slice(0,4);
@@ -2112,7 +2182,7 @@ document.addEventListener("input",function(e){
 
 document.addEventListener("keydown",function(e){
   if(pendingReset && document.activeElement && document.activeElement.dataset && document.activeElement.dataset.input==="reset-pin"){
-    if(e.key==="Enter"){e.preventDefault();document.querySelector('[data-action="reset-confirm"]')?.click();return;}
+    if(e.key==="Enter"){e.preventDefault();if(document.activeElement) document.activeElement.blur();document.querySelector('[data-action="reset-confirm"]')?.click();return;}
     return;
   }
   if(SESSION)return;
@@ -2120,10 +2190,10 @@ document.addEventListener("keydown",function(e){
   if(loginRole==="gerant"||loginRole==="admin"){
     if(e.key==="Enter"){
       if(loginRecovery){
-        if(loginRecovery.stage==="form" && document.activeElement && document.activeElement.dataset.input==="rec-code"){e.preventDefault();document.querySelector('[data-action="rec-verify"]')?.click();}
-        else if(loginRecovery.stage==="newPwd" && document.activeElement && document.activeElement.dataset.input==="rec-newpwd2"){e.preventDefault();document.querySelector('[data-action="rec-save"]')?.click();}
+        if(loginRecovery.stage==="form" && document.activeElement && document.activeElement.dataset.input==="rec-code"){e.preventDefault();if(document.activeElement) document.activeElement.blur();document.querySelector('[data-action="rec-verify"]')?.click();}
+        else if(loginRecovery.stage==="newPwd" && document.activeElement && document.activeElement.dataset.input==="rec-newpwd2"){e.preventDefault();if(document.activeElement) document.activeElement.blur();document.querySelector('[data-action="rec-save"]')?.click();}
       } else if(document.activeElement && document.activeElement.dataset.input==="login-password"){
-        e.preventDefault(); document.querySelector('[data-action="login-submit"]')?.click();
+        e.preventDefault();if(document.activeElement) document.activeElement.blur();document.querySelector('[data-action="login-submit"]')?.click();
       }
     }
     return;
@@ -2184,20 +2254,17 @@ function handleUrlParams(){
   if(admin === "1"){
     urlParamsHandled = true;
     urlMode = "admin";
-    console.log("🔐 Lien ADMIN");
     return;
   }
   if(staff === "1"){
     urlParamsHandled = true;
     urlMode = "staff";
-    console.log("🔐 Lien STAFF");
     return;
   }
   if(t){
     const num = parseInt(t);
     if(num){
       if(!DATA.tables.length){
-        console.log("⏳ En attente des tables pour traiter ?table=" + num);
         return;
       }
       const f = DATA.tables.find(x => x.number === num);
@@ -2210,11 +2277,9 @@ function handleUrlParams(){
         clientS.tableId = f._docId;
         clientS.screen = "menu";
         clientS.cart = {};
-        console.log("📱 QR table " + num + " détecté (comp: " + (f.compartmentId||"—") + ")");
         return;
       } else {
         urlParamsHandled = true;
-        console.warn("⚠️ Table " + num + " introuvable en base");
         return;
       }
     }
@@ -2224,7 +2289,6 @@ function handleUrlParams(){
   SESSION = { role:"client", name:"Client (Livraison)", userId:DEVICE_ID, since:Date.now(), isDelivery:true };
   setTimeout(loadOneSignal, 200); applyRoleTag("client");
   clientS.mode = "livraison"; clientS.screen = "menu"; clientS.cart = {};
-  console.log("🛵 Lien livraison général");
 }
 
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("service-worker.js").catch(e=>console.warn("SW:",e));});}
