@@ -86,6 +86,7 @@ input,select,textarea{font-family:inherit;font-size:16px}
 .badge-vert{background:rgba(45,122,62,0.12);color:var(--vert)}
 .badge-orange{background:rgba(224,168,0,0.18);color:var(--jaune-fonce)}
 .badge-rouge{background:rgba(192,57,43,0.12);color:var(--rouge)}
+.badge-gris{background:rgba(107,107,107,0.12);color:var(--gris)}
 .input{width:100%;padding:12px;border:1px solid var(--sable);border-radius:8px;font-size:16px;background:white}
 .input:focus{outline:none;border-color:var(--jaune)}
 .cart-fab{position:fixed;bottom:16px;left:16px;right:16px;padding:16px;background:var(--noir);color:white;border-radius:12px;display:flex;justify-content:space-between;align-items:center;z-index:50;max-width:480px;margin:0 auto;border:2px solid var(--jaune)}
@@ -182,6 +183,14 @@ td{padding:10px 12px;border-top:1px solid #f0ede4;vertical-align:middle}
 .welcome-banner .wsubtitle{font-size:12px;color:var(--gris);margin:3px 0 0;line-height:1.3}
 .welcome-banner .wclose{background:transparent;color:var(--gris);font-size:18px;padding:4px 8px;font-weight:bold;flex-shrink:0;align-self:flex-start}
 .welcome-banner .wclose:hover{color:var(--noir)}
+.age-badge{display:inline-flex;align-items:center;gap:3px;font-family:monospace;font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px}
+.age-badge.fresh{background:rgba(107,107,107,0.12);color:var(--gris)}
+.age-badge.warn{background:rgba(224,168,0,0.18);color:var(--jaune-fonce)}
+.age-badge.danger{background:rgba(192,57,43,0.15);color:var(--rouge)}
+.abandon-motif-btn{display:flex;align-items:center;gap:10px;padding:12px;border:2px solid var(--sable);border-radius:10px;margin-bottom:8px;cursor:pointer;background:white;font-size:14px;text-align:left;width:100%}
+.abandon-motif-btn.on{border-color:var(--rouge);background:rgba(192,57,43,0.06)}
+.abandon-motif-btn .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--sable);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:white}
+.abandon-motif-btn.on .dot{background:var(--rouge);border-color:var(--rouge)}
 @media print{@page{size:80mm auto;margin:0}body *{visibility:hidden}#qr-print-area,#qr-print-area *{visibility:visible}#qr-print-area{position:absolute;left:0;top:0;width:100%;padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:20px}#invoice-print,#invoice-print *{visibility:visible}#invoice-print{position:absolute;left:0;top:0;width:80mm;padding:2mm 3mm;font-family:'Courier New',monospace;font-size:11px;color:#000;background:#fff}#invoice-print .inv-line{border-top:1px dashed #000;margin:4px 0}}
 #invoice-print{display:none;font-family:'Courier New',monospace}
 </style>
@@ -205,6 +214,8 @@ const DEFAULT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxS4EBYEyB5
 const DEFAULT_WEBHOOK_TOKEN = "DS-PUSH-2026";
 const CLAIM_DELAY_MS = 60*60*1000;
 const LIVREUR_SHARE = 0.80;
+const AUTO_ABANDON_MS = 2*60*60*1000;
+const ABANDON_PURGE_DAYS = 30;
 
 let DEVICE_ID = localStorage.getItem("ds_device_id");
 if (!DEVICE_ID) { DEVICE_ID = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); localStorage.setItem("ds_device_id", DEVICE_ID); }
@@ -216,6 +227,8 @@ let audioCtx = null;
 let stockAlerts = {};
 let stockAlertsInitialized = false;
 let prevDishAvailability = null;
+let lastAutoAbandonCheck = 0;
+let lastPurgeCheck = 0;
 
 function isSoundEnabled(){ return localStorage.getItem("ds_sound_enabled") === "1"; }
 function setSoundEnabled(v){ localStorage.setItem("ds_sound_enabled", v ? "1" : "0"); }
@@ -288,6 +301,8 @@ function webhookToken(){ return DATA.settings.webhookToken || DEFAULT_WEBHOOK_TO
 function masterCode(){ return DATA.settings.masterCode || MASTER_RECOVERY_CODE; }
 function genRecoveryCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const blk=()=>{let s="";for(let i=0;i<4;i++)s+=chars[Math.floor(Math.random()*chars.length)];return s;}; return "DS-"+blk()+"-"+blk(); }
 function restoMomoNumber(){ return DATA.settings.momoNumber || "01 97 00 00 00"; }
+function autoAbandonMs(){ return Number(DATA.settings.autoAbandonHours || 2) * 60 * 60 * 1000; }
+function abandonPurgeDays(){ return Number(DATA.settings.abandonPurgeDays || 30); }
 
 function getBeninTime(){ const now=new Date(); return { hour:(now.getUTCHours()+1)%24, min:now.getUTCMinutes(), sec:now.getUTCSeconds() }; }
 function getBeninHour(){ return getBeninTime().hour; }
@@ -560,7 +575,9 @@ const SEED = {
     welcomeDeliverySub: "Commandez, on s'occupe du reste",
     welcomeReturning: "Ravi de vous revoir 🙏",
     welcomeReturningSub: "Merci pour votre confiance",
-    welcomeReturningThreshold: 3
+    welcomeReturningThreshold: 3,
+    autoAbandonHours: 2,
+    abandonPurgeDays: 30
   }
 };
 
@@ -631,6 +648,16 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;",
 function validPhoneBJ(p){return /^01\d{8}$/.test(String(p||"").replace(/\s/g,""));}
 function qrUrl(text, size){size=size||400;return "https://api.qrserver.com/v1/create-qr-code/?size="+size+"x"+size+"&data="+encodeURIComponent(text);}
 
+function orderAgeInfo(o){
+  const ms = Date.now() - (o.createdAt || Date.now());
+  const mins = Math.floor(ms / 60000);
+  let cls = "fresh";
+  if(mins >= 120) cls = "danger";
+  else if(mins >= 30) cls = "warn";
+  const label = mins < 60 ? mins + " min" : Math.floor(mins/60) + "h" + (mins%60 ? String(mins%60).padStart(2,"0") : "");
+  return { mins, cls, label };
+}
+
 function bilanStart(){const now=new Date();const h=DATA.settings.bilanResetHour||6;const start=new Date(now);start.setHours(h,0,0,0);if(now.getHours()<h)start.setDate(start.getDate()-1);return start.getTime();}
 function inCurrentBilan(o){ return (o.createdAt||0) >= bilanStart(); }
 
@@ -646,7 +673,7 @@ function orderTimerInfo(o){const items=o.items.filter(i=>i.statut!=="Refusé");c
 function deliveryFeeFor(o){if(!o||o.type!=="livraison")return 0;if(o.deliveryKm!=null)return Math.round(o.deliveryKm*prixParKm());return 0;}
 function orderTotal(o){return o.items.filter(i=>i.statut!=="Refusé").reduce((s,i)=>s+i.price*i.qty,0);}
 function orderGrandTotal(o){return orderTotal(o) + deliveryFeeFor(o);}
-function orderIsFinal(o){ return o && (o.status==="servie" || o.status==="livree" || o.status==="refusee"); }
+function orderIsFinal(o){ return o && (o.status==="servie" || o.status==="livree" || o.status==="refusee" || o.status==="abandonnee"); }
 
 function preserveInput(){const a=document.activeElement;if(!a||!a.dataset||!a.dataset.input)return null;return { key:a.dataset.input, start:a.selectionStart, end:a.selectionEnd };}
 function restoreInput(saved){if(!saved)return;const el=document.querySelector('[data-input="'+saved.key+'"]');if(el){el.focus();try{el.setSelectionRange(saved.start,saved.end);}catch(e){}}}
@@ -710,6 +737,7 @@ const A = {
       paymentMethod: null, paymentRef:null,
       readyAt:null, readyAtByComp:null, servedAt:null, cashIssue:null, callCount:0,
       cashCollected: false, cashCollectedAt: null, cashCollectedBy: null,
+      abandonMotif:null, abandonAt:null, abandonBy:null, abandonAuto:false,
       source:order.source||"client", deviceId:DEVICE_ID,
       rating:null, claim:null
     };
@@ -725,6 +753,37 @@ const A = {
 
   async updateOrder(id,patch){ await updateDoc(doc(db,"orders",id),patch); },
   async deleteOrder(id){ await deleteDoc(doc(db,"orders",id)); },
+
+  async abandonOrder(id, motif, auto){
+    const o = DATA.orders.find(x => x._docId === id);
+    if(!o) return;
+    await updateDoc(doc(db,"orders",id),{
+      status:"abandonnee",
+      abandonMotif: motif || "Non précisé",
+      abandonAt: Date.now(),
+      abandonBy: auto ? "auto" : (SESSION?.name || "?"),
+      abandonAuto: !!auto
+    });
+    if(auto){
+      const label = o.type==="livraison" ? "Livraison "+(o.clientInfo?.name||"") : "Table "+(o.tableNumber||"");
+      sendPush("⚠️ Commande abandonnée (auto)", label + " — " + motif, "gerant");
+      sendPush("⚠️ Commande abandonnée (auto)", label + " — " + motif, "admin");
+    }
+  },
+
+  async restoreOrder(id){
+    const o = DATA.orders.find(x => x._docId === id);
+    if(!o) return;
+    const restoredStatus = o.type === "livraison" ? "att_verif_paiement" : "att_validation";
+    await updateDoc(doc(db,"orders",id),{
+      status: restoredStatus,
+      abandonMotif: null,
+      abandonAt: null,
+      abandonBy: null,
+      abandonAuto: false
+    });
+    toast("↩️ Commande restaurée");
+  },
 
   async setItemStatut(orderId,idx,statut,motif){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const items=o.items.map((it,i)=>i===idx?{...it,statut,motif:statut==="Refusé"?(motif||it.motif):null}:it);await updateDoc(doc(db,"orders",orderId),{items});},
   async setItemMotif(orderId,idx,motif){const o=DATA.orders.find(o=>o._docId===orderId);if(!o)return;const items=o.items.map((it,i)=>i===idx?{...it,motif}:it);await updateDoc(doc(db,"orders",orderId),{items});},
@@ -928,7 +987,7 @@ const A = {
     const c = getCompById(compId);
     if(!c) throw new Error("Compartiment introuvable");
     const activeOrders = DATA.orders.filter(o => {
-      if(o.status==="servie"||o.status==="livree"||o.status==="refusee") return false;
+      if(o.status==="servie"||o.status==="livree"||o.status==="refusee"||o.status==="abandonnee") return false;
       if(o.type === "sur_place"){ const t = DATA.tables.find(x=>x._docId===o.tableId); return t && t.compartmentId === compId; }
       return false;
     });
@@ -944,6 +1003,43 @@ const A = {
   },
   async downloadBackup(){const payload={exportedAt:new Date().toISOString(),settings:DATA.settings,menu:DATA.menu,staff:DATA.staff,tables:DATA.tables,compartments:DATA.compartments,stock:DATA.stock,stockMoves:DATA.stockMoves,zones:DATA.zones,affectation:DATA.affectation,orders:DATA.orders,resetLogs:DATA.resetLogs};const json=JSON.stringify(payload,null,2);const blob=new Blob([json],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="restaurant-ds-backup-"+nowDate()+".json";a.click();URL.revokeObjectURL(url);}
 };
+
+async function checkAutoAbandon(){
+  const now = Date.now();
+  if(now - lastAutoAbandonCheck < 60000) return;
+  lastAutoAbandonCheck = now;
+  if(!SESSION || (SESSION.role !== "gerant" && SESSION.role !== "admin")) return;
+  const limit = autoAbandonMs();
+  const toAbandon = DATA.orders.filter(o => {
+    if(o.status !== "att_verif_paiement" && o.status !== "att_validation") return false;
+    return (now - (o.createdAt || 0)) > limit;
+  });
+  for(const o of toAbandon){
+    const motif = o.status === "att_verif_paiement" ? "Paiement non reçu (auto)" : "Non validé (auto)";
+    await A.abandonOrder(o._docId, motif, true);
+  }
+  if(toAbandon.length > 0){
+    sendPush("⚠️ Abandon auto", toAbandon.length + " commande(s) abandonnée(s) après " + Math.round(limit/3600000) + "h", "gerant");
+  }
+}
+
+async function purgeOldAbandoned(){
+  const now = Date.now();
+  if(now - lastPurgeCheck < 60 * 60 * 1000) return;
+  lastPurgeCheck = now;
+  if(!SESSION || SESSION.role !== "admin") return;
+  const limitMs = abandonPurgeDays() * 24 * 60 * 60 * 1000;
+  const toPurge = DATA.orders.filter(o =>
+    o.status === "abandonnee" && o.abandonAt && (now - o.abandonAt) > limitMs
+  );
+  if(toPurge.length === 0) return;
+  const batch = writeBatch(db);
+  toPurge.forEach(o => batch.delete(doc(db,"orders",o._docId)));
+  try{
+    await batch.commit();
+    console.log("🗑️ Purge abandons:", toPurge.length);
+  }catch(e){ console.error("Purge error:", e); }
+}
 
 function getCompById(id){ return DATA.compartments.find(c=>c._docId===id); }
 function getCompOfTable(tableId){ const t=DATA.tables.find(t=>t._docId===tableId); return t&&t.compartmentId?getCompById(t.compartmentId):null; }
@@ -1011,6 +1107,7 @@ function statusBadge(o){
   if(o.status==="servie")return '<span class="badge badge-vert">Servie</span>';
   if(o.status==="livree")return '<span class="badge badge-vert">Livrée</span>';
   if(o.status==="refusee")return '<span class="badge badge-rouge">Refusée</span>';
+  if(o.status==="abandonnee")return '<span class="badge badge-gris">Abandonnée</span>';
   if(o.status==="att_verif_paiement")return '<span class="badge badge-rouge">Vérif paiement</span>';
   if(o.status==="att_collect")return '<span class="badge badge-orange">À encaisser</span>';
   if(o.status==="payee"){if(o.cashIssue==="non_recu")return '<span class="badge badge-rouge">⚠ Non reçu</span>';const r=o.items.every(i=>i.statut==="Refusé"||o.readyAt);return '<span class="badge '+(r?"badge-vert":"badge-orange")+'">'+(r?"Prête":"En cuisine")+'</span>';}
@@ -1018,12 +1115,20 @@ function statusBadge(o){
   return '<span class="badge badge-rouge">À valider</span>';
 }
 
+const ABANDON_MOTIFS = [
+  "Client parti sans payer",
+  "Paiement non reçu",
+  "Client injoignable",
+  "Erreur / doublon",
+  "Autre"
+];
+
 let loginRole=null, loginPin="", loginEmail="", loginPassword="", loginError="", loginRecovery=null;
 let urlMode="default";
 let clientS={screen:"menu",mode:"livraison",cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},contactPhone:"",deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{},momoRefInput:"",claimType:null,claimText:"",ratingDriver:0,ratingResto:0,ratingComment:""};
 let srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};
-let gerS={tab:"validation",menuDraft:null,wizard:null};
-let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null,graceForm:{duration:60,roles:["serveuse","cuisine","livreur","gerant"]},livrPeriod:"today",ingredientsModal:null};
+let gerS={tab:"validation",menuDraft:null,wizard:null,abandonModal:null};
+let admS={section:"menu",editingDish:null,newStaff:{name:"",role:"serveuse",pin:"",email:"",password:""},stockForm:{stockId:"",type:"Entrée",qty:0,motif:""},newStockItem:{name:"",unit:"kg",initial:0,threshold:0},histFilter:{type:"Tous",payment:"Tous",query:""},settingsForm:null,showNewStock:false,bilanFrom:"",bilanTo:"",recoveryModal:null,graceForm:{duration:60,roles:["serveuse","cuisine","livreur","gerant"]},livrPeriod:"today",ingredientsModal:null,abandonModal:null};
 let livS={tab:"available"};
 let pendingReset=null;
 let mapInstance=null, mapMarker=null;
@@ -1126,6 +1231,10 @@ function screenClient(){
     }
   }
 
+  if(order && order.status==="abandonnee"){
+    return '<div class="app">'+topbar({title:"Commande non aboutie",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:40px"><div style="font-size:64px;margin-bottom:20px">⏱️</div><h2 class="section-title" style="font-size:22px">Commande non aboutie</h2><p class="muted" style="margin-top:14px;margin-bottom:14px">Votre commande n\'a pas pu être finalisée.</p><div class="card" style="text-align:left;margin-bottom:14px"><p class="text-sm muted" style="margin:0"><strong>Motif :</strong> '+esc(order.abandonMotif||"—")+'</p></div><p class="text-xs muted" style="margin-bottom:24px">Aucun montant n\'a été débité.</p><button class="btn btn-accent btn-block" style="padding:16px;margin-bottom:8px" data-action="client-rescan">🔄 Recommencer</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-block" style="text-decoration:none;color:var(--noir);border-color:var(--sable)">📞 Appeler le restaurant</a></div></div>';
+  }
+
   if(order && orderIsFinal(order)){
     if(order.status==="refusee" && v.screen!=="fully_refused"){ v.screen="fully_refused"; }
     if(order.status==="livree"){
@@ -1139,7 +1248,7 @@ function screenClient(){
     if(order.status==="servie" && v.screen==="tracking") v.screen="done";
   }
 
-  if(order && order.status!=="refusee" && order.status!=="livree" && order.status!=="servie"){
+  if(order && order.status!=="refusee" && order.status!=="livree" && order.status!=="servie" && order.status!=="abandonnee"){
     if(order.status==="att_verif_paiement" && v.screen==="waiting"){ }
     if(order.status==="att_collect" && v.screen==="waiting")v.screen="serving";
     if(order.status==="att_paiement" && v.screen==="waiting")v.screen="payment";
@@ -1174,8 +1283,6 @@ function screenClient(){
     const tableName=isSurPlace&&t?("Table "+t.number):"Livraison";
     const leftBtn=isSurPlace?'<div class="topbar-badge">🍽️ '+tableName+'</div>':'<span style="width:40px"></span>';
     const rightBtn=isSurPlace?'<span style="width:40px"></span>':'<button class="topbar-logout" data-action="logout">✕</button>';
-    
-    // NOUVEAU : Bannière d'accueil
     const welcome = getWelcomeBanner(v.mode, v.tableId);
     let welcomeHtml = "";
     if(welcome){
@@ -1188,7 +1295,6 @@ function screenClient(){
         +'<button class="wclose" data-action="client-dismiss-welcome" title="Fermer">×</button>'
         +'</div>';
     }
-    
     return '<div class="app" style="padding-bottom:100px"><div class="topbar">'+leftBtn+'<div style="flex:1;min-width:0"><p class="topbar-sub">Restaurant D&S</p><div class="topbar-title">Menu</div></div>'+rightBtn+'</div><div class="menu-header"><div class="cat-tabs" style="margin-top:0">'+cats.map(c=>'<button class="cat-btn on-dark '+(v.cat===c?"active":"")+'" data-action="client-cat" data-cat="'+c+'">'+c+'</button>').join("")+'</div></div><div class="content content-narrow" style="padding-top:12px">'+welcomeHtml+(dishes.length===0?'<p class="empty">Aucun plat disponible</p>':dishes.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p>'+(d.desc?'<p class="dish-desc">'+esc(d.desc)+'</p>':"")+'<div class="dish-meta"><span class="dish-price">'+money(d.price)+'</span><span class="dish-time">⏱ ~'+d.time+' min</span></div></div><div class="qty-controls">'+(v.cart[d._docId]>0?'<button class="qty-btn" data-action="client-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.cart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="client-add" data-id="'+d._docId+'">+</button></div></div>').join(""))+'</div>'+(count>0?'<div class="cart-fab" data-action="client-cart"><span class="label">Voir le panier ('+count+')</span><span class="total">'+money(total)+'</span></div>':"")+'</div>';
   }
 
@@ -1463,8 +1569,8 @@ function screenGerant(){
       }).join("")+'</div>';
     }
     content='<div style="display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">'+alertHtml+
-    '<div><h2 class="section-title" style="font-size:17px">🛵 Livraisons à vérifier ('+pendingLiv.length+')</h2>'+(pendingLiv.length===0?'<p class="empty">Aucune</p>':pendingLiv.map(o=>{const label="Livraison — "+(o.clientInfo?.name||"");const refDisplay = o.momoRef?('<div style="background:#faf8f2;padding:10px;border-radius:8px;font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;margin-bottom:10px">'+esc(o.momoRef)+'</div>'):"<p class='text-xs muted'>Aucune réf fournie</p>";return '<div class="card" style="margin-bottom:12px;border-left:4px solid var(--rouge)"><div class="card-row" style="margin-bottom:10px"><div style="min-width:0"><p class="card-title">'+esc(label)+'</p><p class="card-sub">'+timeAgo(o.createdAt)+' · '+money(orderGrandTotal(o))+'</p></div></div><p class="text-xs muted">📞 '+esc(o.clientInfo?.phone||"")+' · 📍 '+esc(o.clientInfo?.address||"")+'</p><ul style="margin:8px 0;padding-left:20px;font-size:13px;color:#555">'+o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+'</ul><p class="text-xs muted bold" style="margin-bottom:6px">RÉFÉRENCE MoMo :</p>'+refDisplay+'<div class="grid-2" style="margin-top:8px"><button class="btn btn-success" data-action="ger-validate-liv" data-id="'+o._docId+'">✓ Valider</button><button class="btn btn-danger" data-action="ger-reject-liv" data-id="'+o._docId+'">✕ Refuser</button></div></div>';}).join(""))+'</div>'+
-    '<div><h2 class="section-title" style="font-size:17px">📋 Sur place à valider ('+pending.length+')</h2>'+(pending.length===0?'<p class="empty">Rien en attente</p>':pending.map(o=>{const allDecided=o.items.every(i=>i.statut&&(i.statut!=="Refusé"||i.motif));const hasValid=o.items.some(i=>i.statut==="Validé");const validateLabel = hasValid ? "Valider" : "Refuser tout";const validateClass = hasValid ? "btn-primary" : "btn-danger";const label="Table "+(o.tableNumber||"—");return '<div class="card" style="margin-bottom:12px"><div class="card-row" style="margin-bottom:10px"><div style="min-width:0"><p class="card-title">'+esc(label)+'</p><p class="card-sub">'+timeAgo(o.createdAt)+'</p></div></div>'+o.items.map((it,idx)=>{const motifs=["Rupture de stock","Ingrédient manquant","Cuisine surchargée"];return '<div style="margin-bottom:10px"><div class="flex between center" style="margin-bottom:6px"><span style="'+(it.statut==="Refusé"?"text-decoration:line-through;color:var(--rouge)":"")+';font-size:14px">'+it.qty+'× '+esc(it.name)+'</span><div class="flex gap-2"><button class="qty-btn '+(it.statut==="Validé"?"add":"")+'" style="'+(it.statut==="Validé"?"background:var(--vert);border-color:var(--vert)":"")+'" data-action="ger-item-valid" data-id="'+o._docId+'" data-idx="'+idx+'">✓</button><button class="qty-btn" style="'+(it.statut==="Refusé"?"background:var(--rouge);color:white;border-color:var(--rouge)":"color:var(--rouge)")+'" data-action="ger-item-refuse" data-id="'+o._docId+'" data-idx="'+idx+'">✕</button></div></div>'+(it.statut==="Refusé"?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-left:6px">'+motifs.map(m=>'<button class="badge '+(it.motif===m?"badge-rouge":"badge-neutre")+'" style="border:1px solid var(--sable);padding:6px 10px" data-action="ger-motif" data-id="'+o._docId+'" data-idx="'+idx+'" data-motif="'+esc(m)+'">'+esc(m)+'</button>').join("")+'</div>':"")+'</div>';}).join("")+'<div class="flex gap-2" style="margin-top:8px"><button class="btn '+validateClass+'" style="flex:1" data-action="ger-validate" data-id="'+o._docId+'" '+(allDecided?"":"disabled")+'>'+validateLabel+'</button><button class="btn btn-danger btn-sm" data-action="ger-delete" data-id="'+o._docId+'">🗑️</button></div></div>';}).join(""))+'</div>'+
+    '<div><h2 class="section-title" style="font-size:17px">🛵 Livraisons à vérifier ('+pendingLiv.length+')</h2>'+(pendingLiv.length===0?'<p class="empty">Aucune</p>':pendingLiv.map(o=>{const label="Livraison — "+(o.clientInfo?.name||"");const refDisplay = o.momoRef?('<div style="background:#faf8f2;padding:10px;border-radius:8px;font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;margin-bottom:10px">'+esc(o.momoRef)+'</div>'):"<p class='text-xs muted'>Aucune réf fournie</p>";const age=orderAgeInfo(o);return '<div class="card" style="margin-bottom:12px;border-left:4px solid var(--rouge)"><div class="card-row" style="margin-bottom:10px"><div style="min-width:0"><p class="card-title">'+esc(label)+'</p><p class="card-sub">'+timeAgo(o.createdAt)+' · '+money(orderGrandTotal(o))+'</p></div><span class="age-badge '+age.cls+'">⏱ '+age.label+'</span></div><p class="text-xs muted">📞 '+esc(o.clientInfo?.phone||"")+' · 📍 '+esc(o.clientInfo?.address||"")+'</p><ul style="margin:8px 0;padding-left:20px;font-size:13px;color:#555">'+o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+'</ul><p class="text-xs muted bold" style="margin-bottom:6px">RÉFÉRENCE MoMo :</p>'+refDisplay+'<div class="grid-2" style="margin-top:8px"><button class="btn btn-success" data-action="ger-validate-liv" data-id="'+o._docId+'">✓ Valider</button><button class="btn btn-danger" data-action="ger-reject-liv" data-id="'+o._docId+'">✕ Refuser</button></div><button class="btn btn-ghost btn-block" style="margin-top:6px;font-size:12px" data-action="ger-open-abandon" data-id="'+o._docId+'">🚫 Abandonner</button></div>';}).join(""))+'</div>'+
+    '<div><h2 class="section-title" style="font-size:17px">📋 Sur place à valider ('+pending.length+')</h2>'+(pending.length===0?'<p class="empty">Rien en attente</p>':pending.map(o=>{const allDecided=o.items.every(i=>i.statut&&(i.statut!=="Refusé"||i.motif));const hasValid=o.items.some(i=>i.statut==="Validé");const validateLabel = hasValid ? "Valider" : "Refuser tout";const validateClass = hasValid ? "btn-primary" : "btn-danger";const label="Table "+(o.tableNumber||"—");const age=orderAgeInfo(o);return '<div class="card" style="margin-bottom:12px"><div class="card-row" style="margin-bottom:10px"><div style="min-width:0"><p class="card-title">'+esc(label)+'</p><p class="card-sub">'+timeAgo(o.createdAt)+'</p></div><span class="age-badge '+age.cls+'">⏱ '+age.label+'</span></div>'+o.items.map((it,idx)=>{const motifs=["Rupture de stock","Ingrédient manquant","Cuisine surchargée"];return '<div style="margin-bottom:10px"><div class="flex between center" style="margin-bottom:6px"><span style="'+(it.statut==="Refusé"?"text-decoration:line-through;color:var(--rouge)":"")+';font-size:14px">'+it.qty+'× '+esc(it.name)+'</span><div class="flex gap-2"><button class="qty-btn '+(it.statut==="Validé"?"add":"")+'" style="'+(it.statut==="Validé"?"background:var(--vert);border-color:var(--vert)":"")+'" data-action="ger-item-valid" data-id="'+o._docId+'" data-idx="'+idx+'">✓</button><button class="qty-btn" style="'+(it.statut==="Refusé"?"background:var(--rouge);color:white;border-color:var(--rouge)":"color:var(--rouge)")+'" data-action="ger-item-refuse" data-id="'+o._docId+'" data-idx="'+idx+'">✕</button></div></div>'+(it.statut==="Refusé"?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-left:6px">'+motifs.map(m=>'<button class="badge '+(it.motif===m?"badge-rouge":"badge-neutre")+'" style="border:1px solid var(--sable);padding:6px 10px" data-action="ger-motif" data-id="'+o._docId+'" data-idx="'+idx+'" data-motif="'+esc(m)+'">'+esc(m)+'</button>').join("")+'</div>':"")+'</div>';}).join("")+'<div class="flex gap-2" style="margin-top:8px"><button class="btn '+validateClass+'" style="flex:1" data-action="ger-validate" data-id="'+o._docId+'" '+(allDecided?"":"disabled")+'>'+validateLabel+'</button><button class="btn btn-danger btn-sm" data-action="ger-delete" data-id="'+o._docId+'">🗑️</button></div><button class="btn btn-ghost btn-block" style="margin-top:6px;font-size:12px" data-action="ger-open-abandon" data-id="'+o._docId+'">🚫 Abandonner</button></div>';}).join(""))+'</div>'+
     '<div><h2 class="section-title" style="font-size:17px">💰 Encaissement ('+awaitingCollect.length+')</h2>'+(awaitingCollect.length===0?'<p class="empty">Aucune</p>':awaitingCollect.map(o=>'<div class="card" style="margin-bottom:10px"><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+money(orderTotal(o))+' · '+(o.serveuseName||"")+'</p></div>').join(""))+'</div>'+
     '</div>';
   } else if(v.tab==="claims"){
@@ -1546,6 +1652,7 @@ function screenGerant(){
     content='<h2 class="section-title">Bilan du jour</h2><div class="stats-grid" style="margin-bottom:20px"><div class="stat-card"><p class="stat-label">CA</p><p class="stat-value">'+money(totalCA)+'</p></div><div class="stat-card"><p class="stat-label">Cmd</p><p class="stat-value">'+served.length+'</p></div><div class="stat-card"><p class="stat-label">Panier</p><p class="stat-value">'+money(panier)+'</p></div><div class="stat-card"><p class="stat-label">Cash</p><p class="stat-value">'+money(cash)+'</p></div><div class="stat-card"><p class="stat-label">MoMo</p><p class="stat-value">'+money(momo)+'</p></div></div><div class="card"><p class="bold" style="margin-bottom:10px">📈 Top 5</p>'+(top.length===0?'<p class="empty">—</p>':top.map(([n,st])=>'<div class="flex between text-sm" style="margin-bottom:4px"><span>'+esc(n)+'</span><span class="mono muted">'+st.qty+' · '+money(st.ca)+'</span></div>').join(""))+'</div>';
   }
   const livBadge=delivering.filter(o=>!o.livreurId).length;const callBadge=cashIssues.length;const invBadge=invoicesToPrint.length;const claimBadge=openClaims.length;
+  const abandonModal = gerS.abandonModal ? screenAbandonModal() : "";
   return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="tabs-scroll">'+[
     {k:"validation",l:"Validation"+((callBadge||pendingLiv.length)?' ⚠️'+(callBadge+pendingLiv.length):"")},
     {k:"claims",l:"🚨 Réclamations"+(claimBadge?" ("+claimBadge+")":"")},
@@ -1555,7 +1662,16 @@ function screenGerant(){
     {k:"affectation",l:"Tables"},
     {k:"menuDuJour",l:"🍽️ Menu"},
     {k:"bilan",l:"Bilan"}
-  ].map(t=>'<button class="tab '+(v.tab===t.k?"active":"")+'" data-action="ger-tab" data-tab="'+t.k+'">'+t.l+'</button>').join("")+'</div><div class="content">'+content+'</div></div>';
+  ].map(t=>'<button class="tab '+(v.tab===t.k?"active":"")+'" data-action="ger-tab" data-tab="'+t.k+'">'+t.l+'</button>').join("")+'</div><div class="content">'+content+'</div>'+abandonModal+'</div>';
+}
+
+function screenAbandonModal(){
+  const m = gerS.abandonModal || admS.abandonModal;
+  if(!m) return "";
+  const o = DATA.orders.find(x => x._docId === m.orderId);
+  if(!o) return "";
+  const label = o.type==="livraison" ? "Livraison — "+(o.clientInfo?.name||"") : "Table "+(o.tableNumber||"—");
+  return '<div class="modal-overlay" data-action="ger-close-abandon"><div class="modal-card" style="max-width:460px;text-align:left" onclick="event.stopPropagation()"><div style="text-align:center"><div style="font-size:44px;margin-bottom:8px">🚫</div><h2 style="margin-bottom:6px">Abandonner la commande</h2><p style="font-size:13px;margin-bottom:16px">'+esc(label)+' — '+money(orderGrandTotal(o))+'</p></div><p class="text-xs muted bold" style="margin-bottom:10px">MOTIF</p>'+ABANDON_MOTIFS.map(motif=>'<button class="abandon-motif-btn '+(m.motif===motif?"on":"")+'" data-action="ger-pick-abandon-motif" data-motif="'+esc(motif)+'"><div class="dot">'+(m.motif===motif?"✓":"")+'</div><span>'+esc(motif)+'</span></button>').join("")+(m.motif==="Autre"?'<textarea class="input" style="margin-top:6px;margin-bottom:10px;font-size:14px" rows="2" placeholder="Précisez..." data-input="abandon-comment">'+esc(m.comment||"")+'</textarea>':"")+'<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ghost" style="flex:1" data-action="ger-close-abandon">Annuler</button><button class="btn btn-danger" style="flex:1" data-action="ger-confirm-abandon" '+(m.motif?"":"disabled")+'>🚫 Confirmer</button></div></div></div>';
 }
 
 function screenCuisine(){
@@ -1581,7 +1697,7 @@ function screenCuisine(){
 function screenLivreur(){
   const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="livreur");
   const available=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.livreurId);
-  const mine=DATA.orders.filter(o=>o.livreurId===(me&&me._docId)&&o.status!=="livree"&&o.status!=="refusee");
+  const mine=DATA.orders.filter(o=>o.livreurId===(me&&me._docId)&&o.status!=="livree"&&o.status!=="refusee"&&o.status!=="abandonnee");
   const done=DATA.orders.filter(o=>o.livreurId===(me&&me._docId)&&o.status==="livree"&&o.date===nowDate());
   const v=livS;let content="";
   if(v.tab==="available"){content='<h2 class="section-title">Disponibles</h2><p class="section-sub">'+available.length+' dispo</p>'+(available.length===0?'<p class="empty">Aucune livraison disponible</p>':available.map(o=>'<div class="card" style="margin-bottom:12px"><p class="bold">📍 '+esc(o.clientInfo?.address||"")+'</p><p class="text-xs muted">'+esc(o.clientInfo?.name||"")+' · '+esc(o.clientInfo?.phone||"")+'</p><p class="text-xs muted" style="margin-top:4px">Frais livraison : '+(o.deliveryKm?money(Math.round(o.deliveryKm*prixParKm())):"—")+' (payé en ligne)</p><div class="flex between center" style="margin-top:10px"><span class="mono bold">Total payé</span><button class="btn btn-accent btn-sm" data-action="liv-take" data-id="'+o._docId+'">Je prends</button></div></div>').join(""));}
@@ -1614,6 +1730,7 @@ function screenAdmin(){
     {key:"tables",em:"📱",label:"Tables & QR"},
     {key:"stock",em:"📦",label:"Stock"},
     {key:"bilan",em:"📊",label:"Bilan"},
+    {key:"abandons",em:"📉",label:"Abandons"},
     {key:"livrBilan",em:"🛵",label:"Livraisons"},
     {key:"history",em:"📋",label:"Historique"},
     {key:"settings",em:"⚙️",label:"Paramètres"},
@@ -1656,6 +1773,32 @@ function screenAdmin(){
     const cash=periodOrders.filter(o=>o.paymentMethod==="cash").reduce((s,o)=>s+orderGrandTotal(o),0);
     const momo=periodOrders.filter(o=>o.paymentMethod==="momo").reduce((s,o)=>s+orderGrandTotal(o),0);
     content='<h2 class="section-title">Bilan & Ventes</h2><div class="card" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:end"><div style="flex:1;min-width:140px"><label class="text-xs muted bold">DU</label><input class="input" type="date" style="margin-top:4px" data-input="bilan-from" value="'+from+'"></div><div style="flex:1;min-width:140px"><label class="text-xs muted bold">AU</label><input class="input" type="date" style="margin-top:4px" data-input="bilan-to" value="'+to+'"></div><button class="btn btn-primary" data-action="admin-bilan-apply">Appliquer</button><button class="btn btn-ghost" data-action="admin-bilan-today">Auj.</button><button class="btn btn-ghost" data-action="admin-bilan-week">7j</button></div><div class="stats-grid"><div class="stat-card"><p class="stat-label">CA Total</p><p class="stat-value">'+money(totalCA)+'</p></div><div class="stat-card"><p class="stat-label">Cmd</p><p class="stat-value">'+periodOrders.length+'</p></div><div class="stat-card"><p class="stat-label">Cash</p><p class="stat-value">'+money(cash)+'</p></div><div class="stat-card"><p class="stat-label">MoMo</p><p class="stat-value">'+money(momo)+'</p></div><div class="stat-card" style="border-left-color:var(--vert)"><p class="stat-label">Frais livraison</p><p class="stat-value">'+money(deliveryFees)+'</p></div><div class="stat-card" style="border-left-color:var(--vert)"><p class="stat-label">Part resto (20%)</p><p class="stat-value">'+money(restoShare)+'</p></div><div class="stat-card" style="border-left-color:var(--jaune-fonce)"><p class="stat-label">Part livreurs (80%)</p><p class="stat-value">'+money(livrShare)+'</p></div></div>';
+  } else if(v.section==="abandons"){
+    const now = Date.now();
+    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+    const period = v.abandonPeriod || "7d";
+    let periodMs = 7*24*60*60*1000;
+    if(period === "today") periodMs = 24*60*60*1000;
+    else if(period === "30d") periodMs = 30*24*60*60*1000;
+    else if(period === "all") periodMs = Infinity;
+    const startTs = period === "all" ? 0 : now - periodMs;
+    const abandoned = DATA.orders.filter(o => o.status === "abandonnee" && (o.abandonAt||0) >= startTs);
+    const allInPeriod = DATA.orders.filter(o => (o.createdAt||0) >= startTs);
+    const totalAbandons = abandoned.length;
+    const totalOrders = allInPeriod.length;
+    const taux = totalOrders > 0 ? ((totalAbandons / totalOrders) * 100).toFixed(1) : "0.0";
+    const montantPerdu = abandoned.reduce((s,o) => s + orderGrandTotal(o), 0);
+    const byMotif = {};
+    abandoned.forEach(o => {
+      const m = o.abandonMotif || "Non précisé";
+      if(!byMotif[m]) byMotif[m] = 0;
+      byMotif[m]++;
+    });
+    const motifsArr = Object.entries(byMotif).sort((a,b) => b[1]-a[1]);
+    content='<h2 class="section-title">📉 Abandons</h2><p class="section-sub">Commandes non abouties</p><div class="card" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:8px"><button class="btn btn-sm '+(period==="today"?"btn-accent":"btn-ghost")+'" data-action="admin-abandon-period" data-period="today">Aujourd\'hui</button><button class="btn btn-sm '+(period==="7d"?"btn-accent":"btn-ghost")+'" data-action="admin-abandon-period" data-period="7d">7 jours</button><button class="btn btn-sm '+(period==="30d"?"btn-accent":"btn-ghost")+'" data-action="admin-abandon-period" data-period="30d">30 jours</button><button class="btn btn-sm '+(period==="all"?"btn-accent":"btn-ghost")+'" data-action="admin-abandon-period" data-period="all">Tout</button></div><div class="stats-grid" style="margin-bottom:20px"><div class="stat-card"><p class="stat-label">Total abandons</p><p class="stat-value">'+totalAbandons+'</p></div><div class="stat-card"><p class="stat-label">Taux</p><p class="stat-value">'+taux+'%</p></div><div class="stat-card" style="border-left-color:var(--rouge)"><p class="stat-label">Montant perdu</p><p class="stat-value">'+money(montantPerdu)+'</p></div></div><div class="card" style="margin-bottom:16px"><p class="bold" style="margin-bottom:10px">📋 Répartition par motif</p>'+(motifsArr.length===0?'<p class="empty">Aucun abandon</p>':motifsArr.map(([m,n])=>{const pct=Math.round((n/totalAbandons)*100);return '<div style="margin-bottom:8px"><div class="flex between text-sm" style="margin-bottom:3px"><span>'+esc(m)+'</span><span class="mono muted">'+n+' ('+pct+'%)</span></div><div style="height:6px;background:#eee;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:var(--rouge)"></div></div></div>';}).join(""))+'</div><div class="flex between center" style="margin-bottom:10px"><h3 class="bold" style="font-size:15px;margin:0">Historique ('+abandoned.length+')</h3><button class="btn btn-ghost btn-sm" data-action="admin-purge-abandons">🧹 Purger &gt; '+abandonPurgeDays()+'j</button></div>'+(abandoned.length===0?'<p class="empty">Aucun abandon sur la période</p>':'<div style="display:grid;gap:10px">'+abandoned.sort((a,b)=>(b.abandonAt||0)-(a.abandonAt||0)).slice(0,100).map(o => {
+      const label = o.type==="livraison" ? "🛵 "+(o.clientInfo?.name||"Livraison") : "🍽️ Table "+(o.tableNumber||"—");
+      return '<div class="card" style="padding:12px"><div class="flex between center" style="gap:10px"><div style="min-width:0;flex:1"><p class="card-title">'+esc(label)+'</p><p class="card-sub">'+fmtDateTime(o.abandonAt||o.createdAt)+' · '+money(orderGrandTotal(o))+'</p><p class="text-xs" style="margin-top:4px;color:var(--rouge)"><strong>'+esc(o.abandonMotif||"Non précisé")+'</strong>'+(o.abandonAuto?' <span style="opacity:0.7">(auto)</span>':'')+'</p></div><button class="btn btn-success btn-sm" data-action="admin-restore-abandon" data-id="'+o._docId+'">↩️ Restaurer</button></div></div>';
+    }).join("")+'</div>')+'<div class="card" style="margin-top:20px;border-left:4px solid var(--gris);padding:12px"><p class="text-xs muted" style="margin:0"><strong>ℹ️ Auto-abandon :</strong> les commandes "Vérif paiement" et "À valider" sont automatiquement abandonnées après '+(DATA.settings.autoAbandonHours||2)+'h. Les commandes "À encaisser" ne sont jamais auto-abandonnées (client à table).</p></div>';
   } else if(v.section==="livrBilan"){
     const today=nowDate();
     const servedLiv = DATA.orders.filter(o=>o.type==="livraison" && (o.status==="livree"||o.status==="servie"));
@@ -1677,7 +1820,7 @@ function screenAdmin(){
     '<div class="stats-grid" style="margin-bottom:20px"><div class="stat-card" style="border-left-color:var(--jaune-fonce)"><p class="stat-label">Frais aujourd\'hui</p><p class="stat-value">'+money(totalFeesToday)+'</p></div><div class="stat-card" style="border-left-color:var(--vert)"><p class="stat-label">Part resto (20%)</p><p class="stat-value">'+money(restoToday)+'</p></div><div class="stat-card" style="border-left-color:var(--noir)"><p class="stat-label">Part livreurs (80%)</p><p class="stat-value">'+money(livreurToday)+'</p></div></div>'+
     '<h3 class="bold" style="margin:20px 0 10px;font-size:15px">Détail par livreur</h3><div class="table-wrap"><table><thead><tr><th>Livreur</th><th>Cmd</th><th>Frais</th><th>Part livreur</th><th>Part resto</th></tr></thead><tbody>'+Object.entries(byLivreur).map(([name,st])=>'<tr><td><strong>'+esc(name)+'</strong></td><td>'+st.count+'</td><td class="mono">'+money(st.fees)+'</td><td class="mono" style="color:var(--jaune-fonce)">'+money(st.livreur)+'</td><td class="mono" style="color:var(--vert)">'+money(st.resto)+'</td></tr>').join("")+(Object.keys(byLivreur).length===0?'<tr><td colspan="5" class="empty">Aucune livraison</td></tr>':"")+'</tbody></table></div>';
   } else if(v.section==="history"){
-    const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));
+    const paid=DATA.orders.filter(o=>["payee","servie","livree","abandonnee","refusee"].includes(o.status));
     const filtered=paid.filter(o=>{
       if(v.histFilter.type==="Sur place"&&o.type!=="sur_place")return false;
       if(v.histFilter.type==="Livraison"&&o.type!=="livraison")return false;
@@ -1686,7 +1829,7 @@ function screenAdmin(){
       if(v.histFilter.query){const hay=(o.items.map(i=>i.name).join(" ")+" "+(o.tableNumber||"")+" "+(o.clientInfo?.name||"")+" "+(o.clientInfo?.address||"")).toLowerCase();if(!hay.includes(v.histFilter.query.toLowerCase()))return false;}
       return true;
     });
-    content='<div class="flex between center" style="margin-bottom:4px"><h2 class="section-title" style="font-size:19px;margin:0">Historique</h2><button class="btn btn-primary btn-sm" data-action="admin-export-csv">📥 CSV</button></div><p class="section-sub">'+filtered.length+' vente(s)</p><div class="card" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px"><input class="input" style="flex:1;min-width:150px" placeholder="Rechercher..." data-input="hist-query" value="'+esc(v.histFilter.query)+'"><select class="input" style="width:auto" data-input="hist-type">'+["Tous","Sur place","Livraison"].map(o=>'<option '+(v.histFilter.type===o?"selected":"")+'>'+o+'</option>').join("")+'</select></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Prix</th><th>Note</th></tr></thead><tbody>'+filtered.slice(0,150).map(o=>{const rating=o.rating?('L: '+o.rating.driver+'/5 R: '+o.rating.restaurant+'/5'):"—";const claim=o.claim?("⚠️ "+o.claim.type):"";return '<tr><td><strong>'+fmtDate(o.date)+'</strong></td><td>'+(o.type==="livraison"?"🛵":"🍽️")+'</td><td>'+esc(o.clientInfo?.name||o.tableNumber||"—")+'</td><td class="mono">'+money(orderGrandTotal(o))+'</td><td class="text-xs">'+rating+(claim?'<br>'+claim:"")+'</td></tr>';}).join("")+'</tbody></table></div>';
+    content='<div class="flex between center" style="margin-bottom:4px"><h2 class="section-title" style="font-size:19px;margin:0">Historique</h2><button class="btn btn-primary btn-sm" data-action="admin-export-csv">📥 CSV</button></div><p class="section-sub">'+filtered.length+' vente(s)</p><div class="card" style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px"><input class="input" style="flex:1;min-width:150px" placeholder="Rechercher..." data-input="hist-query" value="'+esc(v.histFilter.query)+'"><select class="input" style="width:auto" data-input="hist-type">'+["Tous","Sur place","Livraison"].map(o=>'<option '+(v.histFilter.type===o?"selected":"")+'>'+o+'</option>').join("")+'</select></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Prix</th><th>Statut</th></tr></thead><tbody>'+filtered.slice(0,150).map(o=>{const st = o.status==="abandonnee" ? "🚫" : (o.status==="refusee" ? "❌" : "✅");return '<tr><td><strong>'+fmtDate(o.date)+'</strong></td><td>'+(o.type==="livraison"?"🛵":"🍽️")+'</td><td>'+esc(o.clientInfo?.name||o.tableNumber||"—")+'</td><td class="mono">'+money(orderGrandTotal(o))+'</td><td class="text-xs">'+st+' '+esc(o.status)+'</td></tr>';}).join("")+'</tbody></table></div>';
   } else if(v.section==="settings"){
     if(!v.settingsForm)v.settingsForm={...DATA.settings};
     const f=v.settingsForm;
@@ -1700,10 +1843,11 @@ function screenAdmin(){
     const welcomeReturningSub = f.welcomeReturningSub !== undefined ? f.welcomeReturningSub : "Merci pour votre confiance";
     const welcomeReturningThreshold = f.welcomeReturningThreshold != null ? f.welcomeReturningThreshold : 3;
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:16px">Paramètres</h2><div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🆔 Identité</h3><div style="margin-bottom:14px"><label class="text-xs muted bold">NOM</label><input class="input" style="margin-top:6px" data-input="set-name" value="'+esc(f.restaurantName||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">TÉLÉPHONE</label><input class="input" style="margin-top:6px" data-input="set-phone" value="'+esc(f.phone||"")+'"></div><div style="margin-bottom:14px"><label class="text-xs muted bold">NUMÉRO MoMo</label><input class="input" style="margin-top:6px;font-family:monospace" data-input="set-momo" value="'+esc(f.momoNumber||"")+'"></div></div>'+
-'<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid var(--jaune-fonce)"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🕐 Horaires & reset</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">OUVERTURE</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-open-hour" value="'+(f.openHour!=null?f.openHour:11)+'"></div><div><label class="text-xs muted bold">FERMETURE</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-close-hour" value="'+(f.closeHour!=null?f.closeHour:2)+'"></div></div><div style="margin-top:12px"><label class="text-xs muted bold">🔄 RESET BILAN (heure)</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-bilan-hour" value="'+(f.bilanResetHour!=null?f.bilanResetHour:6)+'"><p class="text-xs muted" style="margin-top:4px">Heure à laquelle le compteur du bilan repart à zéro (6 par défaut)</p></div></div>'+
-'<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid var(--vert)"><h3 class="bold" style="margin-bottom:14px;font-size:15px">👋 Messages d\'accueil</h3><p class="text-xs muted" style="margin-bottom:12px">Personnalisez l\'accueil de vos clients. Variable <code style="background:#faf8f2;padding:1px 4px;border-radius:3px">{table}</code> = numéro de table.</p><div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--sable)"><p class="text-xs bold" style="margin-bottom:6px">🍽️ SUR PLACE (QR)</p><label class="text-xs muted bold">TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-onsite" value="'+esc(welcomeOnsite)+'"><label class="text-xs muted bold" style="display:block;margin-top:8px">SOUS-TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-onsite-sub" value="'+esc(welcomeOnsiteSub)+'"><p class="text-xs muted" style="margin-top:4px">Laisser vide = aucun message</p></div><div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--sable)"><p class="text-xs bold" style="margin-bottom:6px">🛵 LIVRAISON</p><label class="text-xs muted bold">TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-delivery" value="'+esc(welcomeDelivery)+'"><label class="text-xs muted bold" style="display:block;margin-top:8px">SOUS-TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-delivery-sub" value="'+esc(welcomeDeliverySub)+'"><p class="text-xs muted" style="margin-top:4px">Laisser vide = aucun message</p></div><div style="margin-bottom:14px"><p class="text-xs bold" style="margin-bottom:6px">🙏 CLIENT FIDÈLE</p><label class="text-xs muted bold">TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-returning" value="'+esc(welcomeReturning)+'"><label class="text-xs muted bold" style="display:block;margin-top:8px">SOUS-TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-returning-sub" value="'+esc(welcomeReturningSub)+'"><label class="text-xs muted bold" style="display:block;margin-top:12px">SEUIL DE COMMANDES</label><input class="input" type="number" min="1" style="margin-top:6px" data-input="set-welcome-threshold" value="'+welcomeReturningThreshold+'"><p class="text-xs muted" style="margin-top:4px">Nombre de commandes terminées pour considérer un client comme fidèle (0 = désactivé)</p></div><p class="text-xs muted" style="background:#faf8f2;padding:8px 10px;border-radius:6px">💡 Message affiché 1 fois par jour par appareil. Le client ne saura jamais qu\'il est compté.</p></div>'+
+'<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid var(--jaune-fonce)"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🕐 Horaires & reset</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">OUVERTURE</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-open-hour" value="'+(f.openHour!=null?f.openHour:11)+'"></div><div><label class="text-xs muted bold">FERMETURE</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-close-hour" value="'+(f.closeHour!=null?f.closeHour:2)+'"></div></div><div style="margin-top:12px"><label class="text-xs muted bold">🔄 RESET BILAN (heure)</label><input class="input" type="number" min="0" max="23" style="margin-top:6px" data-input="set-bilan-hour" value="'+(f.bilanResetHour!=null?f.bilanResetHour:6)+'"></div></div>'+
+'<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid var(--rouge)"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📉 Abandons</h3><div style="margin-bottom:12px"><label class="text-xs muted bold">AUTO-ABANDON (heures)</label><input class="input" type="number" min="0" max="48" style="margin-top:6px" data-input="set-auto-abandon" value="'+(f.autoAbandonHours!=null?f.autoAbandonHours:2)+'"><p class="text-xs muted" style="margin-top:4px">Délai avant abandon automatique des commandes en attente (0 = désactivé)</p></div><div><label class="text-xs muted bold">PURGE (jours)</label><input class="input" type="number" min="0" max="365" style="margin-top:6px" data-input="set-abandon-purge" value="'+(f.abandonPurgeDays!=null?f.abandonPurgeDays:30)+'"><p class="text-xs muted" style="margin-top:4px">Ancienneté avant suppression définitive des commandes abandonnées</p></div></div>'+
+'<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid var(--vert)"><h3 class="bold" style="margin-bottom:14px;font-size:15px">👋 Messages d\'accueil</h3><p class="text-xs muted" style="margin-bottom:12px">Variable <code style="background:#faf8f2;padding:1px 4px;border-radius:3px">{table}</code> = numéro de table.</p><div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--sable)"><p class="text-xs bold" style="margin-bottom:6px">🍽️ SUR PLACE (QR)</p><label class="text-xs muted bold">TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-onsite" value="'+esc(welcomeOnsite)+'"><label class="text-xs muted bold" style="display:block;margin-top:8px">SOUS-TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-onsite-sub" value="'+esc(welcomeOnsiteSub)+'"></div><div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--sable)"><p class="text-xs bold" style="margin-bottom:6px">🛵 LIVRAISON</p><label class="text-xs muted bold">TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-delivery" value="'+esc(welcomeDelivery)+'"><label class="text-xs muted bold" style="display:block;margin-top:8px">SOUS-TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-delivery-sub" value="'+esc(welcomeDeliverySub)+'"></div><div style="margin-bottom:14px"><p class="text-xs bold" style="margin-bottom:6px">🙏 CLIENT FIDÈLE</p><label class="text-xs muted bold">TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-returning" value="'+esc(welcomeReturning)+'"><label class="text-xs muted bold" style="display:block;margin-top:8px">SOUS-TITRE</label><input class="input" style="margin-top:6px" data-input="set-welcome-returning-sub" value="'+esc(welcomeReturningSub)+'"><label class="text-xs muted bold" style="display:block;margin-top:12px">SEUIL DE COMMANDES</label><input class="input" type="number" min="0" style="margin-top:6px" data-input="set-welcome-threshold" value="'+welcomeReturningThreshold+'"><p class="text-xs muted" style="margin-top:4px">0 = désactivé</p></div></div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid '+(graceActive?"var(--vert)":"var(--gris)")+'"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🔓 Dérogation temporaire</h3>'+(graceActive?'<div class="alert-banner" style="background:rgba(45,122,62,0.1);border-color:var(--vert);margin-bottom:12px"><strong style="color:var(--vert)">✅ Active — '+graceRemaining+' min</strong><p class="text-xs" style="margin-top:4px">Rôles : '+((DATA.settings.graceRoles||[]).join(", ")||"—")+'</p></div><button class="btn btn-danger btn-block" data-action="admin-cancel-grace">Annuler</button>':'<div style="margin-bottom:12px"><label class="text-xs muted bold">DURÉE</label><select class="input" style="margin-top:6px" data-input="grace-duration"><option value="30" '+(v.graceForm.duration===30?"selected":"")+'>30 min</option><option value="60" '+(v.graceForm.duration===60?"selected":"")+'>60 min</option><option value="120" '+(v.graceForm.duration===120?"selected":"")+'>120 min</option></select></div><div style="margin-bottom:12px"><label class="text-xs muted bold">RÔLES</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">'+["serveuse","cuisine","livreur","gerant","client"].map(r=>'<div class="role-chip '+(v.graceForm.roles.includes(r)?"on":"")+'" data-action="grace-toggle-role" data-role="'+r+'">'+r+'</div>').join("")+'</div></div><button class="btn btn-accent btn-block" data-action="admin-activate-grace">Activer</button>')+'</div>'+
-'<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid var(--vert)"><h3 class="bold" style="margin-bottom:14px;font-size:15px">💵 Plafond cash serveuse</h3><label class="text-xs muted bold">MONTANT MAX (F)</label><input class="input" type="number" style="margin-top:6px" data-input="set-cash-limit" value="'+(f.cashLimitPerServeuse||20000)+'"><p class="text-xs muted" style="margin-top:4px">Une serveuse ne peut plus encaisser du cash au-delà de ce montant sans passer par le gérant.</p></div>'+
+'<div class="card" style="max-width:600px;margin-bottom:16px;border-left:4px solid var(--vert)"><h3 class="bold" style="margin-bottom:14px;font-size:15px">💵 Plafond cash serveuse</h3><label class="text-xs muted bold">MONTANT MAX (F)</label><input class="input" type="number" style="margin-top:6px" data-input="set-cash-limit" value="'+(f.cashLimitPerServeuse||20000)+'"></div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">📍 Localisation</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label class="text-xs muted bold">LAT</label><input class="input" inputmode="decimal" style="margin-top:6px" data-input="set-resto-lat" value="'+esc(String(f.restoLat!=null?f.restoLat:DEFAULT_RESTO.lat))+'"></div><div><label class="text-xs muted bold">LON</label><input class="input" inputmode="decimal" style="margin-top:6px" data-input="set-resto-lon" value="'+esc(String(f.restoLon!=null?f.restoLon:DEFAULT_RESTO.lon))+'"></div></div></div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">💰 Tarif livraison</h3><label class="text-xs muted bold">PRIX PAR KM (F)</label><input class="input" type="number" style="margin-top:6px" data-input="set-km-price" value="'+(f.prixKm||DEFAULT_PRIX_KM)+'"></div>'+
 '<div class="card" style="max-width:600px;margin-bottom:16px"><h3 class="bold" style="margin-bottom:14px;font-size:15px">🔐 Sécurité</h3><label class="text-xs muted bold">CODE MASTER</label><input class="input" style="margin-top:6px;font-family:monospace" data-input="set-master-code" value="'+esc(f.masterCode||MASTER_RECOVERY_CODE)+'"></div>'+
@@ -1712,13 +1856,14 @@ function screenAdmin(){
     const totalOrders=DATA.orders.length;const todayOrders=DATA.orders.filter(o=>o.date===nowDate()).length;
     const activeOrders=DATA.orders.filter(o=>o.status==="att_validation"||o.status==="att_verif_paiement"||o.status==="att_collect"||o.status==="att_paiement"||(o.status==="payee"&&!o.servedAt)).length;
     content='<h2 class="section-title" style="font-size:19px;margin-bottom:4px">🧹 Maintenance</h2><div class="stats-grid" style="margin-bottom:20px"><div class="stat-card"><p class="stat-label">Total</p><p class="stat-value">'+totalOrders+'</p></div><div class="stat-card"><p class="stat-label">Aujourd\'hui</p><p class="stat-value">'+todayOrders+'</p></div><div class="stat-card"><p class="stat-label">En cours</p><p class="stat-value">'+activeOrders+'</p></div></div>'+
-'<h3 class="bold" style="margin-bottom:10px;font-size:15px">📱 Installer</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-primary btn-block" id="pwa-install-btn" data-action="admin-install-pwa">📥 Installer</button><p class="text-xs muted" style="margin-top:8px" id="pwa-status"></p></div>'+
+'<h3 class="bold" style="margin-bottom:10px;font-size:15px">📱 Installer</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-primary btn-block" id="pwa-install-btn" data-action="admin-install-pwa">📥 Installer</button></div>'+
 '<h3 class="bold" style="margin-bottom:10px;font-size:15px">🔔 Test push</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-accent btn-block" data-action="admin-test-push">🔔 Test</button></div>'+
 '<h3 class="bold" style="margin-bottom:10px;font-size:15px">💾 Sauvegarde</h3><div class="card" style="max-width:600px;margin-bottom:20px"><button class="btn btn-primary btn-block" data-action="admin-backup-now">💾 Télécharger</button></div>'+
 '<h3 class="bold" style="margin-bottom:10px;font-size:15px;color:var(--rouge)">⚠️ Zone dangereuse</h3><div class="card" style="max-width:600px;border-left:4px solid var(--rouge)"><button class="btn btn-danger btn-block" style="margin-bottom:8px" data-action="admin-reset-today">Effacer ventes jour ('+todayOrders+')</button><button class="btn btn-danger btn-block" style="margin-bottom:8px" data-action="admin-reset-active">Effacer en cours ('+activeOrders+')</button><button class="btn btn-danger btn-block" style="margin-bottom:8px" data-action="admin-reset-all">Effacer TOUT ('+totalOrders+')</button><button class="btn btn-danger btn-block" style="margin-top:8px" data-action="admin-reset-everything">🔥 Reset complet</button></div>'+
 '<h3 class="bold" style="margin:20px 0 10px;font-size:15px">📜 Journal ('+DATA.resetLogs.length+')</h3>'+(DATA.resetLogs.length===0?'<p class="empty">Aucune tentative</p>':'<div class="card" style="padding:0;max-height:400px;overflow-y:auto">'+DATA.resetLogs.slice(0,50).map(l=>'<div class="log-row"><div style="flex:1"><div style="font-weight:600;font-size:12px">'+esc(l.action||"?")+'</div><div class="text-xs muted">'+esc(l.adminName||"?")+'</div></div><div style="text-align:right"><div class="text-xs">'+esc(l.result||"?")+'</div><div class="when">'+fmtDateTime(l.createdAt)+'</div></div></div>').join("")+'</div>');
   }
-  return '<div class="app">'+topbar({role:"Admin D&S",title:SESSION.name,homeAction:"admin-home"})+'<div class="tabs-scroll">'+sections.map(s=>'<button class="tab '+(v.section===s.key?"active":"")+'" data-action="admin-section" data-section="'+s.key+'">'+s.em+' '+s.label+'</button>').join("")+'</div><div class="content">'+content+'</div></div>';
+  const adminAbandonModal = admS.abandonModal ? screenAbandonModal() : "";
+  return '<div class="app">'+topbar({role:"Admin D&S",title:SESSION.name,homeAction:"admin-home"})+'<div class="tabs-scroll">'+sections.map(s=>'<button class="tab '+(v.section===s.key?"active":"")+'" data-action="admin-section" data-section="'+s.key+'">'+s.em+' '+s.label+'</button>').join("")+'</div><div class="content">'+content+'</div>'+adminAbandonModal+'</div>';
 }
 
 function screenPinModal(){
@@ -1731,7 +1876,7 @@ function render(force){
   if(!force){
     const active=document.activeElement;
     if(active && (active.tagName==="INPUT" || active.tagName==="TEXTAREA") && active.dataset && active.dataset.input){
-      const noRenderInputs = ["login-email","login-password","rec-email","rec-code","rec-newpwd","rec-newpwd2","wiz-caisse","reset-pin","info-name","info-phone","info-address","client-momo-ref","new-staff-name","new-staff-pin","new-staff-email","new-staff-pwd","set-name","set-phone","set-momo","set-open-hour","set-close-hour","set-bilan-hour","set-resto-lat","set-resto-lon","set-km-price","set-cash-limit","set-email-rapport","set-onesignal","set-webhook-url","set-webhook-token","set-master-code","set-welcome-onsite","set-welcome-onsite-sub","set-welcome-delivery","set-welcome-delivery-sub","set-welcome-returning","set-welcome-returning-sub","set-welcome-threshold","ingredient-qty"];
+      const noRenderInputs = ["login-email","login-password","rec-email","rec-code","rec-newpwd","rec-newpwd2","wiz-caisse","reset-pin","info-name","info-phone","info-address","client-momo-ref","new-staff-name","new-staff-pin","new-staff-email","new-staff-pwd","set-name","set-phone","set-momo","set-open-hour","set-close-hour","set-bilan-hour","set-resto-lat","set-resto-lon","set-km-price","set-cash-limit","set-auto-abandon","set-abandon-purge","set-email-rapport","set-onesignal","set-webhook-url","set-webhook-token","set-master-code","set-welcome-onsite","set-welcome-onsite-sub","set-welcome-delivery","set-welcome-delivery-sub","set-welcome-returning","set-welcome-returning-sub","set-welcome-threshold","ingredient-qty","abandon-comment"];
       if(noRenderInputs.includes(active.dataset.input)) return;
     }
   }
@@ -1835,7 +1980,7 @@ document.addEventListener("click",async function(e){
     return;
   }
 
-  if(action==="logout"){resetClient();destroyMap();pendingReset=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null,wizard:null};livS={tab:"available"};admS={...admS,ingredientsModal:null};A.logout();return;}
+  if(action==="logout"){resetClient();destroyMap();pendingReset=null;srvS={tab:"tables",orderStep:"table",orderTable:null,orderCart:{},orderCat:"Plats",collectMethod:null,collectRef:"",collectOrderId:null};gerS={tab:"validation",menuDraft:null,wizard:null,abandonModal:null};livS={tab:"available"};admS={...admS,ingredientsModal:null,abandonModal:null};A.logout();return;}
 
   if(action==="reset-cancel"){pendingReset=null;render();return;}
   if(action==="reset-confirm"){
@@ -1854,11 +1999,43 @@ document.addEventListener("click",async function(e){
       else if(act==="menu"){await A.resetMenu();resultMsg="Menu réinitialisé";}
       else if(act==="stock"){await A.resetStock();resultMsg="Stock réinitialisé";}
       else if(act==="everything"){await A.resetEverything();resultMsg="Remise à zéro effectuée";}
-      else if(act==="clear-logs"){const n=DATA.resetLogs.length;await A.clearResetLogs();resultMsg=n+" entrée(s)";}
       await A.logReset(act,"✅ Succès",null);
       toast(resultMsg);
     }catch(err){toast("Erreur : "+err.message);}
     render();return;
+  }
+
+  if(action==="ger-open-abandon"){ gerS.abandonModal = { orderId: id, motif: null, comment: "" }; render(); return; }
+  if(action==="ger-pick-abandon-motif"){ if(!gerS.abandonModal) return; gerS.abandonModal.motif = el.dataset.motif; render(); return; }
+  if(action==="ger-close-abandon"){ gerS.abandonModal = null; admS.abandonModal = null; render(); return; }
+  if(action==="ger-confirm-abandon"){
+    const m = gerS.abandonModal;
+    if(!m || !m.motif) return;
+    const motif = m.motif === "Autre" && m.comment ? "Autre : " + m.comment : m.motif;
+    try{
+      await A.abandonOrder(m.orderId, motif, false);
+      gerS.abandonModal = null;
+      toast("🚫 Commande abandonnée");
+      render();
+    }catch(err){ toast("Erreur : "+err.message); }
+    return;
+  }
+
+  if(action==="admin-abandon-period"){ admS.abandonPeriod = el.dataset.period; render(); return; }
+  if(action==="admin-restore-abandon"){
+    try{ await A.restoreOrder(id); render(); }catch(err){ toast("Erreur : "+err.message); }
+    return;
+  }
+  if(action==="admin-purge-abandons"){
+    const limitMs = abandonPurgeDays() * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const toPurge = DATA.orders.filter(o => o.status === "abandonnee" && o.abandonAt && (now - o.abandonAt) > limitMs);
+    if(toPurge.length === 0){ toast("Rien à purger"); return; }
+    if(!confirm("Purger "+toPurge.length+" commande(s) abandonnée(s) > "+abandonPurgeDays()+" jours ?")) return;
+    const batch = writeBatch(db);
+    toPurge.forEach(o => batch.delete(doc(db,"orders",o._docId)));
+    try{ await batch.commit(); toast("🗑️ "+toPurge.length+" purgée(s)"); render(); }catch(err){ toast("Erreur : "+err.message); }
+    return;
   }
 
   if(action==="wiz-step1-next"){
@@ -1985,22 +2162,8 @@ document.addEventListener("click",async function(e){
   if(action==="admin-del-comp"){
     const c = getCompById(id);
     if(!c){ toast("Introuvable"); return; }
-    if(!confirm("Supprimer le compartiment « "+c.name+" » ?\n\n(Vérifiez qu'aucune table/plat/staff n'y est assigné)")) return;
-    try{
-      await A.removeCompartment(id);
-      toast("✅ Compartiment supprimé");
-    } catch(err){ toast("❌ "+err.message); }
-    return;
-  }
-  if(action==="admin-toggle-comp"){
-    const c = getCompById(id);
-    if(!c) return;
-    if(c._docId === "dessert"){
-      toast("🍰 Cuisine desserts indépendante — toujours ouverte");
-      return;
-    }
-    await updateDoc(doc(db,"compartments",id),{ open: !c.open });
-    toast((!c.open?"✅ Ouvert":"🔒 Fermé"));
+    if(!confirm("Supprimer le compartiment « "+c.name+" » ?")) return;
+    try{ await A.removeCompartment(id); toast("✅ Compartiment supprimé"); } catch(err){ toast("❌ "+err.message); }
     return;
   }
   if(action==="grace-toggle-role"){const r=el.dataset.role;const f=admS.graceForm;if(f.roles.includes(r))f.roles=f.roles.filter(x=>x!==r);else f.roles=[...f.roles,r];render();return;}
@@ -2176,8 +2339,8 @@ document.addEventListener("click",async function(e){
   if(action==="srv-collect-issue"){if(!confirm("Signaler non reçu ?"))return;await A.reportCashIssue(id);srvS.collectMethod=null;toast("Signalé");render();return;}
   if(action==="srv-served"){await A.markServed(id);toast("Servie !");render();return;}
 
-  if(action==="ger-home"){gerS.tab="validation";gerS.wizard=null;render();return;}
-  if(action==="ger-tab"){gerS.tab=el.dataset.tab;render();return;}
+  if(action==="ger-home"){gerS.tab="validation";gerS.wizard=null;gerS.abandonModal=null;render();return;}
+  if(action==="ger-tab"){gerS.tab=el.dataset.tab;gerS.abandonModal=null;render();return;}
   if(action==="ger-force-affect"){gerS.tab="affectation";render();return;}
   if(action==="ger-force-menu"){gerS.tab="menuDuJour";render();return;}
   if(action==="ger-toggle-menu"){
@@ -2294,7 +2457,7 @@ document.addEventListener("click",async function(e){
   if(action==="admin-create-stock"){const ns=admS.newStockItem;if(!ns.name||!ns.unit){toast("Nom + unité");return;}await A.addStockItem({name:ns.name,unit:ns.unit,initial:ns.initial||0,threshold:ns.threshold||0});admS.newStockItem={name:"",unit:"kg",initial:0,threshold:0};admS.showNewStock=false;toast("Créé");return;}
   if(action==="admin-del-stock"){if(confirm("Supprimer ?"))await A.removeStockItem(id);return;}
   if(action==="admin-add-move"){if(!admS.stockForm.stockId||!admS.stockForm.qty)return;await A.addStockMove({...admS.stockForm});admS.stockForm={stockId:admS.stockForm.stockId,type:"Entrée",qty:0,motif:""};toast("Enregistré");return;}
-  if(action==="admin-save-settings"){const f=admS.settingsForm;const lat=parseFloat(f.restoLat);const lon=parseFloat(f.restoLon);const km=parseInt(f.prixKm);if(isNaN(lat)||isNaN(lon)||isNaN(km)){toast("Valeurs invalides");return;}await A.updateSettings({restaurantName:f.restaurantName||"",phone:f.phone||"",momoNumber:f.momoNumber||"",bilanResetHour:parseInt(f.bilanResetHour)||6,waitMode:f.waitMode||"max",restoLat:lat,restoLon:lon,prixKm:km,emailRapport:f.emailRapport||"",oneSignalAppId:f.oneSignalAppId||"",webhookUrl:f.webhookUrl||"",webhookToken:f.webhookToken||"",masterCode:f.masterCode||MASTER_RECOVERY_CODE,openHour:parseInt(f.openHour)||11,closeHour:parseInt(f.closeHour)||2,cashLimitPerServeuse:parseInt(f.cashLimitPerServeuse)||20000,welcomeOnsite:f.welcomeOnsite||"",welcomeOnsiteSub:f.welcomeOnsiteSub||"",welcomeDelivery:f.welcomeDelivery||"",welcomeDeliverySub:f.welcomeDeliverySub||"",welcomeReturning:f.welcomeReturning||"",welcomeReturningSub:f.welcomeReturningSub||"",welcomeReturningThreshold:parseInt(f.welcomeReturningThreshold)||0});admS.settingsForm=null;toast("Enregistré");loadOneSignal();render();return;}
+  if(action==="admin-save-settings"){const f=admS.settingsForm;const lat=parseFloat(f.restoLat);const lon=parseFloat(f.restoLon);const km=parseInt(f.prixKm);if(isNaN(lat)||isNaN(lon)||isNaN(km)){toast("Valeurs invalides");return;}await A.updateSettings({restaurantName:f.restaurantName||"",phone:f.phone||"",momoNumber:f.momoNumber||"",bilanResetHour:parseInt(f.bilanResetHour)||6,waitMode:f.waitMode||"max",restoLat:lat,restoLon:lon,prixKm:km,emailRapport:f.emailRapport||"",oneSignalAppId:f.oneSignalAppId||"",webhookUrl:f.webhookUrl||"",webhookToken:f.webhookToken||"",masterCode:f.masterCode||MASTER_RECOVERY_CODE,openHour:parseInt(f.openHour)||11,closeHour:parseInt(f.closeHour)||2,cashLimitPerServeuse:parseInt(f.cashLimitPerServeuse)||20000,autoAbandonHours:parseInt(f.autoAbandonHours)||2,abandonPurgeDays:parseInt(f.abandonPurgeDays)||30,welcomeOnsite:f.welcomeOnsite||"",welcomeOnsiteSub:f.welcomeOnsiteSub||"",welcomeDelivery:f.welcomeDelivery||"",welcomeDeliverySub:f.welcomeDeliverySub||"",welcomeReturning:f.welcomeReturning||"",welcomeReturningSub:f.welcomeReturningSub||"",welcomeReturningThreshold:parseInt(f.welcomeReturningThreshold)||0});admS.settingsForm=null;toast("Enregistré");loadOneSignal();render();return;}
   if(action==="admin-bilan-apply"){render();return;}
   if(action==="admin-bilan-today"){const t=nowDate();admS.bilanFrom=t;admS.bilanTo=t;render();return;}
   if(action==="admin-bilan-week"){const to=new Date();const from=new Date();from.setDate(from.getDate()-6);admS.bilanFrom=from.toISOString().slice(0,10);admS.bilanTo=to.toISOString().slice(0,10);render();return;}
@@ -2303,7 +2466,7 @@ document.addEventListener("click",async function(e){
   if(action==="admin-reset-active"){pendingReset={action:"active",pin:"",error:""};render();return;}
   if(action==="admin-reset-everything"){pendingReset={action:"everything",pin:"",error:""};render();return;}
   if(action==="admin-backup-now"){await A.downloadBackup();toast("Téléchargé");return;}
-  if(action==="admin-export-csv"){const paid=DATA.orders.filter(o=>["payee","servie","livree"].includes(o.status));const csv=["Date,Type,Client,Prix,Paiement"].concat(paid.map(o=>[o.date,o.type,(o.clientInfo?.name||o.tableNumber||""),orderGrandTotal(o),o.paymentMethod||""].join(","))).join("\n");const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="historique.csv";a.click();URL.revokeObjectURL(url);return;}
+  if(action==="admin-export-csv"){const paid=DATA.orders.filter(o=>["payee","servie","livree","abandonnee","refusee"].includes(o.status));const csv=["Date,Type,Client,Prix,Paiement,Statut"].concat(paid.map(o=>[o.date,o.type,(o.clientInfo?.name||o.tableNumber||""),orderGrandTotal(o),o.paymentMethod||"",o.status].join(","))).join("\n");const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="historique.csv";a.click();URL.revokeObjectURL(url);return;}
 });
 
 document.addEventListener("change",async function(e){
@@ -2325,6 +2488,7 @@ document.addEventListener("input",function(e){
   if(key==="rec-code"&&loginRecovery){loginRecovery.code=el.value.toUpperCase();loginRecovery.error="";return;}
   if(key==="rec-newpwd"&&loginRecovery){loginRecovery.newPwd=el.value;loginRecovery.error="";return;}
   if(key==="rec-newpwd2"&&loginRecovery){loginRecovery.newPwd2=el.value;loginRecovery.error="";return;}
+  if(key==="abandon-comment"){if(gerS.abandonModal) gerS.abandonModal.comment=el.value; return;}
   if(!key)return;
   const v=clientS;
   if(key==="info-name")v.info.name=el.value;
@@ -2358,6 +2522,8 @@ document.addEventListener("input",function(e){
   if(key==="set-resto-lon"&&admS.settingsForm)admS.settingsForm.restoLon=el.value;
   if(key==="set-km-price"&&admS.settingsForm)admS.settingsForm.prixKm=parseInt(el.value)||0;
   if(key==="set-cash-limit"&&admS.settingsForm)admS.settingsForm.cashLimitPerServeuse=parseInt(el.value)||20000;
+  if(key==="set-auto-abandon"&&admS.settingsForm)admS.settingsForm.autoAbandonHours=parseInt(el.value)||2;
+  if(key==="set-abandon-purge"&&admS.settingsForm)admS.settingsForm.abandonPurgeDays=parseInt(el.value)||30;
   if(key==="set-welcome-onsite"&&admS.settingsForm)admS.settingsForm.welcomeOnsite=el.value;
   if(key==="set-welcome-onsite-sub"&&admS.settingsForm)admS.settingsForm.welcomeOnsiteSub=el.value;
   if(key==="set-welcome-delivery"&&admS.settingsForm)admS.settingsForm.welcomeDelivery=el.value;
@@ -2405,6 +2571,8 @@ setInterval(function(){
   if(SESSION.role==="client"&&clientS.screen==="tracking"&&clientS.timerRemaining>0){clientS.timerRemaining--;render();}
   if(SESSION.role==="admin"&&admS.section==="settings"&&hasGraceActive()){render();}
   checkAlerts();
+  checkAutoAbandon();
+  purgeOldAbandoned();
 },1000);
 
 if("Notification" in window && Notification.permission==="default"){setTimeout(()=>{try{Notification.requestPermission();}catch(e){}},3000);}
@@ -2415,7 +2583,14 @@ if("Notification" in window && Notification.permission==="default"){setTimeout((
   const ci=setInterval(()=>{
     if(!DATA.orders.length && !DATA.menu.length) return;
     const o=DATA.orders.find(x=>x._docId===savedOrderId);
-    if(o && o.status!=="refusee"){
+    if(o && o.status==="abandonnee"){
+      clientS.orderId=savedOrderId;
+      if(!SESSION || SESSION.role!=="client"){
+        SESSION = { role:"client", name:"Client", userId:DEVICE_ID, since:Date.now() };
+        applyRoleTag("client");
+      }
+      clearInterval(ci); render();
+    } else if(o && o.status!=="refusee"){
       clientS.orderId=savedOrderId;
       if(!SESSION || SESSION.role!=="client"){
         SESSION = { role:"client", name:"Client", userId:DEVICE_ID, since:Date.now() };
