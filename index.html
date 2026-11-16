@@ -309,22 +309,6 @@ function abandonPurgeDays(){ return Number(DATA.settings.abandonPurgeDays || 30)
 
 function getBeninTime(){ const now=new Date(); return { hour:(now.getUTCHours()+1)%24, min:now.getUTCMinutes(), sec:now.getUTCSeconds() }; }
 function getBeninHour(){ return getBeninTime().hour; }
-function getOpenHour(){ return DATA.settings.openHour != null ? Number(DATA.settings.openHour) : 11; }
-function getCloseHour(){ return DATA.settings.closeHour != null ? Number(DATA.settings.closeHour) : 2; }
-function isWithinOpenHours(){
-  const h=getBeninHour(); const open=getOpenHour(); const close=getCloseHour();
-  if(open === close) return true;
-  if(open < close) return h >= open && h < close;
-  return h >= open || h < close;
-}
-function hasGraceActive(){ return Date.now() < Number(DATA.settings.graceUntil || 0); }
-function getGraceRemainingMin(){ const ms = Number(DATA.settings.graceUntil||0) - Date.now(); return ms > 0 ? Math.ceil(ms/60000) : 0; }
-function isAppAllowed(role){
-  if(role === "admin") return true;
-  if(isWithinOpenHours()) return true;
-  if(hasGraceActive()){ if(!role) return true; return (DATA.settings.graceRoles||[]).includes(role); }
-  return false;
-}
 
 function nowDate(){
   const d = new Date();
@@ -745,7 +729,7 @@ function loadOneSignal(){
   s.defer = true; document.head.appendChild(s);
 }
 
-// --- NOUVEAU: Système de sauvegarde d'état ---
+// --- Sauvegarde et restauration de l'état ---
 function saveLocalState() {
   if (SESSION) localStorage.setItem("ds_session", JSON.stringify(SESSION));
   else localStorage.removeItem("ds_session");
@@ -795,7 +779,7 @@ const A = {
           ejectionCode: code,
           ejectionRequestedBy: DEVICE_ID,
           forceLogout: null,
-          pendingApproval: true // <-- On active direct l'alerte
+          pendingApproval: true
         }, { merge: true });
         
         // Push automatique selon le rôle
@@ -1022,12 +1006,6 @@ function topbar(opts){
   return '<div class="topbar">'+back+'<div style="flex:1;min-width:0"><p class="topbar-sub">'+esc(opts.role||"")+'</p><div class="topbar-title">'+esc(opts.title||"")+'</div></div>'+compBtn+bell+'<button class="topbar-logout" data-action="logout">Déco</button></div>';
 }
 
-function screenClosed(){
-  const open=getOpenHour();const close=getCloseHour();const phone=DATA.settings.phone||"";
-  const btnPhone = phone ? '<a href="tel:'+phone.replace(/\s/g,"")+'" class="btn btn-ghost btn-block" style="margin-top:14px;text-decoration:none;color:white;border-color:#444;max-width:300px">📞 '+esc(phone)+'</a>' : "";
-  return '<div class="login"><div class="login-logo">🌙</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Nous sommes fermés</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Merci de revenir pendant nos horaires d\'ouverture.</p><div class="card" style="background:#1a1a1a;border:1px solid #333;color:white;max-width:300px;width:100%;text-align:center"><p class="text-sm" style="color:#aaa;margin-bottom:8px">🕐 Horaires</p><p style="font-size:15px;margin:0"><strong>Ouverture :</strong> '+String(open).padStart(2,"0")+'h00</p><p style="font-size:15px;margin:4px 0 0"><strong>Fermeture :</strong> '+String(close).padStart(2,"0")+'h00</p></div>'+btnPhone+'</div>';
-}
-
 function screenLogin(){
   if(loginPendingEjection){
     const p = loginPendingEjection;
@@ -1063,6 +1041,7 @@ function screenLogin(){
       {key:"gerant",em:"📋",label:"Gérant",desc:"Identifiants"}
     ];
   } else {
+    // Normalement on ne devrait jamais arriver ici en mode "default" grâce à handleUrlParams
     roles = [
       {key:"client",em:"🍽️",label:"Client",desc:"Commander"},
       {key:"serveuse",em:"👩‍🍳",label:"Serveuse",desc:"Service (PIN)"},
@@ -1089,8 +1068,8 @@ function screenLogin(){
 function screenRecovery(){ /* inchangé */ const r=loginRecovery; if(!r) return ""; const roleLabel=loginRole==="admin"?"Administrateur":"Gérant"; if(r.stage==="form"){ return '<div class="login"><div class="login-logo">🔑</div><h1 class="serif">Mot de passe oublié</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Compte '+roleLabel+'</p><div style="display:flex;flex-direction:column;gap:14px"><div><label class="text-xs" style="color:#aaa;font-weight:600">EMAIL</label><input class="auth-input" type="email" inputmode="email" data-input="rec-email" value="'+esc(r.email||"")+'"></div><div><label class="text-xs" style="color:#aaa;font-weight:600">CODE DE RÉCUPÉRATION</label><input class="auth-input" type="text" data-input="rec-code" value="'+esc(r.code||"")+'" placeholder="DS-XXXX-XXXX" style="font-family:monospace"></div>'+(r.error?'<p class="pin-error">'+esc(r.error)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-verify">Vérifier</button><button class="pin-back" data-action="rec-cancel">← Retour</button></div></div></div>'; } if(r.stage==="newPwd"){ return '<div class="login"><div class="login-logo">🔐</div><h1 class="serif">Nouveau mot de passe</h1><div class="pin-wrap"><p style="color:#aaa;font-size:13px;text-align:center;margin:0 0 20px">Compte : <strong style="color:var(--jaune)">'+esc(r.matchedName||"")+'</strong></p><div style="display:flex;flex-direction:column;gap:14px"><input class="auth-input" type="password" data-input="rec-newpwd" value="'+esc(r.newPwd||"")+'" placeholder="Nouveau mot de passe"><input class="auth-input" type="password" data-input="rec-newpwd2" value="'+esc(r.newPwd2||"")+'" placeholder="Confirmer">'+(r.error?'<p class="pin-error">'+esc(r.error)+'</p>':"")+'<button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-save">Enregistrer</button><button class="pin-back" data-action="rec-cancel">← Annuler</button></div></div></div>'; } if(r.stage==="success"){ return '<div class="login"><div class="login-logo">✅</div><h1 class="serif">Mot de passe modifié</h1><div class="pin-wrap"><div class="recovery-code" style="background:var(--noir);color:var(--jaune);border-color:var(--jaune)">'+esc(r.generatedCode||"")+'</div><button class="btn btn-accent btn-block" style="padding:14px" data-action="rec-done">J\'ai noté — Retour</button></div></div>'; } return ""; }
 
 function screenClient(){ /* inchangé */ const v=clientS, s=DATA.settings, menu=DATA.menu, tables=DATA.tables; const order=v.orderId?DATA.orders.find(o=>o._docId===v.orderId):null;
-  if(v.mode === "livraison" && v.screen === "menu" && getOpenCompsForDelivery().length === 0){ const graceOpen = hasGraceActive() && ((DATA.settings.graceRoles||[]).includes("client")); if(!graceOpen){ return '<div class="login"><div class="login-logo">🚫</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Service non disponible</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Aucun compartiment n\'est encore ouvert. Revenez un peu plus tard.</p><div style="max-width:300px;width:100%"><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-accent btn-block" style="text-decoration:none">📞 Appeler le restaurant</a></div></div>'; } }
-  if(v.mode === "sur_place" && v.tableId){ const myComp = getCompOfTable(v.tableId); const graceOpen = hasGraceActive() && ((DATA.settings.graceRoles||[]).includes("client")); if(myComp && !myComp.open && !graceOpen){ return '<div class="login"><div class="login-logo">⏳</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Service pas encore ouvert</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Le compartiment <strong>'+esc(myComp.name)+'</strong> n\'a pas encore ouvert aujourd\'hui.</p><div style="max-width:300px;width:100%"><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444;margin-bottom:8px">🛵 Commander en livraison</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-block" style="text-decoration:none;color:white;border-color:#444">📞 Appeler le restaurant</a></div></div>'; } if(myComp && (myComp.open || graceOpen) && !tableHasServeuse(v.tableId)){ return '<div class="login"><div class="login-logo">⚠️</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Table sans serveuse</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Cette table n\'a pas encore de serveuse assignée. Patientez ou appelez le restaurant.</p><div style="max-width:300px;width:100%"><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-accent btn-block" style="text-decoration:none;margin-bottom:8px">📞 Appeler le restaurant</a><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444">🛵 Commander en livraison</button></div></div>'; } }
+  if(v.mode === "livraison" && v.screen === "menu" && getOpenCompsForDelivery().length === 0){ const graceOpen = false; if(!graceOpen){ return '<div class="login"><div class="login-logo">🚫</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Service non disponible</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Aucun compartiment n\'est encore ouvert. Revenez un peu plus tard.</p><div style="max-width:300px;width:100%"><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-accent btn-block" style="text-decoration:none">📞 Appeler le restaurant</a></div></div>'; } }
+  if(v.mode === "sur_place" && v.tableId){ const myComp = getCompOfTable(v.tableId); const graceOpen = false; if(myComp && !myComp.open){ return '<div class="login"><div class="login-logo">⏳</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Service pas encore ouvert</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Le compartiment <strong>'+esc(myComp.name)+'</strong> n\'a pas encore ouvert aujourd\'hui.</p><div style="max-width:300px;width:100%"><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444;margin-bottom:8px">🛵 Commander en livraison</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-block" style="text-decoration:none;color:white;border-color:#444">📞 Appeler le restaurant</a></div></div>'; } if(myComp && myComp.open && !tableHasServeuse(v.tableId)){ return '<div class="login"><div class="login-logo">⚠️</div><p class="login-sub">Restaurant D&S</p><h1 class="serif" style="font-size:22px;margin-bottom:14px">Table sans serveuse</h1><p style="color:#aaa;text-align:center;margin-bottom:20px;font-size:14px">Cette table n\'a pas encore de serveuse assignée. Patientez ou appelez le restaurant.</p><div style="max-width:300px;width:100%"><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-accent btn-block" style="text-decoration:none;margin-bottom:8px">📞 Appeler le restaurant</a><button class="btn btn-ghost btn-block" data-action="client-switch-livraison" style="color:var(--jaune);border-color:#444">🛵 Commander en livraison</button></div></div>'; } }
   if(order && order.status==="abandonnee"){ return '<div class="app">'+topbar({title:"Commande non aboutie",homeAction:"client-home"})+'<div class="content content-narrow" style="text-align:center;padding-top:40px"><div style="font-size:64px;margin-bottom:20px">⏱️</div><h2 class="section-title" style="font-size:22px">Commande non aboutie</h2><p class="muted" style="margin-top:14px;margin-bottom:14px">Votre commande n\'a pas pu être finalisée.</p><div class="card" style="text-align:left;margin-bottom:14px"><p class="text-sm muted" style="margin:0"><strong>Motif :</strong> '+esc(order.abandonMotif||"—")+'</p></div><p class="text-xs muted" style="margin-bottom:24px">Aucun montant n\'a été débité.</p><button class="btn btn-accent btn-block" style="padding:16px;margin-bottom:8px" data-action="client-rescan">🔄 Recommencer</button><a href="tel:'+(s.phone||"").replace(/\s/g,"")+'" class="btn btn-ghost btn-block" style="text-decoration:none;color:var(--noir);border-color:var(--sable)">📞 Appeler le restaurant</a></div></div>'; }
   if(order && orderIsFinal(order)){ if(order.status==="refusee" && v.screen!=="fully_refused"){ v.screen="fully_refused"; } if(order.status==="livree"){ const hasRating = !!order.rating; const hasClaim = !!order.claim; if(!hasRating && !hasClaim && v.screen!=="confirm_delivery" && v.screen!=="rate" && v.screen!=="claim" && v.screen!=="thanks"){ v.screen = "confirm_delivery"; } if(hasRating || hasClaim) v.screen = "thanks"; } if(order.status==="servie" && v.screen==="tracking") v.screen="done"; }
   if(order && order.status!=="refusee" && order.status!=="livree" && order.status!=="servie" && order.status!=="abandonnee"){ if(order.status==="att_verif_paiement" && v.screen==="waiting"){ } if(order.status==="att_collect" && v.screen==="waiting")v.screen="serving"; if(order.status==="att_paiement" && v.screen==="waiting")v.screen="payment"; if(order.status==="payee" && (v.screen==="payment"||v.screen==="serving"||v.screen==="waiting")){ v.screen="tracking"; v.timerTotal=0; } const refIdx=order.items.findIndex((it,i)=>it.statut==="Refusé"&&v.refusedIdx!==i); if(refIdx>=0 && v.screen!=="refused" && v.screen!=="fully_refused" && v.screen!=="editOrder"){v.refusedIdx=refIdx;v.screen="refused";} }
@@ -1215,10 +1194,8 @@ function render(force){
       return;
     }
     
-    if(!isAppAllowed(null) && urlMode !== "admin"){ root.innerHTML = screenClosed(); return; }
     root.innerHTML=screenLogin(); return;
   }
-  if(!isAppAllowed(SESSION.role)){ SESSION=null; root.innerHTML = screenClosed(); return; }
 
   const saved=preserveInput();
   let html="";
@@ -1905,8 +1882,6 @@ document.addEventListener("keydown",function(e){
 });
 
 setInterval(function(){
-  if(!SESSION){ if(!isAppAllowed(null)){ render(); return; } }
-  else if(!isAppAllowed(SESSION.role)){ SESSION=null; render(); return; }
   if(!SESSION) return;
   if(pendingReset) return;
 
@@ -1977,6 +1952,7 @@ let urlParamsHandled = false;
 function handleUrlParams(){
   if(urlParamsHandled) return;
   if(!DATA.menu.length) return;
+  if(SESSION) { urlParamsHandled = true; return; } // Protection contre l'écrasement si on rafraîchit
 
   const params = new URLSearchParams(window.location.search);
   const t = params.get("table");
@@ -1986,7 +1962,7 @@ function handleUrlParams(){
   if(admin === "1"){
     urlParamsHandled = true;
     urlMode = "admin";
-    loginRole = "admin"; // <--- Ajout
+    loginRole = "admin"; // Sélectionne directement admin
     return;
   }
   if(staff === "1"){
@@ -2017,6 +1993,8 @@ function handleUrlParams(){
       }
     }
   }
+  
+  // Lien par défaut = Livraison (Client)
   urlParamsHandled = true;
   urlMode = "default";
   SESSION = { role:"client", name:"Client (Livraison)", userId:DEVICE_ID, since:Date.now(), isDelivery:true };
