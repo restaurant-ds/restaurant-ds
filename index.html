@@ -745,6 +745,33 @@ function loadOneSignal(){
   s.defer = true; document.head.appendChild(s);
 }
 
+// --- NOUVEAU: Système de sauvegarde d'état ---
+function saveLocalState() {
+  if (SESSION) localStorage.setItem("ds_session", JSON.stringify(SESSION));
+  else localStorage.removeItem("ds_session");
+  
+  if (clientS) localStorage.setItem("ds_clientS", JSON.stringify(clientS));
+  if (srvS) localStorage.setItem("ds_srvS", JSON.stringify(srvS));
+  if (gerS) localStorage.setItem("ds_gerS", JSON.stringify(gerS));
+  if (admS) localStorage.setItem("ds_admS", JSON.stringify(admS));
+  if (livS) localStorage.setItem("ds_livS", JSON.stringify(livS));
+}
+function loadLocalState() {
+  const s = localStorage.getItem("ds_session");
+  if(s) SESSION = JSON.parse(s);
+  
+  const c = localStorage.getItem("ds_clientS");
+  if(c) clientS = JSON.parse(c);
+  const sv = localStorage.getItem("ds_srvS");
+  if(sv) srvS = JSON.parse(sv);
+  const g = localStorage.getItem("ds_gerS");
+  if(g) gerS = JSON.parse(g);
+  const a = localStorage.getItem("ds_admS");
+  if(a) admS = JSON.parse(a);
+  const l = localStorage.getItem("ds_livS");
+  if(l) livS = JSON.parse(l);
+}
+
 const A = {
   async login(role, name){
     const staff = DATA.staff.find(s => s.name === name && s.role === role);
@@ -768,11 +795,15 @@ const A = {
           ejectionCode: code,
           ejectionRequestedBy: DEVICE_ID,
           forceLogout: null,
-          pendingApproval: false
+          pendingApproval: true // <-- On active direct l'alerte
         }, { merge: true });
         
-        // Push pour avertir l'ancien (s'il est connecté avec l'app)
-        sendPush("🔐 Connexion suspecte", "Quelqu'un essaie de se connecter avec votre compte. Code: " + code, role);
+        // Push automatique selon le rôle
+        if(role === "gerant" || role === "admin"){
+           sendPush("🔐 Connexion suspecte", "Le compte " + name + " ("+role+") demande à se reconnecter.", "admin");
+        } else {
+           sendPush("🔐 Connexion suspecte", "Le compte " + name + " ("+role+") demande à se reconnecter.", "gerant");
+        }
         
         // On bloque la connexion
         loginPendingEjection = { staffId, role, name, code, requestedAt: Date.now() };
@@ -794,6 +825,7 @@ const A = {
     SESSION = { role, name, userId: DEVICE_ID, staffId, since: Date.now() };
     setTimeout(loadOneSignal, 200); applyRoleTag(role);
     lastPing = Date.now();
+    saveLocalState();
     render();
   },
 
@@ -801,7 +833,9 @@ const A = {
     if(SESSION && SESSION.staffId){
       try { await deleteDoc(doc(db, "sessions", SESSION.staffId)); } catch(e){}
     }
-    SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; clearRoleTag(); render(); 
+    SESSION=null; loginRole=null; loginPin=""; loginEmail=""; loginPassword=""; loginError=""; loginRecovery=null; clearRoleTag(); 
+    localStorage.removeItem("ds_session");
+    render(); 
   },
 
   async validateEjectionCode(code){
@@ -821,6 +855,7 @@ const A = {
       SESSION = { role, name, userId: DEVICE_ID, staffId, since: Date.now() };
       loginPendingEjection = null;
       applyRoleTag(role);
+      saveLocalState();
       render();
       return;
     }
@@ -838,23 +873,11 @@ const A = {
       SESSION = { role, name, userId: DEVICE_ID, staffId, since: Date.now() };
       loginPendingEjection = null;
       applyRoleTag(role);
+      saveLocalState();
       render();
     } else {
       toast("❌ Code incorrect");
     }
-  },
-
-  async requestApproval(){
-    if(!loginPendingEjection) return;
-    const { staffId, role, name } = loginPendingEjection;
-    
-    await setDoc(doc(db, "sessions", staffId), {
-      pendingApproval: true
-    }, { merge: true });
-    
-    sendPush("🔐 Demande de reconnexion", "Le compte " + name + " ("+role+") demande à se reconnecter.", role === "gerant" ? "admin" : "gerant");
-    toast("Demande envoyée. Attendez l'approbation.");
-    render();
   },
 
   async approveReconnect(staffId){
@@ -869,6 +892,18 @@ const A = {
       pendingApproval: false
     });
     toast("✅ Reconnexion approuvée");
+  },
+
+  async rejectEjection(staffId){
+    if(!staffId) return;
+    await setDoc(doc(db, "sessions", staffId), {
+      ejectionCode: null,
+      ejectionRequestedBy: null,
+      pendingApproval: false
+    }, { merge: true });
+    ejectCodeModal = null;
+    toast("❌ Connexion refusée");
+    render();
   },
 
   async forceLogoutSelf(){
@@ -970,7 +1005,7 @@ let livS={tab:"available"};
 let pendingReset=null;
 let mapInstance=null, mapMarker=null;
 
-function resetClient(){ clientS={screen:"menu",mode:"livraison",cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},contactPhone:"",deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{},momoRefInput:"",claimType:null,claimText:"",ratingDriver:0,ratingResto:0,ratingComment:""}; localStorage.removeItem("ds_client_order"); }
+function resetClient(){ clientS={screen:"menu",mode:"livraison",cart:{},cat:"Plats",tableId:null,info:{name:"",phone:"",address:""},contactPhone:"",deliveryLat:null,deliveryLon:null,deliveryKm:null,orderId:null,refusedIdx:null,timerRemaining:0,timerTotal:0,editingOrder:false,editCart:{},momoRefInput:"",claimType:null,claimText:"",ratingDriver:0,ratingResto:0,ratingComment:""}; localStorage.removeItem("ds_client_order"); saveLocalState(); }
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
 
 function topbar(opts){
@@ -1005,12 +1040,12 @@ function screenLogin(){
         <p class="text-xs muted" style="margin-bottom:8px;text-align:center">Entrez votre code Master pour forcer la connexion</p>
         <input class="auth-input" type="password" data-input="eject-code" value="" placeholder="Code Master" style="text-align:center;font-family:monospace;font-size:20px">
       ` : `
-        <p class="text-xs muted" style="margin-bottom:8px;text-align:center">Demandez le code à 6 chiffres affiché sur l'ancien appareil, ou demandez au gérant.</p>
+        <p class="text-xs muted" style="margin-bottom:8px;text-align:center">Demandez le code à 6 chiffres affiché sur l'ancien appareil.</p>
         <input class="auth-input" type="text" inputmode="numeric" maxlength="6" data-input="eject-code" value="" placeholder="123456" style="text-align:center;font-family:monospace;font-size:24px;letter-spacing:0.3em">
       `}
+      <p class="text-xs muted" style="margin-top:12px;margin-bottom:8px;text-align:center;color:var(--jaune)">⏳ ${isAdmin ? "L'administrateur" : "Le gérant"} a été notifié.</p>
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
         <button class="btn btn-accent btn-block" style="padding:14px" data-action="eject-validate">Valider le code</button>
-        ${isAdmin ? '' : `<button class="btn btn-ghost btn-block" style="padding:12px" data-action="eject-request-approval">Demander au gérant</button>`}
         <button class="pin-back" data-action="eject-cancel" style="margin-top:4px">← Annuler et revenir</button>
       </div>
     </div>
@@ -1082,17 +1117,36 @@ function screenClient(){ /* inchangé */ const v=clientS, s=DATA.settings, menu=
 function renderDistancePanel(){if(clientS.deliveryLat==null)return '<div class="card" style="text-align:center;color:var(--gris);font-size:13px;margin-top:12px">Aucune position sélectionnée</div>';const fee=clientS.deliveryKm!=null?Math.round(clientS.deliveryKm*prixParKm()):0;return '<div class="map-info" style="margin-top:12px"><div class="flex between center"><div><div class="text-xs" style="color:#aaa">Distance route</div><div class="dist">'+(clientS.deliveryKm!=null?clientS.deliveryKm.toFixed(2)+" km":"Calcul…")+'</div></div><div style="text-align:right"><div class="text-xs" style="color:#aaa">Frais livraison</div><div class="dist">'+(fee?money(fee):"—")+'</div></div></div></div>';}
 function updateDistancePanel(){const p=document.getElementById("distance-panel");if(p)p.innerHTML=renderDistancePanel();}
 function initLeafletMap(){const mapEl=document.getElementById("map");if(!mapEl)return;if(mapInstance)destroyMap();const rc=restoCoords();mapInstance=L.map("map").setView([rc.lat,rc.lon],13);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OSM"}).addTo(mapInstance);L.marker([rc.lat,rc.lon]).addTo(mapInstance).bindPopup("🍽️ Restaurant D&S").openPopup();const lat=clientS.deliveryLat||rc.lat;const lon=clientS.deliveryLon||rc.lon;if(clientS.deliveryLat!=null){mapMarker=L.marker([lat,lon],{draggable:true}).addTo(mapInstance);mapMarker.on("dragend",()=>{const p=mapMarker.getLatLng();setClientPosition(p.lat,p.lng);});mapInstance.setView([lat,lon],15);}mapInstance.on("click",e=>{if(!mapMarker)mapMarker=L.marker([e.latlng.lat,e.latlng.lng],{draggable:true}).addTo(mapInstance);else mapMarker.setLatLng(e.latlng);mapMarker.off("dragend");mapMarker.on("dragend",()=>{const p=mapMarker.getLatLng();setClientPosition(p.lat,p.lng);});setClientPosition(e.latlng.lat,e.latlng.lng);});}
-function setClientPosition(lat,lon){clientS.deliveryLat=lat;clientS.deliveryLon=lon;clientS.deliveryKm=null;updateDistancePanel();calcRoadDistanceKm(lat,lon).then(r=>{clientS.deliveryKm=r.km;updateDistancePanel();render();}).catch(e=>toast("Erreur calcul distance"));}
+function setClientPosition(lat,lon){clientS.deliveryLat=lat;clientS.deliveryLon=lon;clientS.deliveryKm=null;updateDistancePanel();calcRoadDistanceKm(lat,lon).then(r=>{clientS.deliveryKm=r.km;updateDistancePanel();saveLocalState();render();}).catch(e=>toast("Erreur calcul distance"));}
 function destroyMap(){if(mapInstance){try{mapInstance.remove();}catch(e){}mapInstance=null;mapMarker=null;}}
 
 function screenEjectModal(){
   if(!ejectCodeModal) return "";
-  return `<div class="modal-overlay"><div class="modal-card"><div style="font-size:44px;margin-bottom:8px">🔐</div><h2>Connexion ailleurs</h2><p style="font-size:13px;margin-bottom:16px">Quelqu'un essaie de se connecter avec votre compte.</p><div class="recovery-code">${esc(ejectCodeModal.code)}</div><p style="font-size:13px;margin-bottom:16px">Donnez ce code à votre collègue ou déconnectez-vous.</p><button class="btn btn-danger btn-block" data-action="force-logout-self">Déconnecter cet appareil</button></div></div>`;
+  return `<div class="modal-overlay"><div class="modal-card"><div style="font-size:44px;margin-bottom:8px">🔐</div><h2>Connexion ailleurs</h2><p style="font-size:13px;margin-bottom:16px">Quelqu'un essaie de se connecter avec votre compte.</p><div class="recovery-code">${esc(ejectCodeModal.code)}</div><p style="font-size:13px;margin-bottom:16px">Donnez ce code à votre collègue <strong>OU</strong> refusez la connexion.</p><div style="display:flex;flex-direction:column;gap:8px"><button class="btn btn-danger btn-block" data-action="force-logout-self">Déconnecter cet appareil</button><button class="btn btn-ghost btn-block" data-action="reject-ejection">❌ Refuser l'autre appareil</button></div></div></div>`;
 }
 
 function screenServeuse(){ /* inchangé */ const me=DATA.staff.find(s=>s.name===SESSION.name&&s.role==="serveuse"); const today=nowDate();const day=DATA.affectation[today]||{}; const tableIds=me?Object.entries(day).filter(([tid,sid])=>sid===me._docId).map(([tid])=>tid):[]; const myTables=DATA.tables.filter(t=>tableIds.includes(t._docId)); const myActiveOrders=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.status==="payee"&&!o.servedAt); const toCollect=DATA.orders.filter(o=>o.serveuseId===(me&&me._docId)&&o.status==="att_collect"); const v=srvS; let content=""; if(v.tab==="tables"){ content='<h2 class="section-title">Mes tables du jour</h2>'+(myTables.length===0?'<p class="empty">Aucune table affectée.</p>':myTables.map(t=>{const o=myActiveOrders.find(x=>x.tableId===t._docId)||toCollect.find(x=>x.tableId===t._docId);const timer=o&&o.status==="payee"?orderTimerInfo(o):null;return '<div class="card"><div class="card-row"><div class="flex center gap-3"><div style="width:44px;height:44px;border-radius:50%;background:var(--noir);color:var(--jaune);display:flex;align-items:center;justify-content:center;font-weight:bold">'+t.number+'</div><div><p class="card-title">Table '+t.number+'</p><p class="card-sub">'+(o?statusBadge(o):"Libre")+'</p></div></div>'+(timer?'<div class="mono bold '+(timer.overdue||timer.urgent?"timer urgent":"timer ok")+'">'+timer.text+'</div>':"")+'</div></div>';}).join("")); } else if(v.tab==="order"){ if(v.orderStep==="table"){content='<h2 class="section-title">Nouvelle commande</h2>'+(myTables.length===0?'<p class="empty">Aucune table affectée</p>':'<div class="table-grid">'+myTables.map(t=>'<button class="table-cell" data-action="srv-pick-table" data-id="'+t._docId+'">'+t.number+'</button>').join("")+'</div>');} else {const cats=["Entrées","Plats","Desserts","Boissons"];const dishes=DATA.menu.filter(d=>d.cat===v.orderCat&&isDishAvailableToday(d));const items=DATA.menu.filter(m=>v.orderCart[m._docId]>0);const total=items.reduce((sum,d)=>sum+d.price*v.orderCart[d._docId],0);const t=DATA.tables.find(x=>x._docId===v.orderTable);content='<div style="padding-bottom:100px"><div class="flex between center" style="margin-bottom:12px"><button class="btn btn-ghost btn-sm" data-action="srv-back-table">← Changer</button><h2 class="section-title" style="font-size:18px;margin:0">Table '+(t?t.number:"")+'</h2><span></span></div><div class="cat-tabs" style="margin:12px 0">'+cats.map(c=>'<button class="cat-btn '+(v.orderCat===c?"active":"")+'" data-action="srv-cat" data-cat="'+c+'">'+c+'</button>').join("")+'</div>'+dishes.map(d=>'<div class="dish-row"><div class="dish-info"><p class="dish-name">'+esc(d.name)+'</p><p class="dish-desc">'+money(d.price)+' · ~'+d.time+' min</p></div><div class="qty-controls">'+(v.orderCart[d._docId]>0?'<button class="qty-btn" data-action="srv-remove" data-id="'+d._docId+'">−</button><span class="qty-val">'+v.orderCart[d._docId]+'</span>':"")+'<button class="qty-btn add" data-action="srv-add" data-id="'+d._docId+'">+</button></div></div>').join("")+(items.length>0?'<div class="cart-fab" data-action="srv-send"><span class="label">Envoyer ('+items.reduce((s,d)=>s+v.orderCart[d._docId],0)+')</span><span class="total">'+money(total)+'</span></div>':"")+'</div>';} } else if(v.tab==="collect"){ const cashMe = me ? cashCollectedByServeuse(me._docId) : 0; const cashLimit = Number(DATA.settings.cashLimitPerServeuse || 20000); const cashPct = Math.min(100, Math.round((cashMe / cashLimit) * 100)); const cashBlocked = cashMe >= cashLimit; const cashBanner = '<div class="card" style="margin-bottom:14px;border-left:4px solid '+(cashBlocked?"var(--rouge)":(cashPct>=75?"var(--jaune-fonce)":"var(--vert)"))+'"><div class="flex between center"><div><p class="text-xs muted bold">💵 CASH ENCAISSÉ AUJOURD\'HUI</p><p class="bold mono" style="font-size:20px;margin-top:4px">'+money(cashMe)+' / '+money(cashLimit)+'</p></div><div style="text-align:right"><span class="badge '+(cashBlocked?"badge-rouge":(cashPct>=75?"badge-orange":"badge-vert"))+'">'+cashPct+'%</span></div></div><div style="height:6px;background:#eee;border-radius:3px;margin-top:10px;overflow:hidden"><div style="height:100%;width:'+cashPct+'%;background:'+(cashBlocked?"var(--rouge)":(cashPct>=75?"var(--jaune-fonce)":"var(--vert)"))+'"></div></div>'+(cashBlocked?'<p class="text-sm bold" style="color:var(--rouge);margin-top:8px">⚠️ Plafond atteint — Remettez le cash au gérant avant d\'encaisser à nouveau</p>':"")+'</div>'; if(toCollect.length===0){content='<h2 class="section-title">Encaissements</h2>'+cashBanner+'<p class="section-sub">Rien à encaisser pour le moment</p><p class="empty">Aucune commande en attente.</p>';} else {content='<h2 class="section-title">💰 Encaissements</h2>'+cashBanner+'<p class="section-sub">'+toCollect.length+' commande(s)</p>'+toCollect.map(o=>{const issue=o.cashIssue==="non_recu";const sel=v.collectMethod && v.collectOrderId===o._docId ? v.collectMethod : null;return '<div class="card" style="margin-bottom:12px;border-left:4px solid '+(issue?"var(--rouge)":"var(--jaune-fonce)")+'"><div class="card-row" style="margin-bottom:10px"><div><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+timeAgo(o.createdAt)+'</p></div><span class="mono bold">'+money(orderTotal(o))+'</span></div><ul style="margin:0 0 10px 0;padding-left:20px;font-size:13px;color:#555">'+o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+'</ul>'+(issue?'<div class="alert-banner" style="padding:10px;margin-bottom:10px"><strong>⚠️ Non reçu</strong></div>':"")+(!issue?('<div class="grid-2" style="margin-bottom:10px"><button class="btn btn-'+(sel==="cash"?"accent":"ghost")+'" data-action="srv-collect-method" data-id="'+o._docId+'" data-method="cash">💵 Cash</button><button class="btn btn-'+(sel==="momo"?"accent":"ghost")+'" data-action="srv-collect-method" data-id="'+o._docId+'" data-method="momo">📱 MoMo</button></div>'+(sel==="momo"?'<div><label class="text-xs muted bold">RÉF MoMo</label><input class="input" style="margin-top:4px" data-input="srv-collect-ref" value="'+esc(v.collectRef||"")+'"></div>':"")+'<button class="btn btn-success btn-block" style="margin-top:10px" data-action="srv-collect-confirm" data-id="'+o._docId+'">✓ Paiement reçu</button><button class="btn btn-danger btn-block" style="margin-top:6px" data-action="srv-collect-issue" data-id="'+o._docId+'">❌ Non reçu</button>'):"")+'</div>';}).join("");} } else if(v.tab==="suivi"){ content='<h2 class="section-title">Suivi</h2><p class="section-sub">'+myActiveOrders.length+' active(s)</p>'+(myActiveOrders.length===0?'<p class="empty">Aucune commande active</p>':myActiveOrders.map(o=>{const ready=!!o.readyAt;const timer=orderTimerInfo(o);return '<div class="card" style="margin-bottom:10px"><div class="flex between center" style="margin-bottom:8px"><div><p class="card-title">Table '+(o.tableNumber||"—")+'</p><p class="card-sub">'+money(orderTotal(o))+'</p></div><div style="text-align:right">'+statusBadge(o)+'<p class="mono bold '+(timer.urgent||timer.overdue?"timer urgent":"timer ok")+'" style="margin-top:4px;font-size:14px">'+timer.text+'</p></div></div><ul style="margin:0 0 10px 0;padding-left:20px;font-size:13px;color:#555">'+o.items.filter(i=>i.statut!=="Refusé").map(it=>'<li>'+it.qty+'× '+esc(it.name)+'</li>').join("")+'</ul>'+(ready?'<button class="btn btn-success btn-block" data-action="srv-served" data-id="'+o._docId+'">✓ J\'ai servi</button>':'<p class="text-xs muted" style="text-align:center">Attente cuisine…</p>')+'</div>';}).join("")); } const suiviBadge=myActiveOrders.filter(o=>o.readyAt).length; return '<div class="app" style="max-width:520px;margin:0 auto">'+topbar({role:"Serveuse",title:SESSION.name,homeAction:"srv-home"})+'<div class="content">'+content+'</div><div class="bottom-nav cols-4">'+[{key:"tables",em:"🗂️",label:"Tables"},{key:"order",em:"🛍️",label:"Commander"},{key:"collect",em:"💰",label:"Encaisser",badge:toCollect.filter(o=>!o.cashIssue).length},{key:"suivi",em:"📋",label:"Suivi",badge:suiviBadge}].map(t=>'<button class="bn-btn '+(v.tab===t.key?"active":"")+'" data-action="srv-tab" data-tab="'+t.key+'"><span class="em">'+t.em+'</span><span>'+t.label+'</span>'+(t.badge>0?'<span class="bn-badge">'+t.badge+'</span>':"")+'</button>').join("")+'</div></div>'; }
 
 function screenGerant(){ /* inchangé */ const v=gerS;const today=nowDate();const dayAffect=DATA.affectation[today]||{}; const me = DATA.staff.find(s => s.name === SESSION.name && s.role === "gerant"); const myComp = getCompOfStaff(me); const myCompId = myComp?._docId; const compOpen = myComp ? myComp.open : false;
+  // Vérification des demandes de reconnexion en attente pour ce gérant
+  const pendingReconnects = Object.values(DATA.sessions).filter(s => s.pendingApproval === true);
+  let reconnectsHtml = "";
+  if(pendingReconnects.length > 0){
+    reconnectsHtml = pendingReconnects.map(sess => {
+       const staff = DATA.staff.find(st => st._docId === sess._docId);
+       if(!staff) return "";
+       return `<div class="alert-banner" style="background:rgba(224,168,0,0.15);border-color:var(--jaune-fonce);margin-bottom:16px">
+         <div class="flex between center">
+           <div>
+             <strong>🔔 Demande de reconnexion</strong>
+             <p class="text-sm" style="margin:4px 0 0">Le compte <strong>${esc(staff.name)}</strong> (${staff.role}) demande à se reconnecter.</p>
+           </div>
+           <button class="btn btn-success btn-sm" data-action="ger-approve-reconnect" data-id="${staff._docId}">✓ Approuver</button>
+         </div>
+       </div>`;
+    }).join("");
+  }
+
   if(myComp && !compOpen && myCompId !== "dessert"){ if(!v.wizard) v.wizard = { step: 1, caisse: "" }; const wiz = v.wizard; const myTables = DATA.tables.filter(t => t.compartmentId === myCompId); const affectedCount = myTables.filter(t => dayAffect[t._docId]).length; const hasMenuToday = todayMenuForComp(myCompId) !== null; const caisseToday = (DATA.settings.cashierStart || {})[today]?.[myCompId];
     if(wiz.step === 1){ return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content content-narrow"><div class="card" style="border-left:4px solid var(--jaune);text-align:center"><p class="text-xs muted bold">ÉTAPE 1/4</p><h2 class="section-title" style="margin-top:8px">💰 Montant en caisse</h2><p class="section-sub">Saisissez le montant présent en caisse ce matin (fond de caisse).</p>'+(caisseToday!==undefined?'<p class="text-sm" style="color:var(--vert);margin-bottom:12px">✅ Déjà saisi : '+money(caisseToday)+'</p>':'')+'<input class="input" type="text" inputmode="numeric" style="margin-top:8px;text-align:center;font-size:24px;font-family:monospace" data-input="wiz-caisse" value="'+esc(wiz.caisse||String(caisseToday||""))+'" placeholder="50 000"><button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px" data-action="wiz-step1-next">Suivant →</button></div></div></div>'; }
     if(wiz.step === 2){ const allServeuses = DATA.staff.filter(s => s.role === "serveuse"); const serveuseComps = {}; Object.entries(dayAffect).forEach(([tid, sid]) => { const t = DATA.tables.find(x => x._docId === tid); if (t && t.compartmentId) { if (!serveuseComps[sid]) serveuseComps[sid] = new Set(); serveuseComps[sid].add(t.compartmentId); } }); const availableServeuses = allServeuses.filter(s => { const comps = serveuseComps[s._docId]; if (!comps) return true; return comps.has(myCompId) || comps.size === 0; }); let tableHtml = ''; if(availableServeuses.length === 0){ tableHtml = '<p class="empty">Aucune serveuse disponible.</p>'; } else { tableHtml = '<div class="table-wrap"><table><thead><tr><th>Table</th>'+availableServeuses.map(s=>'<th>'+esc(s.name)+'</th>').join("")+'</tr></thead><tbody>'+myTables.map(t=>'<tr><td><strong>'+t.number+'</strong></td>'+availableServeuses.map(s=>{const checked=dayAffect[t._docId]===s._docId;const currentSrvOnTable=dayAffect[t._docId];const disabled=currentSrvOnTable&&currentSrvOnTable!==s._docId;return '<td><button class="qty-btn" style="'+(checked?"background:var(--jaune);color:var(--noir);":"")+(disabled?"opacity:0.25;cursor:not-allowed;":"")+'" data-action="ger-affect" data-table="'+t._docId+'" data-serveuse="'+s._docId+'" '+(disabled?"disabled":"")+'>'+(checked?"✓":"")+'</button></td>';}).join("")+'</tr>').join("")+'</tbody></table></div>'; } const allDone = myTables.length>0 && myTables.every(t => dayAffect[t._docId]); return '<div class="app">'+topbar({role:"Gérant",title:SESSION.name,homeAction:"ger-home"})+'<div class="content content-narrow"><div class="card" style="border-left:4px solid var(--jaune);margin-bottom:14px"><p class="text-xs muted bold">ÉTAPE 2/4</p><h2 class="section-title" style="margin-top:8px">🗂️ Affectation</h2><p class="section-sub">'+affectedCount+'/'+myTables.length+' tables affectées. Chaque table doit avoir une serveuse.</p></div>'+tableHtml+'<button class="btn btn-accent btn-block" style="padding:14px;margin-top:14px;opacity:'+(allDone?"1":"0.5")+'" data-action="wiz-step2-next" '+(allDone?"":"disabled")+'>Suivant →</button><button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="wiz-back">← Retour</button></div></div>'; }
@@ -1101,7 +1155,7 @@ function screenGerant(){ /* inchangé */ const v=gerS;const today=nowDate();cons
 
   const myCompId2 = getMyCompId("gerant"); const seeOrder = (o) => gerantShouldSeeOrder(o, myCompId2); const pending=DATA.orders.filter(o=>o.status==="att_validation" && seeOrder(o)); const pendingLiv=DATA.orders.filter(o=>o.status==="att_verif_paiement" && seeOrder(o)); const awaitingCollect=DATA.orders.filter(o=>o.status==="att_collect" && seeOrder(o)); const awaitingPay=DATA.orders.filter(o=>o.status==="att_paiement" && seeOrder(o)); const live=DATA.orders.filter(o=>o.status==="payee"&&!o.servedAt&&o.type!=="livraison" && seeOrder(o)); const delivering=DATA.orders.filter(o=>o.type==="livraison"&&o.status==="payee"&&!o.servedAt && seeOrder(o)); const livreurs=DATA.staff.filter(s=>s.role==="livreur"); const cashIssues=DATA.orders.filter(o=>o.cashIssue==="non_recu"&&!o.servedAt && seeOrder(o)); const invoicesToPrint=DATA.orders.filter(o=>o.status==="payee"&&o.paymentMethod&&!o.printedAt&&inCurrentBilan(o) && seeOrder(o)); const openClaims=DATA.orders.filter(o=>o.claim && !o.claim.resolvedAt && seeOrder(o)); let content="";
   if(v.tab==="validation"){
-    let alertHtml="";
+    let alertHtml = reconnectsHtml; // Ajout des demandes de reconnexion en haut
     if(cashIssues.length>0){alertHtml+='<div class="alert-banner" style="grid-column:1/-1"><strong>⚠️ '+cashIssues.length+' paiement(s) non reçu</strong>'+cashIssues.map(o=>'<div class="flex between center" style="margin-top:8px;font-size:13px"><span>Table '+(o.tableNumber||"—")+' — '+money(orderTotal(o))+'</span><button class="btn btn-success btn-sm" data-action="ger-resolve-cash" data-id="'+o._docId+'">✓ Résolu</button></div>').join("")+'</div>';}
     const serveusesCash = DATA.staff.filter(s => s.role === "serveuse").filter(s => { if(!myCompId2) return true; const day = DATA.affectation[today] || {}; return Object.entries(day).some(([tid, sid]) => { if(sid !== s._docId) return false; const t = DATA.tables.find(x => x._docId === tid); return t && t.compartmentId === myCompId2; }); }).map(s => ({ serveuse: s, cash: cashCollectedByServeuse(s._docId) })).filter(x => x.cash > 0);
     if(serveusesCash.length > 0){ alertHtml += '<div class="card" style="grid-column:1/-1;border-left:4px solid var(--jaune-fonce)"><p class="bold" style="margin-bottom:12px">💵 Cash à récupérer des serveuses</p>'+serveusesCash.map(x => { const limit = Number(DATA.settings.cashLimitPerServeuse || 20000); const over = x.cash >= limit; const orders = DATA.orders.filter(o => o.date === today && o.serveuseId === x.serveuse._docId && o.status === "payee" && o.paymentMethod === "cash" && !o.cashCollected).sort((a,b)=>(a.paidAt||0)-(b.paidAt||0)); const orderDetails = orders.map(o => '<div class="cash-transaction-row"><span class="time">🕐 '+fmtTime(o.paidAt)+'</span><span class="label">'+(o.tableNumber?"Table "+o.tableNumber:"Livraison "+(o.clientInfo?.name||""))+'</span><span class="amount">'+money(orderTotal(o))+'</span></div>').join(""); return '<div style="padding:10px 0;border-bottom:1px solid var(--sable)"><div class="flex between center"><div><p class="bold" style="margin:0;font-size:14px">'+esc(x.serveuse.name)+'</p><p class="text-xs muted" style="margin:0">'+money(x.cash)+' / '+money(limit)+(over?' <span style="color:var(--rouge)">⚠️ Bloquée</span>':'')+'</p></div><button class="btn btn-success btn-sm" data-action="ger-collect-cash" data-serveuse="'+x.serveuse._docId+'">✓ Encaissé</button></div><div style="margin-top:8px;padding-left:8px;border-left:2px solid var(--jaune-fonce);background:#faf8f2;border-radius:6px;padding:6px 8px">'+orderDetails+'</div></div>'; }).join("")+'</div>'; }
@@ -1187,6 +1241,7 @@ function render(force){
   if(pendingReset){
     setTimeout(()=>{ const el=document.getElementById("reset-pin-input"); if(el){ el.value=pendingReset.pin||""; el.focus(); } }, 60);
   }
+  saveLocalState(); // <--- SAUVEGARDE L'ÉTAT ICI
 }
 
 function pinAdd(d){if(loginPin.length>=4)return;loginPin+=d;loginError="";if(loginPin.length===4){setTimeout(()=>{const u=DATA.staff.find(s=>s.role===loginRole&&s.pin===loginPin);if(u){A.login(loginRole,u.name);loginRole=null;loginPin="";loginError="";}else{loginError="PIN incorrect";loginPin="";render();}},150);}else render();}
@@ -1284,10 +1339,12 @@ document.addEventListener("click",async function(e){
     await A.validateEjectionCode(code);
     return;
   }
-  if(action==="eject-request-approval"){ await A.requestApproval(); return; }
-
   if(action==="force-logout-self"){ await A.forceLogoutSelf(); ejectCodeModal=null; return; }
-
+  if(action==="reject-ejection"){ 
+    if(!SESSION) return;
+    await A.rejectEjection(SESSION.staffId); 
+    return; 
+  }
   if(action==="ger-approve-reconnect"){ await A.approveReconnect(id); return; }
 
   if(action==="ger-open-abandon"){ gerS.abandonModal = { orderId: id, motif: null, comment: "" }; render(); return; }
@@ -1980,6 +2037,7 @@ window.addEventListener("appinstalled", (e) => { window.__deferredPrompt = null;
 (async function boot(){
   try{
     await seedIfEmpty();
+    loadLocalState(); // <--- CHARGEMENT DE L'ÉTAT ICI
     subscribeAll(() => { handleUrlParams(); render(); });
     handleUrlParams();
     render();
